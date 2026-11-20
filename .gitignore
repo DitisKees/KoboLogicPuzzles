@@ -1,0 +1,9 @@
+# .NET build and test outputs
+[Bb]in/
+[Oo]bj/
+TestResults/
+
+# Local IDE and OS files
+.vs/
+*.user
+.DS_Store
