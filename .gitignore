@@ -3,6 +3,10 @@
 [Oo]bj/
 TestResults/
 
+# Local server data
+/data/
+/apps/server/data/
+
 # Local IDE and OS files
 .vs/
 *.user

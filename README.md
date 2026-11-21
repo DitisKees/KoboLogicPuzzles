@@ -7,17 +7,49 @@ Kobo Nonogram is a personal black-and-white nonogram game for the Kobo Aura H2O 
 | Path | Purpose |
 | --- | --- |
 | [`apps/kobo/`](apps/kobo/) | Lua plugin for KOReader. The `kobononogram.koplugin` directory is the installable unit. |
-| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It will handle WebPBN imports, the puzzle catalog, and progress in SQLite. |
+| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles WebPBN imports, the puzzle catalog, and progress in SQLite. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
 | [`KoboNonogram.slnx`](KoboNonogram.slnx) | Solution for the .NET projects. |
+| [`tests/server/`](tests/server/) | Server unit tests and HTTP integration tests. |
 
 Future clients can live in `apps/web/` and `apps/android/`, with their own build tools and the same shared data contracts. A standalone Kobo client can live beside the KOReader plugin when needed.
 
-Build the server with the .NET 10 SDK.
+Build and test with the .NET 10 SDK.
 
 ```sh
 dotnet build KoboNonogram.slnx
+dotnet test KoboNonogram.slnx
 ```
+
+## Running the home server
+
+Start the server to run the API and the catalog refresh together. The server defaults to `data/kobononogram.db`, relative to its working directory.
+
+```sh
+dotnet run --project apps/server -- --urls http://localhost:8080
+```
+
+For a home LAN deployment, build the image and keep `/data` on a persistent volume.
+
+```sh
+docker build -t kobo-nonogram apps/server
+docker run -d --name kobo-nonogram --restart unless-stopped \
+  -p 8080:8080 -v kobo-nonogram-data:/data kobo-nonogram
+```
+
+On pushes to `main` that change the server or its [publishing workflow](.github/workflows/server-image.yml), GitHub Actions publishes a `linux/amd64` image at `ghcr.io/ditiskees/kobononogram`. Use `:latest` for the current build or `:sha-<full-commit>` for a specific revision. To run the published image, use its full image reference in the `docker run` command above. For a private package, [sign in to GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) before pulling.
+
+The server refreshes WebPBN in the background on first startup and every seven days after a successful refresh. It records that time in SQLite so the schedule survives restarts. If the server was down when a refresh came due, it refreshes on startup. A failed refresh keeps the existing catalog and retries after one hour. The API stays available during refreshes.
+
+To refresh immediately, run the manual command against the server's database.
+
+```sh
+docker exec kobo-nonogram dotnet KoboNonogram.Server.dll refresh
+```
+
+The local equivalent is `dotnet run --project apps/server -- refresh`. Set `CatalogRefresh__Enabled=false` to run in manual-only mode. If you installed a host cron entry for the earlier setup, remove it when switching to the built-in schedule.
+
+The API is intended for a trusted home LAN. See the [API and client sync formats](contracts/README.md).
 
 ## Puzzle catalog and weekly refresh
 
@@ -34,13 +66,16 @@ Use the filters from the original WebPBN search as the starting configuration. A
 | --- | --- |
 | Colors | Black and white |
 | Board area | 1,225–10,000 cells |
+| Board width and height | Up to 80 cells each |
 | Quality | 4–5 stars, including unrated puzzles |
 | Difficulty | 3–5 stars, including unrated puzzles |
 | Solution | Unique |
 | Solvability | Any |
 | Blotted clues | Exclude |
 
-WebPBN filters by total cells. Apply any separate width and height limits when selecting puzzles for the Kobo. [WebPBN puzzle search](https://webpbn.com/find.cgi)
+WebPBN filters by total cells. The server applies the width and height limits when refreshing the catalog and importing new definitions. [WebPBN puzzle search](https://webpbn.com/find.cgi)
+
+Configure the filters through the server configuration or environment variables such as `WebPbn__MinQuality=4.25`. Settings include `MinArea`, `MaxArea`, `MaxWidth`, `MaxHeight`, `MinQuality`, `MaxQuality`, `MinDifficulty`, `MaxDifficulty`, `IncludeUnratedQuality`, `IncludeUnratedDifficulty`, `Solvability`, and `RequestDelayMilliseconds`. Solvability uses WebPBN’s values 0–6, with 0 accepting any rating. Requests are spaced by 250 ms by default.
 
 ## Offline play and synchronization
 

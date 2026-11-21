@@ -1,8 +1,35 @@
-# Shared data contracts
+# Puzzle and progress API v1
 
-This directory is for the versioned JSON formats that the home server and clients exchange. Add schemas and example payloads here as the puzzle import and progress features are implemented.
+The server and clients exchange JSON over HTTP under `/api/v1`. WebPBN puzzle IDs are positive integers and identify both puzzle definitions and saves. The server keeps cached puzzle definitions for restore and sends clues independently of any solution image.
 
-- A puzzle definition uses the WebPBN puzzle ID and describes the board dimensions and row and column clues.
-- A progress record uses the same ID and carries the cell marks and completion state.
+| Method and path | Purpose |
+| --- | --- |
+| `GET /api/v1/puzzles` | List catalog summaries with `id`, `title`, `author`, `width`, and `height`, in descending ID order. Pass `limit` from 1 to 100 (default 50) and use the last returned ID as `beforeId` for the next page. |
+| `GET /api/v1/puzzles/{id}` | Download or read a cached puzzle definition. Returns `404` if the puzzle is outside the catalog and cache, or its export is unavailable or unsupported. |
+| `POST /api/v1/offline-queue` | Request the puzzle definitions needed to reach `targetCount` (0–100) unstarted puzzles. Supply `cachedUnstartedPuzzleIds` for puzzles already available to play offline. The server skips saved and completed boards. The response contains a `puzzles` array with up to the requested number of additional boards. |
+| `POST /api/v1/progress` | Back up an array of up to 100 changed `boards`. The server validates the whole batch and updates only the supplied puzzle IDs. The response contains `savedCount` and the UTC timestamp `backedUpAt`. An empty batch returns `savedCount` of zero and a null timestamp. |
+| `GET /api/v1/restore` | Return an array of `{ puzzle, progress }` records, including completed boards. Each `progress` record includes `puzzleId`, `marks`, `completed`, and `backedUpAt`. |
 
-Keep these formats independent of the server’s SQLite schema and the clients’ UI state. The Kobo, a future standalone client, and future Android and web apps can then use the same puzzle definitions and saves.
+A puzzle definition includes the row and column clue arrays. An empty line has an empty clue array.
+
+```json
+{
+  "id": 12,
+  "title": "Bricks & Steps",
+  "author": "Tess",
+  "width": 3,
+  "height": 2,
+  "rowClues": [[1, 1], [2]],
+  "columnClues": [[1], [1], [2]]
+}
+```
+
+A progress request carries one mark per cell in row-major order. `.` is blank, `#` is filled, and `x` is crossed. A completed board must satisfy every row and column clue.
+
+```json
+{
+  "boards": [{ "puzzleId": 12, "marks": "#x....", "completed": false }]
+}
+```
+
+On a clean installation, retrieve `/restore` before sending progress. During regular sync, upload edited boards before asking the server to top up the queue. Record the last backup time when the progress endpoint acknowledges the write. A later queue failure can be retried independently. Requests that fail validation return `400`. Upstream download failures return `502` or `504` and can be retried.
