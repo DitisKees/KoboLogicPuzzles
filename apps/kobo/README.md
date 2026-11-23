@@ -27,12 +27,12 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 
 ## Play large boards
 
-- Choose **Fill**, **Cross**, or **Clear**. Tap a cell or drag along a row or column to apply the mark. Hold the drag at the edge of the grid to keep marking as it scrolls. Starting on a cell with the selected mark erases the run. **Undo** and **Redo** apply to the whole drag.
+- Choose **Fill**, **Cross**, **Clear**, or **Cycle**. Tap a cell or drag along a row or column to apply the mark. In **Cycle** mode, taps fill, cross, then clear the cell. A drag applies the starting cell’s next mark along the line. In **Fill** or **Cross** mode, starting on a cell with the selected mark erases the run. Hold the drag at the edge of the grid to keep marking as it scrolls. **Undo** and **Redo** apply to the whole drag.
 - Drag in **Pan** mode or start a drag in a clue gutter to move the visible grid. On devices with multitouch, a two-finger drag pans in any mode. **Overview** shows the full board. Tap it to jump to an area. Use **−** and **+** to change cell size.
-- Completed clues are struck through automatically. Completing a row or column crosses its remaining blank cells. **Undo** removes those automatic crosses as a separate step. A black bar beside a row or column marks a conflict between its clues and the current marks. Tap a clue gutter or hold a cell to read the full clues. An ellipsis indicates that more clues are available.
+- Completed clues are struck through in the grid and the clues popup. Tap a clue gutter or hold a cell to open the full list. Set the visible clue limit in **Settings → Clues to show**. Each gutter fits as many clues as its space allows, with an ellipsis when more are available. Completing a row or column crosses its remaining blank cells. **Undo** removes those automatic crosses as a separate step. A black bar beside a row or column marks a conflict between its clues and the current marks.
 - Before trying a guess, choose **Checkpoint → Save checkpoint**. Each puzzle has one local checkpoint. Choose **Restore checkpoint** to return to those marks. If you restore by mistake, **Undo** brings back the marks you had before restoring.
 - Tap **Check** to compare filled and crossed cells with the known solution, when available. It reports how many marks disagree without revealing their locations. For a puzzle downloaded before solution support was added, the first check needs the updated home server and network access to look for the solution. Subsequent checks work offline once the solution is cached.
-- Marks and the viewport save locally as you play. The library lists in-progress boards first. The game marks a board solved when the filled cells satisfy both sets of clues.
+- Marks and the viewport save locally as you play. The library shows the percentage of cells filled or crossed and a miniature of your marks for started and solved puzzles. It lists in-progress puzzles first. The game marks a board solved when the filled cells satisfy both sets of clues.
 
 ## Backup and offline puzzles
 

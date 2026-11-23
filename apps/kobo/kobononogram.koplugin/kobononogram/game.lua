@@ -9,11 +9,14 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local RenderText = require("ui/rendertext")
 local UIManager = require("ui/uimanager")
 local Viewport = require("kobononogram/viewport")
+local Widget = require("ui/widget/widget")
 
 local screen = Device.screen
 local Game = InputContainer:extend{ modal = true, covers_fullscreen = true }
+local CluePanel = Widget:extend{ not_focusable = true }
 local marks = { fill = "#", cross = "x", clear = "." }
-local labels = { fill = "Fill", cross = "Cross", clear = "Clear", pan = "Pan",
+local cycle = { ["."] = "#", ["#"] = "x", x = "." }
+local labels = { fill = "Fill", cross = "Cross", clear = "Clear", cycle = "Cycle", pan = "Pan",
     undo = "Undo", redo = "Redo", minus = "−", plus = "+", clues = "Clues",
     checkpoint = "Checkpoint", check = "Check" }
 
@@ -36,11 +39,46 @@ local function text(bb, value, face, region, color, leading, strike)
     end
 end
 
+function CluePanel:init()
+    self.lineHeight = screen:scaleBySize(23)
+    self.slotWidth = screen:scaleBySize(33)
+    self.slots = math.max(1, math.floor(self.width / self.slotWidth))
+    local lineCount = #self.lines - 1
+    for _, line in ipairs(self.lines) do
+        lineCount = lineCount + 1 + math.ceil(math.max(1, #line.clues) / self.slots)
+        if line.status.impossible then lineCount = lineCount + 1 end
+    end
+    self.dimen = rectangle(0, 0, self.width, lineCount * self.lineHeight)
+end
+
+function CluePanel:paintTo(bb, x, y)
+    local height = self.lineHeight
+    for _, line in ipairs(self.lines) do
+        text(bb, line.label, self.face, rectangle(x, y, self.width, height), BB.COLOR_BLACK, true)
+        y = y + height
+        local count = math.max(1, #line.clues)
+        for i = 1, count do
+            local column, row = (i - 1) % self.slots, math.floor((i - 1) / self.slots)
+            local done = line.status.complete or line.status[i]
+            local region = rectangle(x + column * self.slotWidth, y + row * height, self.slotWidth, height)
+            text(bb, tostring(line.clues[i] or 0), self.face, region,
+                done and BB.COLOR_GRAY_6 or BB.COLOR_BLACK, true, done)
+        end
+        y = y + math.ceil(count / self.slots) * height
+        if line.status.impossible then
+            text(bb, "Marks conflict with these clues.", self.face, rectangle(x, y, self.width, height),
+                BB.COLOR_BLACK, true)
+            y = y + height
+        end
+        y = y + height
+    end
+end
+
 function Game:init()
     self.mode = "fill"
     self.row = math.max(1, math.floor(tonumber(self.record.row) or 1))
     self.column = math.max(1, math.floor(tonumber(self.record.column) or 1))
-    self.zoom = math.max(1, math.min(Viewport.zoomCount,
+    self.zoom = math.max(Viewport.minZoom, math.min(Viewport.maxZoom,
         math.floor(tonumber(self.record.zoom) or Viewport.defaultZoom)))
     self.wasComplete = self.board:isComplete()
     self.pendingSave = #self.board.undo > 0
@@ -50,7 +88,7 @@ end
 
 function Game:resize()
     local w, h = screen:getWidth(), screen:getHeight()
-    local layout = Viewport:new(w, h, self.board.puzzle, self.zoom)
+    local layout = Viewport:new(w, h, self.board.puzzle, self.zoom, self.store.settings.clueLimit)
     self.layout = layout
     self.row, self.column = layout:origin(self.row, self.column)
     self.dimen = rectangle(0, 0, w, h)
@@ -67,9 +105,16 @@ function Game:resize()
     self.titleFace = Font:getFace("tfont", 21)
     self.buttonFace = Font:getFace("cfont", 17)
     self.clueFace = Font:getFace("cfont", 16)
+    local sample = math.max(layout.puzzle.width, layout.puzzle.height) == 100 and "100" or "00"
+    local sampleWidth = RenderText:sizeUtf8Text(0, false, self.clueFace, sample, true).x
+    local gridFontSize = math.max(5, math.min(16, math.floor(16 * (layout.cell - 2) / sampleWidth)))
+    self.gridClueFace = Font:getFace("cfont", gridFontSize)
+    self.markFace = self.zoom < 1 and self.gridClueFace or self.buttonFace
     self.buttons = {}
     local pad, button = layout.pad, layout.button
     self.buttons.library = rectangle(pad, pad, 2 * button, button)
+    local checkpointWidth = math.floor(3.5 * button)
+    self.buttons.checkpoint = rectangle(math.floor((w - checkpointWidth) / 2), pad, checkpointWidth, button)
     self.buttons.overview = rectangle(w - pad - 3 * button, pad, 3 * button, button)
     local function row(actions, y)
         local step = (w - pad) / #actions
@@ -78,7 +123,7 @@ function Game:resize()
             self.buttons[action] = rectangle(x, y, math.floor(i * step) - x, button)
         end
     end
-    row({ "fill", "cross", "clear", "pan", "checkpoint" }, layout.footerY)
+    row({ "fill", "cross", "clear", "cycle", "pan" }, layout.footerY)
     row({ "undo", "redo", "minus", "plus", "clues", "check" }, layout.footerY + button + pad)
 end
 
@@ -88,8 +133,8 @@ function Game:paintButtons(bb)
         local active = self.mode == action or (action == "overview" and self.overview)
         local disabled = (action == "undo" and #self.board.undo == 0)
             or (action == "redo" and #self.board.redo == 0)
-            or (action == "minus" and self.zoom == 1)
-            or (action == "plus" and self.zoom == Viewport.zoomCount)
+            or (action == "minus" and self.zoom == Viewport.minZoom)
+            or (action == "plus" and self.zoom == Viewport.maxZoom)
         local color = active and BB.COLOR_WHITE or (disabled and BB.COLOR_GRAY_7 or BB.COLOR_BLACK)
         bb:paintRect(region.x, region.y, region.w, region.h, active and BB.COLOR_BLACK or BB.COLOR_WHITE)
         bb:paintBorder(region.x, region.y, region.w, region.h, 1, disabled and BB.COLOR_LIGHT_GRAY or BB.COLOR_BLACK)
@@ -97,16 +142,16 @@ function Game:paintButtons(bb)
     end
 end
 
-local function clueLabel(clues, index, slots)
+local function clueLabel(clues, index, slots, ellipsis)
     if #clues == 0 then return index == slots and "0" or nil end
-    if index == 1 and #clues > slots then return "…" end
+    if ellipsis and index == 1 and #clues >= slots then return "…" end
     local clue = #clues + index - slots
     local value = clues[clue]
     return value and tostring(value), clue
 end
 
-local function paintClue(bb, face, region, clues, slot, slots, status)
-    local label, clue = clueLabel(clues, slot, slots)
+local function paintClue(bb, face, region, clues, slot, slots, ellipsis, status)
+    local label, clue = clueLabel(clues, slot, slots, ellipsis)
     if label then
         local done = status.complete or status[clue]
         text(bb, label, face, region, done and BB.COLOR_GRAY_6 or BB.COLOR_BLACK, false, done)
@@ -124,8 +169,8 @@ function Game:paintGrid(bb)
         end
         local status = board.rows[row]
         for slot = 1, l.leftSlots do
-            paintClue(bb, self.clueFace, rectangle(l.pad + (slot - 1) * l.step, y, l.step, cell),
-                board.puzzle.rowClues[row], slot, l.leftSlots, status)
+            paintClue(bb, self.gridClueFace, rectangle(l.pad + (slot - 1) * l.step, y, l.step, cell),
+                board.puzzle.rowClues[row], slot, l.leftSlots, l.leftEllipsis, status)
         end
         if status.impossible then bb:paintRect(gridX - 4, y + 2, 3, cell - 4, BB.COLOR_BLACK) end
         for c = 0, l.columns - 1 do
@@ -134,7 +179,7 @@ function Game:paintGrid(bb)
             if mark == "#" then
                 bb:paintRect(x + 2, y + 2, cell - 3, cell - 3, BB.COLOR_BLACK)
             elseif mark == "x" then
-                text(bb, "×", self.buttonFace, rectangle(x, y, cell, cell), BB.COLOR_GRAY_5)
+                text(bb, "×", self.markFace, rectangle(x, y, cell, cell), BB.COLOR_GRAY_5)
             end
         end
     end
@@ -145,8 +190,8 @@ function Game:paintGrid(bb)
         end
         local status = board.columns[column]
         for slot = 1, l.topSlots do
-            paintClue(bb, self.clueFace, rectangle(x, l.headerY + (slot - 1) * l.step, cell, l.step),
-                board.puzzle.columnClues[column], slot, l.topSlots, status)
+            paintClue(bb, self.gridClueFace, rectangle(x, l.headerY + (slot - 1) * l.step, cell, l.step),
+                board.puzzle.columnClues[column], slot, l.topSlots, l.topEllipsis, status)
         end
         if status.impossible then bb:paintRect(x + 2, gridY - 4, cell - 4, 3, BB.COLOR_BLACK) end
     end
@@ -196,13 +241,18 @@ end
 function Game:showClues(row, column)
     local lines = {}
     local function addLine(label, clues, status)
-        local line = label .. "\n" .. (#clues > 0 and table.concat(clues, "  ") or "0")
-        if status.impossible then line = line .. "\nMarks conflict with these clues." end
-        lines[#lines + 1] = line
+        lines[#lines + 1] = { label = label, clues = clues, status = status }
     end
     if row then addLine("Row " .. row, self.board.puzzle.rowClues[row], self.board.rows[row]) end
     if column then addLine("Column " .. column, self.board.puzzle.columnClues[column], self.board.columns[column]) end
-    UIManager:show(InfoMessage:new{ text = table.concat(lines, "\n\n") })
+    local dialog
+    dialog = ButtonDialog:new{
+        modal = true,
+        width_factor = 0.72,
+        buttons = {{ { text = "Close", callback = function() UIManager:close(dialog) end } }},
+    }
+    dialog:addWidget(CluePanel:new{ lines = lines, face = self.clueFace, width = dialog:getAddedWidgetAvailableWidth() })
+    UIManager:show(dialog)
 end
 
 function Game:showCheckpoint()
@@ -306,7 +356,7 @@ function Game:onButton(action)
         else self:changed(self.board:redoStroke()) end
     elseif action == "minus" or action == "plus" then
         local zoom = self.zoom + (action == "plus" and 1 or -1)
-        if zoom >= 1 and zoom <= Viewport.zoomCount then
+        if zoom >= Viewport.minZoom and zoom <= Viewport.maxZoom then
             self.zoom = zoom
             self:resize()
             self:save()
@@ -318,6 +368,11 @@ function Game:onButton(action)
             self.layout.height - self.layout.footerY))
     end
     return true
+end
+
+function Game:markAt(row, column)
+    if self.mode == "cycle" then return cycle[self.board:get(row, column)] end
+    return marks[self.mode]
 end
 
 function Game:onTap(_, gesture)
@@ -338,8 +393,9 @@ function Game:onTap(_, gesture)
     local row, column = l:cellAt(x, y, self.row, self.column)
     if row then
         self.selectedRow, self.selectedColumn = row, column
-        if marks[self.mode] then
-            self.board:beginStroke(row, column, marks[self.mode])
+        local mark = self:markAt(row, column)
+        if mark then
+            self.board:beginStroke(row, column, mark)
             local changes = self.board:finishStroke()
             if changes then self:changed(changes) else UIManager:setDirty(self, "ui") end
         else
@@ -371,7 +427,7 @@ function Game:beginMotion(start, multi)
     end
     local row, column = l:cellAt(start.x, start.y, self.row, self.column)
     self.motion = { start = start, row = self.row, column = self.column, multi = multi,
-        paint = not multi and row and marks[self.mode] }
+        paint = not multi and row and self:markAt(row, column) }
     if self.motion.paint then
         self.motion.selectedRow, self.motion.selectedColumn = self.selectedRow, self.selectedColumn
         self.selectedRow, self.selectedColumn = row, column

@@ -19,6 +19,7 @@ local Sync = require("kobononogram/sync")
 local UI = require("ui/uimanager")
 local Update = require("kobononogram/update")
 local UpdateArchive = require("kobononogram/updatearchive")
+local Viewport = require("kobononogram/viewport")
 
 local function smallPuzzle(id)
     return { id = id, title = "Bricks & Steps", author = "Sample", width = 3, height = 2,
@@ -184,6 +185,19 @@ local function squarePuzzle(size)
         width = size, height = size, rowClues = rows, columnClues = columns }
 end
 
+local function testClueLayout()
+    local clues = {}
+    for i = 1, 50 do clues[i] = 1 end
+    local puzzle = { width = 100, height = 100, rowClues = { clues }, columnClues = { clues } }
+    local limited = Viewport:new(600, 360, puzzle, Viewport.maxZoom, 1)
+    assert(limited.leftSlots == 2 and limited.leftEllipsis)
+    assert(limited.topSlots == 2 and limited.topEllipsis)
+    local dense = Viewport:new(600, 360, puzzle, Viewport.maxZoom, Viewport.maxClueLimit)
+    assert(dense.leftSlots > limited.leftSlots and dense.topSlots > limited.topSlots)
+    assert(dense.rows >= 4 and dense.columns >= 4)
+    assert(dense.gridY + dense.rows * dense.cell < dense.footerY - dense.status)
+end
+
 local function testPluginUpdate()
     local lfs = require("libs/libkoreader-lfs")
     local Archive = require("ffi/archiver")
@@ -287,23 +301,31 @@ local function testGameUI()
     menu:onMenuSelect(menu.item_table[3])
     local settings = UI:getTopmostVisibleWidget()
     assert(settings.title == "Kobo Nonogram settings")
-    settings.buttons[1][1].callback()
-    local input
-    for widget in UI:topdown_widgets_iter() do
-        assert(widget ~= menu, "Server URL dialog is behind the library")
-        if widget.title == "Home server URL" then
-            input = widget
-            break
+    local function enterValue(title, value)
+        local input
+        for widget in UI:topdown_widgets_iter() do
+            assert(widget ~= menu, title .. " dialog is behind the library")
+            if widget.title == title then
+                input = widget
+                break
+            end
         end
+        assert(input and input:isKeyboardVisible())
+        input._input_widget:setText(value)
+        input.buttons[1][2].callback()
     end
-    assert(input and input:isKeyboardVisible())
-    input._input_widget:setText("http://example.test:8080")
-    input.buttons[1][2].callback()
+    settings.buttons[1][1].callback()
+    enterValue("Home server URL", "http://example.test:8080")
     assert(plugin.store.settings.server == "http://example.test:8080" and UI:getTopmostVisibleWidget() == menu)
+    assert(plugin.store.settings.clueLimit == Viewport.defaultClueLimit)
+    menu:onMenuSelect(menu.item_table[3])
+    UI:getTopmostVisibleWidget().buttons[3][1].callback()
+    enterValue("Clues shown per row or column", "2")
+    assert(assert(Store.open(plugin.store.root)).settings.clueLimit == 2)
     local checked
     plugin.checkPluginUpdate = function() checked = true end
     menu:onMenuSelect(menu.item_table[3])
-    UI:getTopmostVisibleWidget().buttons[3][1].callback()
+    UI:getTopmostVisibleWidget().buttons[4][1].callback()
     assert(checked and UI:getTopmostVisibleWidget() == menu)
 
     assert(plugin.store:download(smallPuzzle(1)))
@@ -325,6 +347,14 @@ local function testGameUI()
     local layout = game.layout
     game:onGesture{ ges = "tap", pos = Geom:new{ x = layout.gridX + 12, y = layout.gridY + 12, w = 0, h = 0 } }
     assert(game.board:marks() == "#..x.." and plugin.store.records[1].marks == "#..x..")
+    game:onButton("clues")
+    local popup = UI:getTopmostVisibleWidget()
+    local popupLines = popup._added_widgets[1].lines
+    assert(popupLines[1].label == "Row 1" and popupLines[1].status[1] and not popupLines[1].status[2])
+    assert(popupLines[2].label == "Column 1" and popupLines[2].status.complete)
+    UI:forceRePaint()
+    device.screen.bb:writePNG(home .. "/clues.png")
+    UI:close(popup)
     game:onButton("undo")
     assert(game.board:marks() == "#....." and plugin.store.records[1].marks == "#.....")
     game:onClose()
@@ -332,7 +362,17 @@ local function testGameUI()
     assert(plugin.game.board:marks() == "#....." and plugin.game.board.columns[1].complete)
     plugin.game:onClose()
 
+    local solved, unstarted = smallPuzzle(2), smallPuzzle(3)
+    solved.title, unstarted.title = "Solved fixture", "Unstarted fixture"
+    assert(plugin.store:download(solved))
+    assert(plugin.store:download(unstarted))
+    assert(plugin.store:saveGame(Board:new(solved, "#x#.##"), { row = 1, column = 1, zoom = 2 }, true))
+    plugin:updateLibrary()
     UI:forceRePaint()
+    local items = plugin.library.item_table
+    assert(items[4].mandatory == "3×2  16%" and items[4].state.preview)
+    assert(items[5].mandatory == "3×2  0%" and not items[5].state)
+    assert(items[6].mandatory == "3×2  83%  Solved" and items[6].state.preview)
     for _, size in ipairs({ 40, 80 }) do
         assert(plugin.store:download(squarePuzzle(size)))
         plugin:updateLibrary()
@@ -417,6 +457,20 @@ local function testGameUI()
             game:onGesture{ ges = "two_finger_swipe", pos = panStart, end_pos = panEnd }
             assert(game.column == 4 and game.board:marks() == original)
             game:moveViewport(1, 1)
+
+            local cycle = game.buttons.cycle
+            tap(cycle.x + 10, cycle.y + 10)
+            local cycleStart = point(layout.gridX + 2 * layout.cell + 12, layout.gridY + 2 * layout.cell + 12)
+            for _, mark in ipairs({ "#", "x", "." }) do
+                tap(cycleStart.x, cycleStart.y)
+                assert(game.board:get(3, 3) == mark)
+            end
+            local cycleEnd = point(cycleStart.x + 2 * layout.cell, cycleStart.y)
+            game:onGesture{ ges = "pan", start_pos = cycleStart, pos = cycleEnd }
+            game:onGesture{ ges = "pan_release", pos = cycleEnd }
+            assert(game.board:marks():sub(83, 85) == "###")
+            game:onButton("undo")
+            assert(game.board:marks() == original)
         end
         UI:forceRePaint()
         device.screen.bb:writePNG(home .. "/grid-" .. size .. ".png")
@@ -440,12 +494,33 @@ local function testGameUI()
     local reopened = assert(Store.open(plugin.store.root))
     local restored = reopened.records[80]
     assert(restored.marks:sub(1, 4) == "####" and restored.marks:sub(81, 81) == "x")
-    assert(restored.row > 1 and restored.column > 1)
+    assert(restored.row > 1 and restored.column > 1 and restored.zoom == 2)
+    plugin:showGame(80)
+    local game = plugin.game
+    assert(game.layout.cell == math.floor(29 * game.layout.scale))
+    assert(game.layout.leftSlots == 3 and game.layout.leftEllipsis)
+    assert(game.layout.topSlots == 3 and game.layout.topEllipsis)
+    for zoom = 1, Viewport.minZoom, -1 do
+        local before = game.layout.cell
+        game:onButton("minus")
+        assert(game.zoom == zoom and game.layout.cell < before)
+    end
+    game:onButton("minus")
+    assert(game.zoom == Viewport.minZoom)
     UI:forceRePaint()
+    device.screen.bb:writePNG(home .. "/zoomed-out.png")
+    game:onClose()
+    plugin:showGame(80)
+    assert(plugin.game.zoom == Viewport.minZoom)
+    plugin.game:onClose()
+    UI:forceRePaint()
+    assert(plugin.library.item_table[4].mandatory == "80×80  <1%")
+    device.screen.bb:writePNG(home .. "/library.png")
 end
 
 testBoard()
 testSync()
 testPluginUpdate()
+testClueLayout()
 testGameUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

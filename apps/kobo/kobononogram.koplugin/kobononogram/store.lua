@@ -1,4 +1,5 @@
 local Board = require("kobononogram/board")
+local Viewport = require("kobononogram/viewport")
 local JSON = require("json")
 local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
@@ -52,6 +53,11 @@ function Store.open(root)
     if type(settings.server) ~= "string" then settings.server = "" end
     if type(settings.target) ~= "number" or settings.target < 0 or settings.target > 100 then settings.target = 10 end
     settings.target = math.floor(settings.target)
+    local clueLimit = settings.clueLimit
+    if type(clueLimit) ~= "number" or clueLimit < 1 or clueLimit > Viewport.maxClueLimit
+        or clueLimit ~= math.floor(clueLimit) then
+        settings.clueLimit = Viewport.defaultClueLimit
+    end
     local self = setmetatable({ root = root, records = {}, settings = settings }, Store)
     for name in lfs.dir(root) do
         local id = tonumber(name:match("^(%d+)%.json$"))
