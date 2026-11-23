@@ -6,7 +6,7 @@ Kobo Nonogram is a personal black-and-white nonogram game for the Kobo Aura H2O 
 
 | Path | Purpose |
 | --- | --- |
-| [`apps/kobo/`](apps/kobo/) | Lua plugin for KOReader. The `kobononogram.koplugin` directory is the installable unit. |
+| [`apps/kobo/`](apps/kobo/README.md) | KOReader plugin, with [installation and play instructions](apps/kobo/README.md). |
 | [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles WebPBN imports, the puzzle catalog, and progress in SQLite. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
 | [`KoboNonogram.slnx`](KoboNonogram.slnx) | Solution for the .NET projects. |
