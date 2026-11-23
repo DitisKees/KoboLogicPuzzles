@@ -80,13 +80,15 @@ public sealed class CatalogRefreshTests
         Assert.Equal(12, Assert.Single(database.Store.ListCatalog(null, 10)).Id);
     }
 
-    [Fact]
-    public void ExistingDatabaseKeepsCatalogAndProgressWhenScheduleTableIsAdded()
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 1)]
+    public void ExistingDatabaseKeepsCatalogAndProgressAndSchedulesRefresh(bool keepRefreshTable, long revision)
     {
         using var database = new TestDatabase();
         database.SeedCatalog([TestData.Summary(12)], Start);
         database.Store.CachePuzzle(TestData.Puzzle(12));
-        new ProgressBackup(database.Store, TimeProvider.System).Save([new ProgressUpdate(12, "#x....", false)]);
+        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], DateTimeOffset.UtcNow);
         using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = database.Path, ForeignKeys = true,
@@ -94,13 +96,13 @@ public sealed class CatalogRefreshTests
         {
             connection.Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "DROP TABLE catalog_refresh";
+            command.CommandText = keepRefreshTable ? "DROP TABLE puzzle_metadata" : "DROP TABLE catalog_refresh";
             command.ExecuteNonQuery();
         }
 
         database.Store.Initialize();
 
-        Assert.Equal(new CatalogRefreshState(0, null), database.Store.GetCatalogRefreshState());
+        Assert.Equal(new CatalogRefreshState(revision, null), database.Store.GetCatalogRefreshState());
         Assert.Equal(12, Assert.Single(database.Store.ListCatalog(null, 10)).Id);
         Assert.Equal("#x....", Assert.Single(database.Store.RestoreProgress()).Progress.Marks);
     }

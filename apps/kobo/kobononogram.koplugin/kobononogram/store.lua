@@ -126,6 +126,17 @@ function Store:saveSolution(id, solution)
     return self:save(record)
 end
 
+function Store:saveMetadata(id, metadata)
+    local current = self.records[id]
+    local previous = current.puzzle.metadata
+    if type(previous) == "table" and previous.difficulty == metadata.difficulty
+        and previous.quality == metadata.quality and previous.solvability == metadata.solvability then return true end
+    local record = copy(current)
+    record.puzzle = copy(record.puzzle)
+    record.puzzle.metadata = metadata
+    return self:save(record)
+end
+
 function Store:saveGame(board, view, changed)
     local current = self.records[board.puzzle.id]
     local record = copy(current)

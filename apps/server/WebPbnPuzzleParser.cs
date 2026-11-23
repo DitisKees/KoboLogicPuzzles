@@ -50,10 +50,32 @@ public static class WebPbnPuzzleParser
 
         var title = puzzle.Element("title")?.Value.Trim();
         var author = puzzle.Element("author")?.Value.Trim() ?? "";
+        var solvability = ReadSolvability(puzzle.Element("note")?.Value);
         var definition = new PuzzleDefinition(id, string.IsNullOrEmpty(title) ? $"#{id}" : title, author,
-            columns.Length, rows.Length, rows, columns);
+            columns.Length, rows.Length, rows, columns,
+            Metadata: solvability is null ? null : new PuzzleMetadata(null, null, solvability));
         var solution = ReadSolution(puzzle, definition, black!, white);
         return definition with { Solution = solution };
+    }
+
+    private static int? ReadSolvability(string? note)
+    {
+        foreach (var field in (note ?? "").Split(',', StringSplitOptions.TrimEntries))
+        {
+            var level = field switch
+            {
+                _ when field.EndsWith("trivial", StringComparison.Ordinal) => 1,
+                _ when field.EndsWith("line/color solvable", StringComparison.Ordinal) => 2,
+                _ when field.EndsWith("requires moderate lookahead", StringComparison.Ordinal) => 3,
+                _ when field.EndsWith("requires deep lookahead", StringComparison.Ordinal) => 4,
+                _ when field.EndsWith("requires some guessing", StringComparison.Ordinal) => 5,
+                _ when field.EndsWith("requires much guessing", StringComparison.Ordinal) => 6,
+                _ => (int?)null,
+            };
+            if (level is not null)
+                return level;
+        }
+        return null;
     }
 
     private static string? ReadSolution(XElement puzzle, PuzzleDefinition definition, XElement black, XElement white)

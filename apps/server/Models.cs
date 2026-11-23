@@ -2,11 +2,18 @@ using System.Text.Json.Serialization;
 
 namespace KoboNonogram.Server;
 
-public sealed record PuzzleSummary(int Id, string Title, string Author, int Width, int Height);
+public sealed record PuzzleMetadata(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Difficulty,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Quality,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Solvability);
+
+public sealed record PuzzleSummary(int Id, string Title, string Author, int Width, int Height,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PuzzleMetadata? Metadata = null);
 
 public sealed record PuzzleDefinition(
     int Id, string Title, string Author, int Width, int Height, int[][] RowClues, int[][] ColumnClues,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Solution = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Solution = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PuzzleMetadata? Metadata = null)
 {
     public bool MatchesClues(string marks)
     {

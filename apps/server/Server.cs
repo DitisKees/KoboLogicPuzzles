@@ -57,6 +57,14 @@ public static class Server
             return puzzle is null ? Results.NotFound() : Results.Ok(puzzle);
         });
 
+        api.MapGet("/puzzles/metadata", (int[] id, PuzzleStore store) =>
+        {
+            if (id.Length > 100 || id.Any(value => value <= 0))
+                return BadRequest("Supply at most 100 positive puzzle IDs.");
+
+            return Results.Ok(store.ListMetadata(id));
+        });
+
         api.MapPost("/offline-queue", async (OfflineQueueRequest request, PuzzleLibrary library,
             CancellationToken cancellationToken) =>
         {
@@ -68,14 +76,14 @@ public static class Server
             return Results.Ok(new OfflineQueueResponse(puzzles));
         });
 
-        api.MapPost("/progress", (ProgressUpload upload, ProgressBackup backup) =>
+        api.MapPost("/progress", async (ProgressUpload upload, ProgressBackup backup, CancellationToken cancellationToken) =>
         {
             if (upload.Boards is null || upload.Boards.Length > 100)
                 return BadRequest("Supply a boards array with at most 100 changed boards.");
 
             try
             {
-                return Results.Ok(backup.Save(upload.Boards));
+                return Results.Ok(await backup.SaveAsync(upload.Boards, cancellationToken));
             }
             catch (ArgumentException exception)
             {

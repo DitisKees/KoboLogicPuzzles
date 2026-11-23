@@ -1,4 +1,5 @@
 using System.Globalization;
+using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 
 namespace KoboNonogram.Server;
@@ -61,7 +62,8 @@ public static class WebPbnCatalogParser
             if (colors == 2)
             {
                 var author = row.Children[columns["author"]].TextContent.Trim();
-                puzzles.Add(new PuzzleSummary(id, label[(separator + 1)..].Trim(), author, width, height));
+                var metadata = new PuzzleMetadata(Rating(row, columns, "difficulty"), Rating(row, columns, "quality"), null);
+                puzzles.Add(new PuzzleSummary(id, label[(separator + 1)..].Trim(), author, width, height, metadata));
             }
         }
 
@@ -69,5 +71,17 @@ public static class WebPbnCatalogParser
             throw new InvalidDataException("WebPBN search results did not contain matching puzzle rows or an empty result.");
 
         return new WebPbnPage(puzzles, hasMore);
+    }
+
+    private static decimal? Rating(IElement row, Dictionary<string, int> columns, string name)
+    {
+        if (!columns.TryGetValue(name, out var column))
+            return null;
+
+        var image = row.Children[column].QuerySelector("img")?.GetAttribute("src");
+        var file = Path.GetFileNameWithoutExtension(image);
+        return file is not null && file.StartsWith("star", StringComparison.Ordinal) &&
+            int.TryParse(file.AsSpan(4), NumberStyles.None, CultureInfo.InvariantCulture, out var quarters) &&
+            quarters is >= 4 and <= 20 ? quarters / 4m : null;
     }
 }

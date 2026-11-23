@@ -87,4 +87,28 @@ function Sync.run(store, request)
     return result
 end
 
+function Sync.refreshMetadata(store, request)
+    local records = store:list()
+    for first = 1, #records, 100 do
+        local ids, query = {}, {}
+        for index = first, math.min(first + 99, #records) do
+            local id = records[index].puzzle.id
+            ids[#ids + 1] = id
+            query[#query + 1] = string.format("id=%d", id)
+        end
+        local reply, err, status = request("GET", "/puzzles/metadata?" .. table.concat(query, "&"),
+            nil, "Updating puzzle ratings…")
+        if status == 404 then return true end
+        if not reply then return nil, err end
+        for _, id in ipairs(ids) do
+            local metadata = reply[tostring(id)]
+            if type(metadata) == "table" then
+                local ok, saveError = store:saveMetadata(id, metadata)
+                if not ok then return nil, saveError end
+            end
+        end
+    end
+    return true
+end
+
 return Sync

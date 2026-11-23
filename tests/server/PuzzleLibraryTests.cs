@@ -27,6 +27,35 @@ public sealed class PuzzleLibraryTests
         Assert.Equal(new[] { 15, 12 }, database.Store.ListCatalog(null, 10).Select(puzzle => puzzle.Id));
     }
 
+    [Fact]
+    public async Task UnfilteredCatalogKeepsUnclassifiedPuzzlesAndRetainsRatingsForDownloadedBoards()
+    {
+        using var database = new TestDatabase();
+        var rated = TestData.Summary(12) with { Metadata = new PuzzleMetadata(3.75m, 4.25m, null) };
+        database.Store.CachePuzzle(TestData.Puzzle(12));
+        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], DateTimeOffset.UtcNow);
+        var options = new WebPbnOptions { MinArea = 1, RequestDelayMilliseconds = 0 };
+        using var source = TestData.Source(uri => TestData.Ok(
+            QueryHelpers.ParseQuery(uri.Query)["guess"].ToString() switch
+            {
+                "0" => TestData.SearchPage(false, rated, TestData.Summary(13)),
+                "3" => TestData.SearchPage(false, rated),
+                _ => TestData.SearchPage(false),
+            }), options);
+        var library = new PuzzleLibrary(database.Store, source, options, TimeProvider.System);
+
+        Assert.Equal(2, await library.RefreshAsync(CancellationToken.None));
+        var catalog = database.Store.ListCatalog(null, 10);
+        Assert.Null(catalog[0].Metadata!.Solvability);
+        var metadata = new PuzzleMetadata(3.75m, 4.25m, 3);
+        Assert.Equal(metadata, catalog[1].Metadata);
+        Assert.Equal(metadata, (await library.GetPuzzleAsync(12, CancellationToken.None))?.Metadata);
+
+        database.SeedCatalog([]);
+        Assert.Equal(metadata, database.Store.ListMetadata([12, 99])[12]);
+        Assert.Equal(metadata, Assert.Single(database.Store.RestoreProgress()).Puzzle.Metadata);
+    }
+
     [Theory]
     [InlineData("<h1>Temporarily unavailable</h1>")]
     [InlineData(null)]
@@ -51,7 +80,7 @@ public sealed class PuzzleLibraryTests
         using var database = new TestDatabase();
         database.SeedCatalog([TestData.Summary(12)]);
         database.Store.CachePuzzle(TestData.Puzzle(12));
-        new ProgressBackup(database.Store, TimeProvider.System).Save([new ProgressUpdate(12, "#x....", false)]);
+        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], DateTimeOffset.UtcNow);
         using var source = TestData.Source(uri =>
         {
             Assert.Equal("/find.cgi", uri.AbsolutePath);
@@ -70,7 +99,7 @@ public sealed class PuzzleLibraryTests
     {
         using var database = new TestDatabase();
         database.Store.CachePuzzle(TestData.Puzzle(12));
-        new ProgressBackup(database.Store, TimeProvider.System).Save([new ProgressUpdate(12, "#x....", false)]);
+        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], DateTimeOffset.UtcNow);
         var exports = 0;
         using var source = TestData.Source(uri =>
         {
@@ -99,9 +128,9 @@ public sealed class PuzzleLibraryTests
         database.SeedCatalog(Enumerable.Range(1, 7).Select(id => TestData.Summary(id)));
         database.Store.CachePuzzle(TestData.Puzzle(7));
         database.Store.CachePuzzle(TestData.Puzzle(6));
-        new ProgressBackup(database.Store, TimeProvider.System).Save([
+        database.Store.SaveProgress([
             new ProgressUpdate(7, "#x....", false), new ProgressUpdate(6, "#x#x##", true),
-        ]);
+        ], DateTimeOffset.UtcNow);
         var exports = new List<int>();
         using var source = TestData.Source(uri =>
         {

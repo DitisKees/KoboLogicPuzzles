@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using KoboNonogram.Server;
 using Microsoft.Data.Sqlite;
@@ -24,10 +25,14 @@ internal static class TestData
 
     public static string SearchPage(bool hasMore, params PuzzleSummary[] puzzles)
     {
+        static string Star(decimal? rating) => rating is { } value
+            ? $"<img src=\"img/star{(value * 4).ToString("0", CultureInfo.InvariantCulture)}.gif\">"
+            : "";
         var rows = puzzles.Select(puzzle => $"""
             <tr><td><img src="img/w.gif"></td>
             <td><a href="play.cgi?id={puzzle.Id}&amp;sid=">#{puzzle.Id}:
-            {WebUtility.HtmlEncode(puzzle.Title)}</a></td><td></td><td></td><td></td><td>1</td>
+            {WebUtility.HtmlEncode(puzzle.Title)}</a></td>
+            <td>{Star(puzzle.Metadata?.Quality)}</td><td>{Star(puzzle.Metadata?.Difficulty)}</td><td></td><td>1</td>
             <td>{puzzle.Width}x{puzzle.Height}</td><td>2</td><td>{WebUtility.HtmlEncode(puzzle.Author)}</td></tr>
             """);
         var contents = puzzles.Length == 0 ? "<tr><td colspan=\"9\"><em>None Found</em></td></tr>" : string.Join('\n', rows);
@@ -48,7 +53,7 @@ internal static class TestData
 
     public static HttpResponseMessage Ok(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
 
-    public static WebPbnOptions Options { get; } = new() { MinArea = 1, RequestDelayMilliseconds = 0 };
+    public static WebPbnOptions Options { get; } = new() { MinArea = 1, Solvability = 2, RequestDelayMilliseconds = 0 };
 
     private sealed class ScriptedHandler(Func<Uri, HttpResponseMessage> respond) : HttpMessageHandler
     {

@@ -9,13 +9,13 @@ public sealed class WebPbnClient(HttpClient http, WebPbnOptions options) : IDisp
 {
     private readonly SemaphoreSlim requestGate = new(1);
 
-    public async Task<WebPbnPage> SearchAsync(int page, CancellationToken cancellationToken)
+    public async Task<WebPbnPage> SearchAsync(int page, CancellationToken cancellationToken, int? solvability = null)
     {
         var parameters = new Dictionary<string, string?>
         {
             ["search"] = "1", ["status"] = "0", ["minsize"] = Format(options.MinArea),
             ["maxsize"] = Format(options.MaxArea), ["mincolor"] = "2", ["maxcolor"] = "2",
-            ["uniq"] = "1", ["blots"] = "2", ["guess"] = Format(options.Solvability),
+            ["uniq"] = "1", ["blots"] = "2", ["guess"] = Format(solvability ?? options.Solvability),
             ["minqual"] = Format((int)(options.MinQuality * 4)), ["maxqual"] = Format((int)(options.MaxQuality * 4)),
             ["mindiff"] = Format((int)(options.MinDifficulty * 4)), ["maxdiff"] = Format((int)(options.MaxDifficulty * 4)),
             ["order"] = "0", ["perpage"] = "100", ["pageno"] = Format(page),

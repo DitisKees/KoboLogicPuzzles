@@ -163,6 +163,15 @@ local function testSync()
         return { puzzles = puzzles }
     end)
     assert(not err and batches == 2 and result.added == 15)
+
+    assert(Sync.refreshMetadata(store, function(method, path)
+        assert(method == "GET" and path:find("^/puzzles/metadata%?") and path:match("[?&]id=1&"))
+        return { ["1"] = { difficulty = 3.75, quality = 4.25, solvability = 3 } }
+    end))
+    store = assert(Store.open(root))
+    assert(store.records[1].puzzle.metadata.difficulty == 3.75 and store.records[1].marks == "#x....")
+    assert(store.records[1].zoom == 2 and not store.records[1].dirty)
+    assert(Sync.refreshMetadata(store, function() return nil, "Not found", 404 end))
 end
 
 local function squarePuzzle(size)
@@ -468,9 +477,40 @@ local function testGameUI()
     plugin:updateLibrary()
     UI:forceRePaint()
     local items = plugin.library.item_table
-    assert(items[4].mandatory == "3×2  16%" and items[4].state.preview)
-    assert(items[5].mandatory == "3×2  0%" and not items[5].state)
-    assert(items[6].mandatory == "3×2  83%  Solved" and items[6].state.preview)
+    assert(items[4].mandatory == "3×2  16%" and plugin.library.item_group[4].thumbnail.preview)
+    assert(items[5].mandatory == "3×2  0%" and not plugin.library.item_group[5].thumbnail)
+    assert(items[6].mandatory == "3×2  83%  Solved" and plugin.library.item_group[6].thumbnail.preview)
+    local metadata = { difficulty = 3.75, quality = 4.25, solvability = 3 }
+    local details = "Difficulty 3.75/5 · Quality 4.25/5 · Moderate lookahead"
+    assert(items[4].details:find("Solvability unknown", 1, true))
+    assert(plugin.store:saveMetadata(1, metadata))
+    plugin:updateLibrary()
+    assert(plugin.library.item_table[4].details == details)
+    local libraryRow = plugin.library.item_group[4]
+    local libraryLines = libraryRow._underline_container[1][1][3]
+    assert(libraryLines[2].text == details and not libraryLines[2]:isTruncated())
+    assert(libraryLines:getSize().h <= libraryRow.dimen.h)
+
+    plugin.online = function(_, operation)
+        operation(function(method, path)
+            assert(method == "GET")
+            if path == "/restore" then return {} end
+            assert(path == "/puzzles?limit=25")
+            local puzzle = smallPuzzle(1)
+            puzzle.metadata = metadata
+            return { puzzle }
+        end)
+    end
+    plugin:browse()
+    UI:forceRePaint()
+    local catalogRow = plugin.catalog.item_group[1]
+    local catalogLines = catalogRow._underline_container[1][1]
+    assert(catalogRow.entry.mandatory == "3×2  Offline")
+    assert(catalogLines[2].text == details and not catalogLines[2]:isTruncated())
+    assert(catalogLines:getSize().h <= catalogRow.dimen.h)
+    device.screen.bb:writePNG(home .. "/catalog.png")
+    plugin.catalog:onClose()
+    plugin.online = nil
     for _, size in ipairs({ 40, 80 }) do
         assert(plugin.store:download(squarePuzzle(size)))
         plugin:updateLibrary()

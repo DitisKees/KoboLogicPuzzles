@@ -39,7 +39,7 @@ local function request(server, method, path, payload)
     local decoded, reply = pcall(JSON.decode, table.concat(chunks))
     if code < 200 or code >= 300 then
         local detail = decoded and type(reply) == "table" and (reply.detail or reply.title)
-        return nil, "Server returned HTTP " .. status .. (type(detail) == "string" and (". " .. detail) or "")
+        return nil, "Server returned HTTP " .. status .. (type(detail) == "string" and (". " .. detail) or ""), code
     end
     if not decoded or type(reply) ~= "table" then return nil, "The server did not return a valid JSON response." end
     if (path == "/restore" or path:match("^/puzzles%?")) and not JSON.util.IsArray(reply) then
@@ -49,11 +49,11 @@ local function request(server, method, path, payload)
 end
 
 function API.request(server, method, path, payload, message)
-    local completed, reply, err = Trapper:dismissableRunInSubprocess(function()
+    local completed, reply, err, status = Trapper:dismissableRunInSubprocess(function()
         return request(server, method, path, payload)
     end, message)
     if not completed then return nil, "Request cancelled." end
-    return reply, err or (not reply and "The network task could not finish." or nil)
+    return reply, err or (not reply and "The network task could not finish." or nil), status
 end
 
 return API

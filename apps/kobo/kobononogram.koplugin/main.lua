@@ -3,16 +3,13 @@ local Board = require("kobononogram/board")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
-local Device = require("device")
 local Game = require("kobononogram/game")
-local Geom = require("ui/geometry")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
-local Menu = require("ui/widget/menu")
 local NetworkMgr = require("ui/network/manager")
+local PuzzleMenu = require("kobononogram/puzzlemenu")
 local Store = require("kobononogram/store")
 local Sync = require("kobononogram/sync")
-local Thumbnail = require("kobononogram/thumbnail")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
 local Update = require("kobononogram/update")
@@ -22,31 +19,6 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
 local Nonogram = WidgetContainer:extend{ name = "kobononogram", is_doc_only = false }
-local PuzzleMenu = Menu:extend{ modal = true }
-local LibraryMenu = PuzzleMenu:extend{}
-
-function PuzzleMenu:onMenuSelect(item)
-    if item.select_enabled ~= false and item.callback then item.callback() end
-    return true
-end
-
-function LibraryMenu:_recalculateDimen(noRecalculation)
-    Menu._recalculateDimen(self, noRecalculation)
-    local screen = Device.screen
-    local padding = screen:scaleBySize(5)
-    local side = math.max(3, math.min(self.item_dimen.h - 2 * padding, screen:scaleBySize(64)))
-    self.state_w = 0
-    local first = (self.page - 1) * self.perpage + 1
-    for index = first, first + self.perpage - 1 do
-        local item = self.item_table[index]
-        if not item then break end
-        if item.preview then
-            -- Menu reserves state_w beside the title for its state widget.
-            self.state_w = side + 2 * padding
-            item.state = Thumbnail:new{ record = item.preview, dimen = Geom:new{ w = side, h = side } }
-        end
-    end
-end
 
 local function notice(text)
     UIManager:show(InfoMessage:new{ text = text })
@@ -85,6 +57,7 @@ function Nonogram:libraryItems()
         local progressLabel = marked > 0 and progress == 0 and "<1%" or progress .. "%"
         items[#items + 1] = {
             text = puzzle.title,
+            details = PuzzleMenu.details(puzzle.metadata),
             mandatory = string.format("%d×%d  %s%s", puzzle.width, puzzle.height,
                 progressLabel, record.completed and "  Solved" or ""),
             preview = record.marks and record,
@@ -102,7 +75,7 @@ function Nonogram:showLibrary()
         self.store = store
     end
     if self.library then return end
-    local library = LibraryMenu:new{
+    local library = PuzzleMenu:new{
         title = "Kobo Nonogram",
         subtitle = backupLabel(self.store.settings.lastBackup),
         item_table = self:libraryItems(),
@@ -305,6 +278,10 @@ end
 function Nonogram:sync()
     self:online(function(request)
         local result, err = Sync.run(self.store, request)
+        if not err then
+            local _, metadataError = Sync.refreshMetadata(self.store, request)
+            err = metadataError
+        end
         self:updateLibrary()
         local summary = string.format("%d backed up · %d restored · %d downloaded",
             result.backedUp, result.restored, result.added)
@@ -328,6 +305,7 @@ function Nonogram:browse(beforeId)
             end
             items[#items + 1] = {
                 text = puzzle.title,
+                details = PuzzleMenu.details(puzzle.metadata),
                 mandatory = string.format("%d×%d%s", puzzle.width, puzzle.height,
                     self.store.records[puzzle.id] and "  Offline" or ""),
                 callback = function() self:downloadAndPlay(puzzle.id) end,

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using KoboNonogram.Server;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
@@ -13,7 +14,8 @@ public sealed class ApiTests
     public async Task DownloadsAndBacksUpPartialBoardThenRestoresAfterRestart()
     {
         using var database = new TestDatabase();
-        database.SeedCatalog([TestData.Summary(12), TestData.Summary(13)]);
+        var metadata = new PuzzleMetadata(3.75m, 4.25m, 3);
+        database.SeedCatalog([TestData.Summary(12), TestData.Summary(13) with { Metadata = metadata }]);
         using var source = TestData.Source(uri =>
         {
             Assert.Equal("/export.cgi", uri.AbsolutePath);
@@ -26,14 +28,20 @@ public sealed class ApiTests
             await app.StartAsync();
             using var http = app.GetTestClient();
             var firstPage = await http.GetFromJsonAsync<PuzzleSummary[]>("/api/v1/puzzles?limit=1");
-            Assert.Equal(13, Assert.Single(firstPage!).Id);
-            var nextPage = await http.GetFromJsonAsync<PuzzleSummary[]>("/api/v1/puzzles?beforeId=13");
-            Assert.Equal(12, Assert.Single(nextPage!).Id);
+            var summary = Assert.Single(firstPage!);
+            Assert.Equal(13, summary.Id);
+            Assert.Equal(metadata, summary.Metadata);
+            var nextPage = await http.GetFromJsonAsync<JsonElement[]>("/api/v1/puzzles?beforeId=13");
+            var unrated = Assert.Single(nextPage!);
+            Assert.Equal(12, unrated.GetProperty("id").GetInt32());
+            Assert.False(unrated.TryGetProperty("metadata", out _));
 
             using var queue = await http.PostAsJsonAsync("/api/v1/offline-queue", new OfflineQueueRequest(1, []));
             queue.EnsureSuccessStatusCode();
             var response = await queue.Content.ReadFromJsonAsync<OfflineQueueResponse>();
-            Assert.Equal(13, Assert.Single(response!.Puzzles).Id);
+            Assert.Equal(metadata, Assert.Single(response!.Puzzles).Metadata);
+            var ratings = await http.GetFromJsonAsync<Dictionary<int, PuzzleMetadata>>("/api/v1/puzzles/metadata?id=13&id=99");
+            Assert.Equal(new KeyValuePair<int, PuzzleMetadata>(13, metadata), Assert.Single(ratings!));
 
             using var backup = await http.PostAsJsonAsync("/api/v1/progress",
                 new ProgressUpload([new ProgressUpdate(13, "#x....", false)]));
@@ -51,9 +59,41 @@ public sealed class ApiTests
         var restored = Assert.Single((await freshClient.GetFromJsonAsync<SavedBoard[]>("/api/v1/restore"))!);
 
         Assert.Equal(13, restored.Puzzle.Id);
+        Assert.Equal(metadata, restored.Puzzle.Metadata);
         Assert.Equal("#x....", restored.Progress.Marks);
         Assert.False(restored.Progress.Completed);
         Assert.Equal(13, (await freshClient.GetFromJsonAsync<PuzzleDefinition>("/api/v1/puzzles/13"))?.Id);
+    }
+
+    [Fact]
+    public async Task BacksUpAnOfflineBoardMissingFromTheServerCacheAndCatalog()
+    {
+        using var database = new TestDatabase();
+        using var source = TestData.Source(uri =>
+        {
+            Assert.Equal("/export.cgi", uri.AbsolutePath);
+            Assert.Contains("id=40883", uri.Query);
+            return TestData.Ok(TestData.Export(40883).Replace("</author>",
+                "</author><note>published,definitely unique,definitely requires moderate lookahead</note>"));
+        });
+        await using var app = CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/api/v1/puzzles/40883")).StatusCode);
+        using var backup = await http.PostAsJsonAsync("/api/v1/progress",
+            new ProgressUpload([new ProgressUpdate(40883, "#x....", false)]));
+        backup.EnsureSuccessStatusCode();
+        var boards = await http.GetFromJsonAsync<SavedBoard[]>("/api/v1/restore");
+        var restored = Assert.Single(boards!);
+        Assert.Equal(40883, restored.Puzzle.Id);
+        Assert.Equal("#x....", restored.Progress.Marks);
+        Assert.Empty(database.Store.ListCatalog(null, 10));
+        var ratings = await http.GetFromJsonAsync<Dictionary<int, JsonElement>>("/api/v1/puzzles/metadata?id=40883");
+        var classification = ratings![40883];
+        Assert.Equal(3, classification.GetProperty("solvability").GetInt32());
+        Assert.False(classification.TryGetProperty("difficulty", out _));
+        Assert.False(classification.TryGetProperty("quality", out _));
     }
 
     [Fact]
@@ -62,7 +102,7 @@ public sealed class ApiTests
         using var database = new TestDatabase();
         database.SeedCatalog([TestData.Summary(13)]);
         database.Store.CachePuzzle(TestData.Puzzle(12));
-        new ProgressBackup(database.Store, TimeProvider.System).Save([new ProgressUpdate(12, "#x....", false)]);
+        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], DateTimeOffset.UtcNow);
         using var source = TestData.Source(_ => new HttpResponseMessage(HttpStatusCode.BadGateway));
         await using var app = CreateApp(database, source);
         await app.StartAsync();

@@ -18,14 +18,24 @@ public sealed class PuzzleStore(string databasePath)
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(databasePath))!);
         using var connection = Open();
         using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode = WAL";
+        command.ExecuteNonQuery();
+
+        using var transaction = connection.BeginTransaction();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'puzzle_metadata'";
+        var needsMetadata = command.ExecuteScalar() is null;
         command.CommandText = """
-            PRAGMA journal_mode = WAL;
             CREATE TABLE IF NOT EXISTS catalog (
                 id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
                 author TEXT NOT NULL,
                 width INTEGER NOT NULL,
                 height INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS puzzle_metadata (
+                id INTEGER PRIMARY KEY,
+                metadata TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS puzzles (
                 id INTEGER PRIMARY KEY,
@@ -45,6 +55,12 @@ public sealed class PuzzleStore(string databasePath)
             INSERT OR IGNORE INTO catalog_refresh (id, revision) VALUES (1, 0);
             """;
         command.ExecuteNonQuery();
+        if (needsMetadata)
+        {
+            command.CommandText = "UPDATE catalog_refresh SET completed_at = NULL";
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 
     public CatalogRefreshState GetCatalogRefreshState()
@@ -87,6 +103,14 @@ public sealed class PuzzleStore(string databasePath)
         var author = command.Parameters.Add("$author", SqliteType.Text);
         var width = command.Parameters.Add("$width", SqliteType.Integer);
         var height = command.Parameters.Add("$height", SqliteType.Integer);
+        using var saveMetadata = connection.CreateCommand();
+        saveMetadata.Transaction = transaction;
+        saveMetadata.CommandText = """
+            INSERT INTO puzzle_metadata (id, metadata) VALUES ($id, $metadata)
+            ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata
+            """;
+        var metadataId = saveMetadata.Parameters.Add("$id", SqliteType.Integer);
+        var metadata = saveMetadata.Parameters.Add("$metadata", SqliteType.Text);
         foreach (var puzzle in puzzles)
         {
             id.Value = puzzle.Id;
@@ -95,6 +119,12 @@ public sealed class PuzzleStore(string databasePath)
             width.Value = puzzle.Width;
             height.Value = puzzle.Height;
             command.ExecuteNonQuery();
+            if (puzzle.Metadata is not null)
+            {
+                metadataId.Value = puzzle.Id;
+                metadata.Value = JsonSerializer.Serialize(puzzle.Metadata, Json);
+                saveMetadata.ExecuteNonQuery();
+            }
         }
 
         transaction.Commit();
@@ -106,7 +136,7 @@ public sealed class PuzzleStore(string databasePath)
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, title, author, width, height FROM catalog
+            SELECT id, title, author, width, height, metadata FROM catalog LEFT JOIN puzzle_metadata USING (id)
             WHERE $before IS NULL OR id < $before ORDER BY id DESC LIMIT $limit
             """;
         command.Parameters.AddWithValue("$before", beforeId.HasValue ? beforeId.Value : DBNull.Value);
@@ -116,10 +146,32 @@ public sealed class PuzzleStore(string databasePath)
         while (reader.Read())
         {
             puzzles.Add(new PuzzleSummary(reader.GetInt32(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), reader.GetInt32(4)));
+                reader.GetInt32(3), reader.GetInt32(4), ReadMetadata(reader, 5)));
         }
 
         return puzzles;
+    }
+
+    public IReadOnlyDictionary<int, PuzzleMetadata> ListMetadata(int[] ids)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT requested.value, metadata, json_extract(definition, '$.metadata')
+            FROM json_each($ids) AS requested
+            LEFT JOIN puzzle_metadata ON puzzle_metadata.id = requested.value
+            LEFT JOIN puzzles ON puzzles.id = requested.value
+            """;
+        command.Parameters.AddWithValue("$ids", JsonSerializer.Serialize(ids, Json));
+        using var reader = command.ExecuteReader();
+        var result = new Dictionary<int, PuzzleMetadata>();
+        while (reader.Read())
+        {
+            var metadata = MergeMetadata(ReadMetadata(reader, 1), ReadMetadata(reader, 2));
+            if (metadata is not null)
+                result[reader.GetInt32(0)] = metadata;
+        }
+        return result;
     }
 
     public bool IsInCatalog(int id)
@@ -162,10 +214,11 @@ public sealed class PuzzleStore(string databasePath)
             """;
         command.Parameters.AddWithValue("$id", puzzle.Id);
         command.Parameters.AddWithValue("$definition", JsonSerializer.Serialize(puzzle, Json));
-        return command.ExecuteNonQuery() == 1 ? puzzle : FindPuzzle(connection, puzzle.Id)!;
+        command.ExecuteNonQuery();
+        return FindPuzzle(connection, puzzle.Id)!;
     }
 
-    public PuzzleDefinition CacheSolution(PuzzleDefinition puzzle, string solution)
+    public PuzzleDefinition CacheSolution(int id, string solution)
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
@@ -173,9 +226,10 @@ public sealed class PuzzleStore(string databasePath)
             UPDATE puzzles SET definition = json_set(definition, '$.solution', $solution)
             WHERE id = $id AND json_extract(definition, '$.solution') IS NULL
             """;
-        command.Parameters.AddWithValue("$id", puzzle.Id);
+        command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$solution", solution);
-        return command.ExecuteNonQuery() == 1 ? puzzle with { Solution = solution } : FindPuzzle(connection, puzzle.Id)!;
+        command.ExecuteNonQuery();
+        return FindPuzzle(connection, id)!;
     }
 
     public void SaveProgress(IEnumerable<ProgressUpdate> boards, DateTimeOffset backedUpAt)
@@ -210,14 +264,15 @@ public sealed class PuzzleStore(string databasePath)
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT definition, puzzle_id, marks, completed, backed_up_at
-            FROM progress JOIN puzzles ON puzzles.id = progress.puzzle_id ORDER BY puzzle_id
+            SELECT definition, puzzle_id, marks, completed, backed_up_at, metadata
+            FROM progress JOIN puzzles ON puzzles.id = progress.puzzle_id
+            LEFT JOIN puzzle_metadata USING (id) ORDER BY puzzle_id
             """;
         using var reader = command.ExecuteReader();
         var boards = new List<SavedBoard>();
         while (reader.Read())
         {
-            boards.Add(new SavedBoard(ReadDefinition(reader.GetString(0)), new SavedProgress(
+            boards.Add(new SavedBoard(ReadDefinition(reader, 0, 5), new SavedProgress(
                 reader.GetInt32(1), reader.GetString(2), reader.GetBoolean(3),
                 DateTimeOffset.ParseExact(reader.GetString(4), "O", CultureInfo.InvariantCulture))));
         }
@@ -228,13 +283,26 @@ public sealed class PuzzleStore(string databasePath)
     private static PuzzleDefinition? FindPuzzle(SqliteConnection connection, int id)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT definition FROM puzzles WHERE id = $id";
+        command.CommandText = """
+            SELECT definition, metadata FROM puzzles LEFT JOIN puzzle_metadata USING (id) WHERE id = $id
+            """;
         command.Parameters.AddWithValue("$id", id);
-        return command.ExecuteScalar() is string definition ? ReadDefinition(definition) : null;
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadDefinition(reader, 0, 1) : null;
     }
 
-    private static PuzzleDefinition ReadDefinition(string json) =>
-        JsonSerializer.Deserialize<PuzzleDefinition>(json, Json) ?? throw new InvalidOperationException("Missing cached definition.");
+    private static PuzzleDefinition ReadDefinition(SqliteDataReader reader, int definitionColumn, int metadataColumn)
+    {
+        var puzzle = JsonSerializer.Deserialize<PuzzleDefinition>(reader.GetString(definitionColumn), Json) ??
+            throw new InvalidOperationException("Missing cached definition.");
+        return puzzle with { Metadata = MergeMetadata(ReadMetadata(reader, metadataColumn), puzzle.Metadata) };
+    }
+
+    private static PuzzleMetadata? ReadMetadata(SqliteDataReader reader, int column) =>
+        reader.IsDBNull(column) ? null : JsonSerializer.Deserialize<PuzzleMetadata>(reader.GetString(column), Json);
+
+    private static PuzzleMetadata? MergeMetadata(PuzzleMetadata? catalog, PuzzleMetadata? cached) =>
+        catalog is null ? cached : catalog with { Solvability = catalog.Solvability ?? cached?.Solvability };
 
     private SqliteConnection Open()
     {

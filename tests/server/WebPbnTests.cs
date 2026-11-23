@@ -9,11 +9,12 @@ public sealed class WebPbnTests
     [Fact]
     public void ReadsCatalogIdsDimensionsMetadataAndPagination()
     {
-        var summary = new PuzzleSummary(12, "Bricks & Steps", "M. Grey", 65, 35);
-        var page = WebPbnCatalogParser.Parse(TestData.SearchPage(true, summary));
+        var summary = new PuzzleSummary(12, "Bricks & Steps", "M. Grey", 65, 35, new PuzzleMetadata(3.75m, 4.25m, null));
+        var unrated = TestData.Summary(13) with { Metadata = new PuzzleMetadata(null, null, null) };
+        var page = WebPbnCatalogParser.Parse(TestData.SearchPage(true, summary, unrated));
 
         Assert.True(page.HasMore);
-        Assert.Equal(summary, Assert.Single(page.Puzzles));
+        Assert.Equal(new[] { summary, unrated }, page.Puzzles);
     }
 
     [Fact]
@@ -74,7 +75,9 @@ public sealed class WebPbnTests
     [Fact]
     public void ReadsRectangularXmlAndVersionedProviderId()
     {
-        var puzzle = Assert.IsType<PuzzleDefinition>(WebPbnPuzzleParser.Parse(TestData.Export(12), 12));
+        var xml = TestData.Export(12).Replace("</author>",
+            "</author><note>published,definitely unique,definitely requires moderate lookahead</note>");
+        var puzzle = Assert.IsType<PuzzleDefinition>(WebPbnPuzzleParser.Parse(xml, 12));
 
         Assert.Equal(12, puzzle.Id);
         Assert.Equal("Bricks & Steps", puzzle.Title);
@@ -82,6 +85,7 @@ public sealed class WebPbnTests
         Assert.Equal(2, puzzle.Height);
         Assert.Equal(new[] { 1, 1 }, puzzle.RowClues[0]);
         Assert.Equal(new[] { 2 }, puzzle.ColumnClues[2]);
+        Assert.Equal(3, puzzle.Metadata?.Solvability);
     }
 
     [Theory]
