@@ -28,9 +28,18 @@ public static class WebPbnCatalogParser
 
         var puzzles = new List<PuzzleSummary>();
         var explicitlyEmpty = false;
+        var hasMore = false;
         foreach (var row in resultRows.Children.SkipWhile(row => row != header).Skip(1))
         {
-            if (row.TextContent.Trim().Equals("None Found", StringComparison.OrdinalIgnoreCase))
+            var rowText = row.TextContent.Trim();
+            if (row.Children.Length == 1 && rowText.Equals("NEXT PAGE OF RESULTS", StringComparison.OrdinalIgnoreCase) &&
+                row.QuerySelector("a[href^='find.cgi?'], a[href^='/find.cgi?']") is not null)
+            {
+                hasMore = true;
+                continue;
+            }
+
+            if (rowText.Equals("None Found", StringComparison.OrdinalIgnoreCase))
             {
                 explicitlyEmpty = true;
                 continue;
@@ -56,8 +65,6 @@ public static class WebPbnCatalogParser
             }
         }
 
-        var hasMore = document.QuerySelectorAll("a[href]").Any(anchor =>
-            anchor.TextContent.Trim().Equals("NEXT PAGE OF RESULTS", StringComparison.OrdinalIgnoreCase));
         if (puzzles.Count == 0 && (!explicitlyEmpty || hasMore) || explicitlyEmpty && puzzles.Count > 0)
             throw new InvalidDataException("WebPBN search results did not contain matching puzzle rows or an empty result.");
 

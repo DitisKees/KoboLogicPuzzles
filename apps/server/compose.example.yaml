@@ -1,0 +1,36 @@
+# For a private GHCR image, run docker login ghcr.io -u YOUR_GITHUB_USERNAME with a classic read:packages token first.
+# From the repository root, run docker compose -f apps/server/compose.example.yaml up -d.
+name: kobo-nonogram
+
+services:
+  server:
+    image: ${KOBONONOGRAM_IMAGE:-ghcr.io/ditiskees/kobononogram:latest}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Storage__DatabasePath: "/data/kobononogram.db"
+      CatalogRefresh__Enabled: "true" # Refresh on first startup and weekly thereafter.
+
+      # The server imports black-and-white puzzles with a unique solution and no blotted clues.
+      WebPbn__MinArea: "1225" # Total cells.
+      WebPbn__MaxArea: "10000"
+      # Each dimension is an integer from 1 to 100 cells.
+      WebPbn__MaxWidth: "80" # Max 100
+      WebPbn__MaxHeight: "80" # Max 100
+      # Ratings are in stars and allow quarter-star increments.
+      WebPbn__MinQuality: "4"
+      WebPbn__MaxQuality: "5"
+      WebPbn__IncludeUnratedQuality: "true"
+      WebPbn__MinDifficulty: "3"
+      WebPbn__MaxDifficulty: "5"
+      WebPbn__IncludeUnratedDifficulty: "true"
+      WebPbn__Solvability: "0" # WebPBN values range from 0 to 6. Zero accepts any rating.
+      WebPbn__RequestDelayMilliseconds: "250"
+    ports:
+      - "8080:8080"
+    volumes:
+      - data:/data
+
+volumes:
+  data:
+    name: kobo-nonogram-data

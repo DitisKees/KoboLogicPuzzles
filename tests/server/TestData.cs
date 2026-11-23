@@ -31,12 +31,14 @@ internal static class TestData
             <td>{puzzle.Width}x{puzzle.Height}</td><td>2</td><td>{WebUtility.HtmlEncode(puzzle.Author)}</td></tr>
             """);
         var contents = puzzles.Length == 0 ? "<tr><td colspan=\"9\"><em>None Found</em></td></tr>" : string.Join('\n', rows);
-        var next = hasMore ? "<a href=\"find.cgi?pageno=1\">NEXT PAGE OF RESULTS</a>" : "";
+        var next = hasMore ? """
+            <tr><td colspan="10" align="center"><a href="find.cgi?search=1&amp;pageno=1">NEXT PAGE OF RESULTS</a></td></tr>
+            """ : "";
         return $$"""
-            <html><body><table><tr><td>Navigation</td></tr></table>{{next}}
+            <html><body><table><tr><td>Navigation</td></tr></table>
             <table><tr><td colspan="2"><small>puzzle</small></td><td>quality</td>
             <td colspan="2">difficulty</td><td>comments</td><td>size</td><td>colors</td><td>author</td></tr>
-            {{contents}}</table></body></html>
+            {{contents}}{{next}}</table></body></html>
             """;
     }
 

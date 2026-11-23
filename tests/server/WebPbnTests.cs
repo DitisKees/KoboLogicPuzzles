@@ -26,6 +26,8 @@ public sealed class WebPbnTests
         Assert.Throws<InvalidDataException>(() => WebPbnCatalogParser.Parse("<h1>Please log in</h1>"));
         Assert.Throws<InvalidDataException>(() => WebPbnCatalogParser.Parse(
             TestData.SearchPage(false, TestData.Summary(12)).Replace("3x2", "unknown")));
+        Assert.Throws<InvalidDataException>(() => WebPbnCatalogParser.Parse(
+            TestData.SearchPage(true, TestData.Summary(12)).Replace("NEXT PAGE OF RESULTS", "Unknown row")));
     }
 
     [Fact]

@@ -37,7 +37,7 @@ docker run -d --name kobo-nonogram --restart unless-stopped \
   -p 8080:8080 -v kobo-nonogram-data:/data kobo-nonogram
 ```
 
-On pushes to `main` that change the server or its [publishing workflow](.github/workflows/server-image.yml), GitHub Actions publishes a `linux/amd64` image at `ghcr.io/ditiskees/kobononogram`. Use `:latest` for the current build or `:sha-<full-commit>` for a specific revision. To run the published image, use its full image reference in the `docker run` command above. For a private package, [sign in to GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-to-the-container-registry) before pulling.
+On pushes to `main` that change the server or its [publishing workflow](.github/workflows/server-image.yml), GitHub Actions publishes a `linux/amd64` image at `ghcr.io/ditiskees/kobononogram`. Use `:latest` for the current build or `:sha-<full-commit>` for a specific revision.
 
 The server refreshes WebPBN in the background on first startup and every seven days after a successful refresh. It records that time in SQLite so the schedule survives restarts. If the server was down when a refresh came due, it refreshes on startup. A failed refresh keeps the existing catalog and retries after one hour. The API stays available during refreshes.
 
@@ -74,6 +74,8 @@ Use the filters from the original WebPBN search as the starting configuration. A
 | Blotted clues | Exclude |
 
 WebPBN filters by total cells. The server applies the width and height limits when refreshing the catalog and importing new definitions. [WebPBN puzzle search](https://webpbn.com/find.cgi)
+
+`WebPbn__MaxWidth` and `WebPbn__MaxHeight` each accept an integer from 1 to 100 cells. An out-of-range value prevents the server from starting. To restore the defaults, remove those overrides or set both to `80`, then apply the Compose changes with `docker compose up -d`.
 
 Configure the filters through the server configuration or environment variables such as `WebPbn__MinQuality=4.25`. Settings include `MinArea`, `MaxArea`, `MaxWidth`, `MaxHeight`, `MinQuality`, `MaxQuality`, `MinDifficulty`, `MaxDifficulty`, `IncludeUnratedQuality`, `IncludeUnratedDifficulty`, `Solvability`, and `RequestDelayMilliseconds`. Solvability uses WebPBN’s values 0–6, with 0 accepting any rating. Requests are spaced by 250 ms by default.
 
