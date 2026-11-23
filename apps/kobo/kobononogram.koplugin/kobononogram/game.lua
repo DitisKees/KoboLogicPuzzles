@@ -292,10 +292,13 @@ end
 function Game:save(silent)
     local ok, err = self.store:saveGame(self.board, self, self.pendingSave)
     if ok then
-        self.pendingSave, self.reportedSaveError = nil, nil
-    elseif not silent and not self.reportedSaveError then
-        self.reportedSaveError = true
-        UIManager:show(InfoMessage:new{ text = "Progress could not be saved.\n" .. tostring(err) })
+        self.pendingSave, self.pendingViewSave, self.reportedSaveError = nil, nil, nil
+    else
+        self.pendingViewSave = true
+        if not silent and not self.reportedSaveError then
+            self.reportedSaveError = true
+            UIManager:show(InfoMessage:new{ text = "Progress could not be saved.\n" .. tostring(err) })
+        end
     end
     return ok
 end
@@ -303,8 +306,12 @@ end
 function Game:changed(changes, refreshAll)
     if not changes then return end
     self.pendingSave = true
-    local saved = self:save()
     local complete = self.board:isComplete()
+    if self.suspended then
+        self.wasComplete = complete
+        return
+    end
+    local saved = self:save()
     if refreshAll or self.overview or complete ~= self.wasComplete then
         UIManager:setDirty(self, "ui")
     else
@@ -373,6 +380,11 @@ end
 function Game:markAt(row, column)
     if self.mode == "cycle" then return cycle[self.board:get(row, column)] end
     return marks[self.mode]
+end
+
+function Game:onGesture(gesture)
+    if self.suspended or Device.screen_saver_mode then return true end
+    return InputContainer.onGesture(self, gesture)
 end
 
 function Game:onTap(_, gesture)
@@ -480,7 +492,8 @@ function Game:scheduleEdgePan(delay)
     if row == self.row and column == self.column then
         self:cancelEdgePan()
     elseif not self.edgePan then
-        self.edgePan = function()
+        local function pan()
+            if self.edgePan ~= pan then return end
             self.edgePan = nil
             self.row, self.column = self:edgeOrigin()
             self.motion.scrolled = true
@@ -489,7 +502,8 @@ function Game:scheduleEdgePan(delay)
             UIManager:setDirty(self, "fast")
             self:scheduleEdgePan(0.22)
         end
-        UIManager:scheduleIn(delay, self.edgePan)
+        self.edgePan = pan
+        UIManager:scheduleIn(delay, pan)
     end
 end
 
@@ -536,8 +550,11 @@ function Game:finishMotion(position)
         self:panMotion(motion, position)
     end
     if motion.scrolled then
-        self:save()
-        UIManager:setDirty(self, "ui")
+        self.pendingViewSave = true
+        if not self.suspended then
+            self:save()
+            UIManager:setDirty(self, "ui")
+        end
     end
 end
 
@@ -610,11 +627,39 @@ Game.onRotate = Game.onPinch
 Game.onTwoFingerTap = Game.onPinch
 
 function Game:onSuspend()
+    -- KOReader has already drawn the screensaver. Finish any stroke in memory.
+    self.suspended = true
     self:finishMotion()
-    self:save(true)
+end
+
+function Game:saveAfterWake()
+    if not self.suspended and UIManager:isWidgetShown(self) and (self.pendingSave or self.pendingViewSave) then
+        self:save(true)
+    end
+end
+
+function Game:refreshAfterWake()
+    if self.layout.width ~= screen:getWidth() or self.layout.height ~= screen:getHeight() then
+        self:resize()
+    end
+    UIManager:setDirty(self, "full")
+end
+
+function Game:onResume()
+    self.suspended = false
+    if not Device.screen_saver_mode then self:refreshAfterWake() end
+    if self.pendingSave or self.pendingViewSave then
+        UIManager:tickAfterNext(self.saveAfterWake, self)
+    end
+end
+
+function Game:onOutOfScreenSaver()
+    -- A screensaver that waits for a tap or gesture closes after Resume.
+    if not self.suspended then self:refreshAfterWake() end
 end
 
 function Game:onSetDimensions()
+    if self.suspended or Device.screen_saver_mode then return end
     self:finishMotion()
     self:resize()
     UIManager:setDirty(self, "full")
@@ -627,6 +672,10 @@ function Game:onClose()
         self.onExit()
     end
     return true
+end
+
+function Game:onCloseWidget()
+    self:cancelEdgePan()
 end
 
 return Game

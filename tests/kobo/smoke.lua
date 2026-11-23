@@ -291,6 +291,104 @@ local function testPluginUpdate()
         and store.records[1].checkpoint == "#x....")
 end
 
+local function testSuspendResume()
+    local Game = require("kobononogram/game")
+    local Event = require("ui/event")
+    local Screensaver = require("ui/screensaver")
+    local ScreenSaverWidget = require("ui/widget/screensaverwidget")
+    local Widget = require("ui/widget/widget")
+    local store = assert(Store.open(home .. "/suspend"))
+    local function showGame(puzzle, marks)
+        assert(store:download(puzzle))
+        local board = Board:new(puzzle, marks)
+        assert(store:saveGame(board, { row = 1, column = 1, zoom = 2 }, marks ~= nil))
+        local game = Game:new{ board = board, record = store.records[puzzle.id], store = store,
+            onExit = function() end }
+        UI:show(game)
+        return game
+    end
+    local function showScreensaver()
+        local saver = ScreenSaverWidget:new{ widget = Widget:new{ dimen = Geom:new{} }, modal = true,
+            covers_fullscreen = true }
+        Screensaver.screensaver_widget = saver
+        device.screen_saver_mode = true
+        UI:show(saver)
+        UI:forceRePaint()
+        return saver
+    end
+    local function advanceUI()
+        for _ = 1, 3 do
+            UI:_checkTasks()
+            UI:forceRePaint()
+        end
+    end
+    local function point(x, y) return Geom:new{ x = x, y = y, w = 0, h = 0 } end
+    local game = showGame(smallPuzzle(1), "#x#x..")
+    local layout = game.layout
+    local start = point(layout.gridX + layout.cell + 5, layout.gridY + layout.cell + 5)
+    local finish = point(start.x + layout.cell, start.y)
+    game:onGesture{ ges = "pan", start_pos = start, pos = finish }
+    assert(game.motion and game.board.stroke)
+    local saver = showScreensaver()
+    device:_beforeSuspend()
+    assert(UI:getTopmostVisibleWidget() == saver, "A puzzle dialog covered the screensaver during suspend")
+    assert(store.records[1].marks == "#x#x..", "Suspend saved the interrupted stroke synchronously")
+    assert(not game.motion and not game.board.stroke and game.board:isComplete())
+    device:_afterResume()
+    assert(UI:getTopmostVisibleWidget() == saver and store.records[1].marks == "#x#x..")
+    local undo = { ges = "tap", pos = point(game.buttons.undo.x + 5, game.buttons.undo.y + 5) }
+    game:onGesture(undo)
+    assert(game.board:isComplete())
+    advanceUI()
+    assert(UI:getTopmostVisibleWidget() == saver and store.records[1].completed)
+    UI:sendEvent(Event:new("Gesture", undo))
+    UI:forceRePaint()
+    assert(UI:getTopmostVisibleWidget() == game and not device.screen_saver_mode)
+    assert(assert(Store.open(store.root)).records[1].marks == "#x#x##")
+    UI:sendEvent(Event:new("Gesture", undo))
+    assert(game.board:marks() == "#x#x.." and not store.records[1].completed)
+    game:onClose()
+
+    game = showGame(squarePuzzle(40))
+    layout = game.layout
+    start = point(layout.gridX + layout.cell + 5, layout.gridY + 5)
+    finish = point(layout.gridX + layout.columns * layout.cell - 1, start.y)
+    game:onGesture{ ges = "pan", start_pos = start, pos = finish }
+    local edgePan = assert(game.edgePan)
+    saver = showScreensaver()
+    device:_beforeSuspend()
+    assert(not game.motion and not game.edgePan and not UI:unschedule(edgePan))
+    edgePan()
+    assert(not store.records[40].marks)
+    saver:onClose()
+    device:_afterResume()
+    advanceUI()
+    assert(game.column == 1 and store.records[40].marks == game.board:marks())
+    UI:sendEvent(Event:new("Gesture", { ges = "tap", pos = point(game.buttons.cross.x + 5, game.buttons.cross.y + 5) }))
+    assert(game.mode == "cross")
+
+    game:onGesture{ ges = "two_finger_pan", start_pos = start, pos = point(start.x - layout.cell, start.y) }
+    assert(game.column == 2 and store.records[40].column == 1)
+    device:_beforeSuspend()
+    assert(not game.motion and store.records[40].column == 1)
+    UI:forceRePaint()
+    local painted
+    function game:paintTo(...)
+        painted = true
+        Game.paintTo(self, ...)
+    end
+    device:_afterResume()
+    UI:forceRePaint()
+    assert(painted and store.records[40].column == 1)
+    device:_beforeSuspend()
+    advanceUI()
+    assert(store.records[40].column == 1)
+    device:_afterResume()
+    advanceUI()
+    assert(store.records[40].column == 2 and UI:getTopmostVisibleWidget() == game)
+    game:onClose()
+end
+
 local function testGameUI()
     local plugin = dofile(pluginRoot .. "/main.lua"):new{
         ui = { menu = { registerToMainMenu = function() end } },
@@ -522,5 +620,6 @@ testBoard()
 testSync()
 testPluginUpdate()
 testClueLayout()
+testSuspendResume()
 testGameUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

@@ -1,6 +1,6 @@
 return {
     name = "kobononogram",
     fullname = "Kobo Nonogram",
-    version = "0.2.0",
+    version = "0.2.1",
     description = "Play black-and-white nonograms offline on Kobo.",
 }
