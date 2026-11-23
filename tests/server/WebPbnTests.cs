@@ -84,6 +84,21 @@ public sealed class WebPbnTests
         Assert.Equal(new[] { 2 }, puzzle.ColumnClues[2]);
     }
 
+    [Theory]
+    [InlineData("goal", "|X.X|\n |.XX|", "#.#.##")]
+    [InlineData("goal", "|XXX||.X.|", null)]
+    [InlineData("goal", "|X.X||.X?|", null)]
+    [InlineData("saved", "|X.X||.XX|", null)]
+    public void ImportsOnlyAValidGoalImage(string type, string image, string? solution)
+    {
+        var xml = TestData.Export(12).Replace("</puzzle>",
+            $"<solution type=\"{type}\"><image>{image}</image></solution></puzzle>");
+
+        var puzzle = Assert.IsType<PuzzleDefinition>(WebPbnPuzzleParser.Parse(xml, 12));
+
+        Assert.Equal(solution, puzzle.Solution);
+    }
+
     [Fact]
     public async Task RecognizesMissingPuzzlePageReturnedWithHttpSuccess()
     {

@@ -50,9 +50,10 @@ public static class Server
             return Results.Ok(store.ListCatalog(beforeId, limit));
         });
 
-        api.MapGet("/puzzles/{id:int:min(1)}", async (int id, PuzzleLibrary library, CancellationToken cancellationToken) =>
+        api.MapGet("/puzzles/{id:int:min(1)}", async (int id, bool? includeSolution, PuzzleLibrary library,
+            CancellationToken cancellationToken) =>
         {
-            var puzzle = await library.GetPuzzleAsync(id, cancellationToken);
+            var puzzle = await library.GetPuzzleAsync(id, cancellationToken, includeSolution == true);
             return puzzle is null ? Results.NotFound() : Results.Ok(puzzle);
         });
 

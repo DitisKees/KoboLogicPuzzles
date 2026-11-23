@@ -50,8 +50,44 @@ public static class WebPbnPuzzleParser
 
         var title = puzzle.Element("title")?.Value.Trim();
         var author = puzzle.Element("author")?.Value.Trim() ?? "";
-        return new PuzzleDefinition(id, string.IsNullOrEmpty(title) ? $"#{id}" : title, author,
+        var definition = new PuzzleDefinition(id, string.IsNullOrEmpty(title) ? $"#{id}" : title, author,
             columns.Length, rows.Length, rows, columns);
+        var solution = ReadSolution(puzzle, definition, black!, white);
+        return definition with { Solution = solution };
+    }
+
+    private static string? ReadSolution(XElement puzzle, PuzzleDefinition definition, XElement black, XElement white)
+    {
+        var image = puzzle.Elements("solution")
+            .FirstOrDefault(solution => ((string?)solution.Attribute("type") ?? "goal") == "goal")
+            ?.Element("image");
+        var ink = (string?)black.Attribute("char") ?? ((string?)black.Attribute("name") == "black" ? "X" : null);
+        var paper = (string?)white.Attribute("char") ?? ((string?)white.Attribute("name") == "white" ? "." : null);
+        if (image is null || ink is not { Length: 1 } || paper is not { Length: 1 } || ink == paper)
+            return null;
+
+        var pixels = image.Value.Where(character => !char.IsWhiteSpace(character)).ToArray();
+        var rowLength = definition.Width + 2;
+        if (pixels.Length != rowLength * definition.Height)
+            return null;
+
+        var marks = new char[definition.Width * definition.Height];
+        for (var row = 0; row < definition.Height; row++)
+        {
+            var start = row * rowLength;
+            if (pixels[start] != '|' || pixels[start + rowLength - 1] != '|')
+                return null;
+            for (var column = 0; column < definition.Width; column++)
+            {
+                var pixel = pixels[start + column + 1];
+                if (pixel != ink[0] && pixel != paper[0])
+                    return null;
+                marks[row * definition.Width + column] = pixel == ink[0] ? '#' : '.';
+            }
+        }
+
+        var result = new string(marks);
+        return definition.MatchesClues(result) ? result : null;
     }
 
     private static int[][]? ReadClues(XElement puzzle, string direction, string defaultColor, string black)

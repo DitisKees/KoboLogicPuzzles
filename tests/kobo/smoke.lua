@@ -6,6 +6,7 @@ local home = require("datastorage"):getDataDir()
 G_defaults = require("luadefaults"):open()
 G_reader_settings = require("luasettings"):open(home .. "/settings.reader.lua")
 G_reader_settings:saveSetting("sdl_window", { width = 1080, height = 1429 })
+G_reader_settings:saveSetting("virtual_keyboard_enabled", true)
 local device = require("device")
 require("document/canvascontext"):init(device)
 require("ui/bidi").setup()
@@ -16,6 +17,8 @@ local Geom = require("ui/geometry")
 local Store = require("kobononogram/store")
 local Sync = require("kobononogram/sync")
 local UI = require("ui/uimanager")
+local Update = require("kobononogram/update")
+local UpdateArchive = require("kobononogram/updatearchive")
 
 local function smallPuzzle(id)
     return { id = id, title = "Bricks & Steps", author = "Sample", width = 3, height = 2,
@@ -28,20 +31,83 @@ local function testBoard()
     local board = Board:new(puzzle)
     board:beginStroke(1, 1, "#")
     board:finishStroke()
+    assert(board:marks() == "#..x.." and not board:isComplete())
     board:beginStroke(1, 3, "#")
     board:finishStroke()
+    assert(board:marks() == "#x#x..")
+    board:undoStroke()
+    assert(board:marks() == "#.#x.." and board.rows[1].complete)
+    board:undoStroke()
+    assert(board:marks() == "#..x.." and not board.rows[1].complete)
+    board:redoStroke()
+    assert(board:marks() == "#.#x.." and board.rows[1].complete)
+    board:redoStroke()
+    assert(board:marks() == "#x#x..")
     board:beginStroke(2, 2, "#")
     board:extendStroke(2, 3)
     assert(#board:finishStroke() == 2 and board:isComplete())
-    assert(board:marks() == "#.#.##")
+    assert(board:marks() == "#x#x##")
     board:undoStroke()
-    assert(board:marks() == "#.#..." and not board:isComplete())
+    assert(board:marks() == "#x#x.." and not board:isComplete())
     board:redoStroke()
     assert(board:isComplete())
     board:beginStroke(1, 1, "#")
     board:finishStroke()
     assert(not board:isComplete() and #board.redo == 0)
     assert(not Board.validMarks(puzzle, "#?!..."))
+
+    local twoLines = { width = 2, height = 2, rowClues = { { 1 }, { 1 } }, columnClues = { { 1 }, { 1 } } }
+    local intersecting = Board:new(twoLines, "...x")
+    intersecting:beginStroke(1, 1, "#")
+    intersecting:finishStroke()
+    assert(intersecting:marks() == "#xxx" and #intersecting.undo == 2)
+    assert(intersecting.rows[2].impossible and intersecting.columns[2].impossible)
+    intersecting:undoStroke()
+    assert(intersecting:marks() == "#..x" and intersecting.rows[1].complete and intersecting.columns[1].complete)
+    assert(not intersecting.rows[2].impossible and not intersecting.columns[2].impossible)
+    intersecting:beginStroke(1, 2, "x")
+    intersecting:finishStroke()
+    assert(intersecting:marks() == "#x.x")
+    intersecting:undoStroke()
+    assert(intersecting:marks() == "#..x")
+    intersecting:restoreCheckpoint("...x")
+    intersecting:restoreCheckpoint("#..x")
+    assert(intersecting:marks() == "#..x")
+
+    local lastMove = Board:new(twoLines, "#...")
+    lastMove:beginStroke(2, 2, "#")
+    lastMove:finishStroke()
+    assert(lastMove:marks() == "#xx#" and lastMove:isComplete())
+    lastMove:undoStroke()
+    assert(lastMove:marks() == "#..#" and lastMove:isComplete())
+
+    local emptyLines = { width = 2, height = 2, rowClues = { {}, { 1 } }, columnClues = { { 1 }, {} } }
+    local blank = Board:new(emptyLines)
+    assert(blank:marks() == "xx.x")
+    blank:undoStroke()
+    assert(blank:marks() == "...." and Board:new(emptyLines, blank:marks()):marks() == "....")
+
+    local linePuzzle = { width = 7, height = 1, rowClues = { { 2, 1 } },
+        columnClues = { {}, { 1 }, { 1 }, {}, {}, { 1 }, {} } }
+    local partial = Board:new(linePuzzle, ".##x...")
+    assert(partial.rows[1][1] and not partial.rows[1][2] and not partial.rows[1].complete)
+    assert(not partial.rows[1].impossible)
+    partial:restoreCheckpoint(".##xxxx")
+    assert(partial.rows[1].impossible and partial.columns[6].impossible)
+    partial:undoStroke()
+    assert(partial:marks() == ".##x..." and not partial.rows[1].impossible)
+    partial:redoStroke()
+    assert(partial:marks() == ".##xxxx" and partial.rows[1].impossible)
+    assert(Board:new(linePuzzle, ".##..#.").rows[1].complete)
+
+    puzzle.solution = "#.#.##"
+    local checked = Board:new(puzzle, "#x....")
+    local errors, remaining = checked:checkSolution()
+    assert(errors == 0 and remaining == 3)
+    checked:restoreCheckpoint("x##.##")
+    errors, remaining = checked:checkSolution()
+    assert(errors == 2 and remaining == 0)
+    assert(not Board.validSolution(puzzle, "######"))
 end
 
 local function testSync()
@@ -118,6 +184,99 @@ local function squarePuzzle(size)
         width = size, height = size, rowClues = rows, columnClues = columns }
 end
 
+local function testPluginUpdate()
+    local lfs = require("libs/libkoreader-lfs")
+    local Archive = require("ffi/archiver")
+    local JSON = require("json")
+    local http = require("socket.http")
+    local function read(path)
+        local file = assert(io.open(path, "rb"))
+        local contents = file:read("*all")
+        file:close()
+        return contents
+    end
+    local function write(path, contents)
+        local file = assert(io.open(path, "wb"))
+        assert(file:write(contents))
+        assert(file:close())
+    end
+    local installed = home .. "/kobononogram.koplugin"
+    assert(lfs.mkdir(installed))
+    write(installed .. "/main.lua", "return 'old'")
+    local store = assert(Store.open(home .. "/update-data"))
+    assert(store:updateSettings({ server = "http://example.test:8080" }))
+    assert(store:download(smallPuzzle(1)))
+    local board = Board:new(store.records[1].puzzle, "#x....")
+    assert(store:saveGame(board, { row = 1, column = 1, zoom = 2 }, true))
+    assert(store:saveCheckpoint(board))
+    write(store.root .. "/github-update-token.txt", "github_pat_test\n")
+
+    local archivePath = home .. "/update.zip"
+    local function archive(extra)
+        local writer = Archive.Writer:new()
+        assert(writer:open(archivePath))
+        assert(writer:addFileFromMemory("kobononogram.koplugin/_meta.lua", 'return {\n    version = "0.2.0",\n}'))
+        assert(writer:addFileFromMemory("kobononogram.koplugin/main.lua", "return 'new'"))
+        assert(writer:addFileFromMemory("kobononogram.koplugin/ca-bundle.pem", "CA bundle fixture"))
+        assert(writer:addFileFromMemory("kobononogram.koplugin/kobononogram/extra.lua", "return true"))
+        if extra then assert(writer:addFileFromMemory(extra, "should not be written")) end
+        writer:close()
+        return read(archivePath)
+    end
+    local zip = archive()
+    local asset = { name = "kobononogram.koplugin.zip", state = "uploaded", id = 42, size = #zip,
+        digest = "sha256:" .. require("ffi/sha2").sha256(zip) }
+    local releases = JSON.encode({
+        { tag_name = "kobo-v0.10.0", prerelease = true, assets = { asset } },
+        { tag_name = "server-v2.0.0", assets = { asset } },
+        { tag_name = "kobo-v0.1.9", assets = { asset } },
+        { tag_name = "kobo-v0.2.0", assets = { asset } },
+    })
+    local realRequest = http.request
+    local content = zip
+    http.request = function(options)
+        if options.url:find("api.github.com", 1, true) then
+            assert(options.headers.authorization == "Bearer github_pat_test")
+            if options.url:match("/assets/42$") then
+                return 1, 302, { location = "https://release-assets.githubusercontent.com/path?signature=test" }
+            end
+            assert(options.sink(releases))
+        else
+            assert(options.url == "https://release-assets.githubusercontent.com/path?signature=test")
+            assert(not options.headers.authorization)
+            assert(options.sink(content))
+        end
+        return 1, 200, {}
+    end
+    local release = assert(Update.check(installed, store.root, "0.1.0"))
+    assert(release.version == "0.2.0" and Update.check(installed, store.root, "0.2.0") == false)
+    assert(Update.download(installed, store.root, release) == zip)
+    content = string.rep("0", #zip)
+    local badDownload, downloadError = Update.download(installed, store.root, release)
+    assert(not badDownload and downloadError:find("checksum"))
+    http.request = realRequest
+
+    assert(not UpdateArchive.install(installed, archive("kobononogram.koplugin/../unexpected"), "0.2.0"))
+    assert(not UpdateArchive.install(installed, zip, "0.3.0"))
+    assert(read(installed .. "/main.lua") == "return 'old'" and not lfs.attributes(installed .. ".previous"))
+    assert(UpdateArchive.install(installed, zip, release.version))
+    assert(read(installed .. "/main.lua") == "return 'new'")
+    assert(read(installed .. ".previous/main.lua") == "return 'old'")
+    assert(read(installed .. "/kobononogram/extra.lua") == "return true")
+    local rename = os.rename
+    os.rename = function(from, to)
+        if to == installed and from:sub(-4) == "/new" then return nil, "simulated storage error" end
+        return rename(from, to)
+    end
+    local installedAgain = UpdateArchive.install(installed, zip, release.version)
+    os.rename = rename
+    assert(not installedAgain and read(installed .. "/main.lua") == "return 'new'")
+    assert(read(installed .. ".previous/main.lua") == "return 'old'")
+    store = assert(Store.open(store.root))
+    assert(store.settings.server == "http://example.test:8080" and store.records[1].marks == "#x...."
+        and store.records[1].checkpoint == "#x....")
+end
+
 local function testGameUI()
     local plugin = dofile(pluginRoot .. "/main.lua"):new{
         ui = { menu = { registerToMainMenu = function() end } },
@@ -125,9 +284,54 @@ local function testGameUI()
     plugin:showLibrary()
     assert(plugin.library and plugin.store)
     local menu = plugin.library
-    plugin.settings = function() end
     menu:onMenuSelect(menu.item_table[3])
-    assert(plugin.library == menu)
+    local settings = UI:getTopmostVisibleWidget()
+    assert(settings.title == "Kobo Nonogram settings")
+    settings.buttons[1][1].callback()
+    local input
+    for widget in UI:topdown_widgets_iter() do
+        assert(widget ~= menu, "Server URL dialog is behind the library")
+        if widget.title == "Home server URL" then
+            input = widget
+            break
+        end
+    end
+    assert(input and input:isKeyboardVisible())
+    input._input_widget:setText("http://example.test:8080")
+    input.buttons[1][2].callback()
+    assert(plugin.store.settings.server == "http://example.test:8080" and UI:getTopmostVisibleWidget() == menu)
+    local checked
+    plugin.checkPluginUpdate = function() checked = true end
+    menu:onMenuSelect(menu.item_table[3])
+    UI:getTopmostVisibleWidget().buttons[3][1].callback()
+    assert(checked and UI:getTopmostVisibleWidget() == menu)
+
+    assert(plugin.store:download(smallPuzzle(1)))
+    plugin:showGame(1)
+    plugin.online = function(_, operation)
+        operation(function(method, path)
+            assert(method == "GET" and path == "/puzzles/1?includeSolution=true")
+            local puzzle = smallPuzzle(1)
+            puzzle.solution = "#.#.##"
+            return puzzle
+        end)
+    end
+    plugin.game:onButton("check")
+    local check = UI:getTopmostVisibleWidget()
+    assert(check.text == "No mistakes so far." and plugin.store.records[1].puzzle.solution == "#.#.##")
+    UI:close(check)
+    plugin.online = nil
+    local game = plugin.game
+    local layout = game.layout
+    game:onGesture{ ges = "tap", pos = Geom:new{ x = layout.gridX + 12, y = layout.gridY + 12, w = 0, h = 0 } }
+    assert(game.board:marks() == "#..x.." and plugin.store.records[1].marks == "#..x..")
+    game:onButton("undo")
+    assert(game.board:marks() == "#....." and plugin.store.records[1].marks == "#.....")
+    game:onClose()
+    plugin:showGame(1)
+    assert(plugin.game.board:marks() == "#....." and plugin.game.board.columns[1].complete)
+    plugin.game:onClose()
+
     UI:forceRePaint()
     for _, size in ipairs({ 40, 80 }) do
         assert(plugin.store:download(squarePuzzle(size)))
@@ -152,6 +356,68 @@ local function testGameUI()
         tap(cross.x + 10, cross.y + 10)
         tap(layout.gridX + 12, layout.gridY + layout.cell + 13)
         assert(game.board:get(2, 1) == "x")
+        if size == 40 then
+            local original = game.board:marks()
+            game:onButton("checkpoint")
+            local checkpoint = UI:getTopmostVisibleWidget()
+            assert(checkpoint.buttons[2][1].enabled == false)
+            checkpoint.buttons[1][1].callback()
+            UI:close(UI:getTopmostVisibleWidget())
+            assert(assert(Store.open(plugin.store.root)).records[size].checkpoint == original)
+
+            local edgeStart = point(layout.gridX + layout.cell + 12, layout.gridY + 2 * layout.cell + 12)
+            local edge = point(edgeStart.x, layout.gridY + layout.cell * layout.rows - 1)
+            game:onGesture{ ges = "pan", start_pos = edgeStart, pos = edge }
+            for expectedRow = 2, 3 do
+                local scheduled = assert(game.edgePan)
+                assert(UI:unschedule(scheduled))
+                scheduled()
+                assert(game.row == expectedRow and game.board:get(expectedRow + layout.rows - 1, 2) == "x")
+            end
+            local pending = game.edgePan
+            game:onGesture{ ges = "pan_release", pos = edge }
+            assert(not game.edgePan and (not pending or not UI:unschedule(pending)))
+            local guessed = game.board:marks()
+            assert(guessed ~= original and #game.board.undo == 3)
+            game:onButton("checkpoint")
+            checkpoint = UI:getTopmostVisibleWidget()
+            assert(checkpoint.buttons[2][1].enabled)
+            checkpoint.buttons[2][1].callback()
+            assert(game.board:marks() == original)
+            game:onButton("undo")
+            assert(game.board:marks() == guessed)
+            game:onButton("redo")
+            assert(game.board:marks() == original)
+            game:moveViewport(1, 1)
+
+            game:onButton("fill")
+            local right = layout.gridX + layout.columns * layout.cell
+            local fillStart = point(right - layout.cell + 4, layout.gridY + 12)
+            local fillEdge = point(right - 1, fillStart.y)
+            game:onGesture{ ges = "pan", start_pos = fillStart, pos = fillEdge }
+            local scheduled = assert(game.edgePan)
+            assert(UI:unschedule(scheduled))
+            scheduled()
+            game:onGesture{ ges = "pan_release", pos = fillEdge }
+            assert(game.column == 2 and game.board:get(1, layout.columns + 1) == "#")
+            game:onButton("undo")
+            assert(game.board:marks() == original)
+            game:moveViewport(1, 1)
+            game:onButton("cross")
+
+            local panStart = point(layout.gridX + 5 * layout.cell, layout.gridY + 2 * layout.cell)
+            local panEnd = point(panStart.x - 3 * layout.cell, panStart.y)
+            game:onGesture{ ges = "pan", start_pos = panStart, pos = panEnd }
+            assert(game.board:marks() ~= original)
+            game:onGesture{ ges = "two_finger_pan", start_pos = panStart, pos = panEnd }
+            assert(game.column == 4 and game.mode == "cross" and game.board:marks() == original)
+            game:onGesture{ ges = "two_finger_pan_release", pos = panEnd }
+            assert(not game.motion and plugin.store.records[size].column == 4)
+            game:moveViewport(1, 1)
+            game:onGesture{ ges = "two_finger_swipe", pos = panStart, end_pos = panEnd }
+            assert(game.column == 4 and game.board:marks() == original)
+            game:moveViewport(1, 1)
+        end
         UI:forceRePaint()
         device.screen.bb:writePNG(home .. "/grid-" .. size .. ".png")
         local pan = game.buttons.pan
@@ -180,5 +446,6 @@ end
 
 testBoard()
 testSync()
+testPluginUpdate()
 testGameUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

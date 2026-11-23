@@ -66,6 +66,33 @@ public sealed class PuzzleLibraryTests
     }
 
     [Fact]
+    public async Task AddsASolutionToACachedPuzzleWithoutReplacingItsProgress()
+    {
+        using var database = new TestDatabase();
+        database.Store.CachePuzzle(TestData.Puzzle(12));
+        new ProgressBackup(database.Store, TimeProvider.System).Save([new ProgressUpdate(12, "#x....", false)]);
+        var exports = 0;
+        using var source = TestData.Source(uri =>
+        {
+            exports++;
+            Assert.Equal("on", QueryHelpers.ParseQuery(uri.Query)["xml_soln"].ToString());
+            return TestData.Ok(TestData.Export(12).Replace("</puzzle>",
+                "<solution type=\"goal\"><image>|X.X||.XX|</image></solution></puzzle>"));
+        });
+        var library = new PuzzleLibrary(database.Store, source, TestData.Options, TimeProvider.System);
+
+        Assert.Null((await library.GetPuzzleAsync(12, CancellationToken.None))?.Solution);
+        Assert.Equal(0, exports);
+        Assert.Equal("#.#.##", (await library.GetPuzzleAsync(12, CancellationToken.None, includeSolution: true))?.Solution);
+        Assert.Equal("#.#.##", (await library.GetPuzzleAsync(12, CancellationToken.None, includeSolution: true))?.Solution);
+        Assert.Equal(1, exports);
+        var restored = Assert.Single(database.Store.RestoreProgress());
+        Assert.Equal("#x....", restored.Progress.Marks);
+        Assert.Equal("Puzzle 12", restored.Puzzle.Title);
+        Assert.Equal("#.#.##", restored.Puzzle.Solution);
+    }
+
+    [Fact]
     public async Task TopsUpQueueSkippingDownloadedPlayedAndUnavailablePuzzles()
     {
         using var database = new TestDatabase();

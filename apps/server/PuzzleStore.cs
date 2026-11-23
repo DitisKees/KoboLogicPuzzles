@@ -165,6 +165,19 @@ public sealed class PuzzleStore(string databasePath)
         return command.ExecuteNonQuery() == 1 ? puzzle : FindPuzzle(connection, puzzle.Id)!;
     }
 
+    public PuzzleDefinition CacheSolution(PuzzleDefinition puzzle, string solution)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE puzzles SET definition = json_set(definition, '$.solution', $solution)
+            WHERE id = $id AND json_extract(definition, '$.solution') IS NULL
+            """;
+        command.Parameters.AddWithValue("$id", puzzle.Id);
+        command.Parameters.AddWithValue("$solution", solution);
+        return command.ExecuteNonQuery() == 1 ? puzzle with { Solution = solution } : FindPuzzle(connection, puzzle.Id)!;
+    }
+
     public void SaveProgress(IEnumerable<ProgressUpdate> boards, DateTimeOffset backedUpAt)
     {
         using var connection = Open();

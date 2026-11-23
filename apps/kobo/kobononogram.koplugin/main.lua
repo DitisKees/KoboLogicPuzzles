@@ -1,6 +1,7 @@
 local API = require("kobononogram/api")
 local Board = require("kobononogram/board")
 local ButtonDialog = require("ui/widget/buttondialog")
+local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
 local Game = require("kobononogram/game")
 local InfoMessage = require("ui/widget/infomessage")
@@ -11,6 +12,8 @@ local Store = require("kobononogram/store")
 local Sync = require("kobononogram/sync")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
+local Update = require("kobononogram/update")
+local UpdateArchive = require("kobononogram/updatearchive")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
@@ -109,6 +112,7 @@ function Nonogram:showGame(id)
         board = Board:new(record.puzzle, record.marks),
         record = record,
         store = self.store,
+        fetchSolution = function(game) self:fetchSolution(game) end,
         onExit = function()
             self.game = nil
             self:showLibrary()
@@ -120,7 +124,7 @@ end
 local function input(title, value, hint, save)
     local dialog
     dialog = InputDialog:new{
-        title = title, input = value, input_hint = hint,
+        title = title, input = value, input_hint = hint, modal = true,
         buttons = {{
             { text = "Cancel", callback = function() UIManager:close(dialog) end },
             { text = "Save", is_enter_default = true, callback = function()
@@ -148,6 +152,7 @@ function Nonogram:settings()
     local dialog
     dialog = ButtonDialog:new{
         title = "Kobo Nonogram settings",
+        modal = true,
         buttons = {
             {{ text = "Home server URL", callback = function()
                 UIManager:close(dialog)
@@ -163,10 +168,59 @@ function Nonogram:settings()
                     return self.store:updateSettings({ target = target })
                 end)
             end }},
+            {{ text = "Update plugin", callback = function()
+                UIManager:close(dialog)
+                self:checkPluginUpdate()
+            end }},
             {{ text = "Close", callback = function() UIManager:close(dialog) end }},
         },
     }
     UIManager:show(dialog)
+end
+
+function Nonogram:updateRequest(message, task, onResult)
+    if self.busy then return end
+    NetworkMgr:runWhenConnected(function()
+        if self.busy then return end
+        self.busy = true
+        Trapper:wrap(function()
+            local ok, completed, result, err = pcall(Trapper.dismissableRunInSubprocess, Trapper, task, message)
+            self.busy = false
+            if not ok then
+                notice("The plugin update could not finish.")
+            elseif completed then
+                onResult(result, err)
+            end
+        end)
+    end)
+end
+
+function Nonogram:checkPluginUpdate()
+    if self.updateInstalled then return UIManager:askForRestart("Restart KOReader to load the new plugin.") end
+    if not self.path then return notice("Could not determine the installed plugin directory.") end
+    self:updateRequest("Checking for a Kobo Nonogram update…", function()
+        return Update.check(self.path, self.store.root, self.version)
+    end, function(release, err)
+        if release == false then return notice("Kobo Nonogram is up to date (" .. self.version .. ").") end
+        if not release then return notice(err or "Could not check for an update.") end
+        UIManager:show(ConfirmBox:new{
+            text = string.format("Update Kobo Nonogram from %s to %s?", self.version, release.version),
+            ok_text = "Install update",
+            ok_callback = function() self:installPluginUpdate(release) end,
+        })
+    end)
+end
+
+function Nonogram:installPluginUpdate(release)
+    self:updateRequest("Downloading the Kobo Nonogram update…", function()
+        return Update.download(self.path, self.store.root, release)
+    end, function(zip, err)
+        if not zip then return notice(err or "Could not download the update ZIP.") end
+        local ok, installError = UpdateArchive.install(self.path, zip, release.version)
+        if not ok then return notice("Could not install the update.\n" .. tostring(installError)) end
+        self.updateInstalled = true
+        UIManager:askForRestart("Kobo Nonogram " .. release.version .. " was installed. Restart KOReader now?")
+    end)
 end
 
 function Nonogram:online(operation)
@@ -189,6 +243,22 @@ function Nonogram:online(operation)
                 notice("The operation could not finish. Try again from the library.")
             end
         end)
+    end)
+end
+
+function Nonogram:fetchSolution(game)
+    self:online(function(request)
+        local id = game.board.puzzle.id
+        local puzzle, err = request("GET", string.format("/puzzles/%d?includeSolution=true", id),
+            nil, "Looking for the puzzle solution…")
+        if not puzzle then return notice(err) end
+        if puzzle.id ~= id or not Board.validSolution(game.board.puzzle, puzzle.solution) then
+            return notice("No known solution is available for this puzzle.")
+        end
+        local ok, saveError = self.store:saveSolution(id, puzzle.solution)
+        if not ok then logger.warn("Kobo Nonogram: could not cache the puzzle solution", saveError) end
+        game.board.solution = puzzle.solution
+        if self.game == game then game:checkSolution() end
     end)
 end
 

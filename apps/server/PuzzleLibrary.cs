@@ -34,11 +34,21 @@ public sealed class PuzzleLibrary(PuzzleStore store, WebPbnClient webPbn, WebPbn
         throw new InvalidDataException("WebPBN search exceeded 1,000 pages.");
     }
 
-    public async Task<PuzzleDefinition?> GetPuzzleAsync(int id, CancellationToken cancellationToken)
+    public async Task<PuzzleDefinition?> GetPuzzleAsync(int id, CancellationToken cancellationToken,
+        bool includeSolution = false)
     {
         var cached = store.FindPuzzle(id);
         if (cached is not null)
+        {
+            if (includeSolution && cached.Solution is null)
+            {
+                var refreshed = await webPbn.FetchAsync(id, cancellationToken);
+                if (refreshed?.Solution is { } solution && refreshed.Width == cached.Width &&
+                    refreshed.Height == cached.Height && cached.MatchesClues(solution))
+                    return store.CacheSolution(cached, solution);
+            }
             return cached;
+        }
         if (!store.IsInCatalog(id))
             return null;
 

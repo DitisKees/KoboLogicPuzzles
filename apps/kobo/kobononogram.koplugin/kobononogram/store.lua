@@ -60,6 +60,7 @@ function Store.open(root)
             if record and Board.validPuzzle(record.puzzle) and record.puzzle.id == id
                 and (record.marks == nil or (Board.validMarks(record.puzzle, record.marks)
                     and type(record.completed) == "boolean")) then
+                if not Board.validMarks(record.puzzle, record.checkpoint) then record.checkpoint = nil end
                 self.records[id] = record
             else
                 logger.warn("Kobo Nonogram: cannot load local puzzle", id)
@@ -100,7 +101,23 @@ end
 function Store:restore(puzzle, progress)
     local existing = self.records[puzzle.id]
     if existing and existing.marks then return true end
-    return self:save({ format = 1, puzzle = puzzle, marks = progress.marks, completed = progress.completed })
+    local record = existing and copy(existing) or { format = 1 }
+    record.puzzle, record.marks, record.completed = puzzle, progress.marks, progress.completed
+    if not Board.validMarks(puzzle, record.checkpoint) then record.checkpoint = nil end
+    return self:save(record)
+end
+
+function Store:saveCheckpoint(board)
+    local record = copy(self.records[board.puzzle.id])
+    record.checkpoint = board:marks()
+    return self:save(record)
+end
+
+function Store:saveSolution(id, solution)
+    local record = copy(self.records[id])
+    record.puzzle = copy(record.puzzle)
+    record.puzzle.solution = solution
+    return self:save(record)
 end
 
 function Store:saveGame(board, view, changed)

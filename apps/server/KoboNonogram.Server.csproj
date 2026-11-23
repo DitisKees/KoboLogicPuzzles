@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <None Update="LICENSE" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="AngleSharp" Version="1.10.5" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
   </ItemGroup>

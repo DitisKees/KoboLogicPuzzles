@@ -1,16 +1,16 @@
 # Puzzle and progress API v1
 
-The server and clients exchange JSON over HTTP under `/api/v1`. WebPBN puzzle IDs are positive integers and identify both puzzle definitions and saves. The server keeps cached puzzle definitions for restore and sends clues independently of any solution image.
+The server and clients exchange JSON over HTTP under `/api/v1`. WebPBN puzzle IDs are positive integers and identify both puzzle definitions and saves. The server keeps cached puzzle definitions for restore.
 
 | Method and path | Purpose |
 | --- | --- |
 | `GET /api/v1/puzzles` | List catalog summaries with `id`, `title`, `author`, `width`, and `height`, in descending ID order. Pass `limit` from 1 to 100 (default 50) and use the last returned ID as `beforeId` for the next page. |
-| `GET /api/v1/puzzles/{id}` | Download or read a cached puzzle definition. Returns `404` if the puzzle is outside the catalog and cache, or its export is unavailable or unsupported. |
+| `GET /api/v1/puzzles/{id}` | Download or read a cached puzzle definition. Pass `includeSolution=true` to look up the solution for an older cached definition that lacks it. Returns `404` if the puzzle is outside the catalog and cache, or its export is unavailable or unsupported. |
 | `POST /api/v1/offline-queue` | Request the puzzle definitions needed to reach `targetCount` (0–100) unstarted puzzles. Supply `cachedUnstartedPuzzleIds` for puzzles already available to play offline. The server skips saved and completed boards. The response contains a `puzzles` array with up to the requested number of additional boards. |
 | `POST /api/v1/progress` | Back up an array of up to 100 changed `boards`. The server validates the whole batch and updates only the supplied puzzle IDs. The response contains `savedCount` and the UTC timestamp `backedUpAt`. An empty batch returns `savedCount` of zero and a null timestamp. |
 | `GET /api/v1/restore` | Return an array of `{ puzzle, progress }` records, including completed boards. Each `progress` record includes `puzzleId`, `marks`, `completed`, and `backedUpAt`. |
 
-A puzzle definition includes the row and column clue arrays. An empty line has an empty clue array.
+A puzzle definition includes the row and column clue arrays. An empty line has an empty clue array. The optional `solution` is a row-major string of `#` (filled) and `.` (empty) cells.
 
 ```json
 {
@@ -20,7 +20,8 @@ A puzzle definition includes the row and column clue arrays. An empty line has a
   "width": 3,
   "height": 2,
   "rowClues": [[1, 1], [2]],
-  "columnClues": [[1], [1], [2]]
+  "columnClues": [[1], [1], [2]],
+  "solution": "#.#.##"
 }
 ```
 

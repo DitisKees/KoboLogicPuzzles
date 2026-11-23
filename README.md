@@ -94,3 +94,9 @@ Verify recovery by saving a partially solved puzzle with fills and crosses, sync
 ## Future Android and web play
 
 An Android app or web player can use the same puzzle IDs, catalog, and versioned save format. The Kobo is the only device that edits progress in the first release. When a second client can edit, add per-puzzle revision checks and preserve both versions if the same board was edited on two devices while offline.
+
+## License
+
+The original Kobo Nonogram code and documentation are available under the MIT License. [MIT License](LICENSE)
+
+The bundled Mozilla CA certificates are licensed under MPL 2.0. Downloaded WebPBN puzzles and solution images remain subject to their authors’ rights. [CA bundle license](apps/kobo/kobononogram.koplugin/LICENSE-MPL-2.0.txt) · [WebPBN export terms](https://webpbn.com/export.cgi)

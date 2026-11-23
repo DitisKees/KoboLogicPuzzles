@@ -31,7 +31,8 @@ public sealed class WebPbnClient(HttpClient http, WebPbnOptions options) : IDisp
 
     public async Task<PuzzleDefinition?> FetchAsync(int id, CancellationToken cancellationToken)
     {
-        var xml = await ReadAsync($"export.cgi?go=1&id={Format(id)}&fmt=xml&xml_clue=on", true, cancellationToken);
+        var xml = await ReadAsync($"export.cgi?go=1&id={Format(id)}&fmt=xml&xml_clue=on&xml_soln=on",
+            true, cancellationToken);
         if (xml is null)
             return null;
 
