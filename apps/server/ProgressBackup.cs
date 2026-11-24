@@ -4,6 +4,18 @@ public sealed class ProgressBackup(PuzzleStore store, PuzzleLibrary library, Tim
 {
     public async Task<ProgressReceipt> SaveAsync(ProgressUpdate[] boards, CancellationToken cancellationToken)
     {
+        await ValidateAsync(boards, cancellationToken);
+        if (boards.Length == 0)
+            return new ProgressReceipt(0, null);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var backedUpAt = time.GetUtcNow();
+        store.SaveProgress(boards, backedUpAt);
+        return new ProgressReceipt(boards.Length, backedUpAt);
+    }
+
+    internal async Task ValidateAsync(IReadOnlyList<ProgressUpdate> boards, CancellationToken cancellationToken)
+    {
         var ids = new HashSet<int>();
         foreach (var board in boards)
         {
@@ -25,12 +37,5 @@ public sealed class ProgressBackup(PuzzleStore store, PuzzleLibrary library, Tim
                 throw new ArgumentException($"The filled cells for puzzle {board.PuzzleId} do not satisfy its clues.");
         }
 
-        if (boards.Length == 0)
-            return new ProgressReceipt(0, null);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var backedUpAt = time.GetUtcNow();
-        store.SaveProgress(boards, backedUpAt);
-        return new ProgressReceipt(boards.Length, backedUpAt);
     }
 }

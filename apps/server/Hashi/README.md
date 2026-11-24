@@ -33,11 +33,34 @@ docker run --rm --network none --entrypoint /app/hashi/bridgegen \
   kobononogram-hashi:local 50 10 10 2 00000067
 ```
 
-## Starting settings for the server worker
+## Background inventory
 
 - Request upstream difficulty 2, expansion 10%, and densities of 10% and 20% with fresh seeds. Require at least 25 islands and at least 4% actual density, rounded up. The default stock counts in the table apply this floor, deduplicate by content hash, and select hard or expert boards solved with basic or advanced logic.
 - Run one candidate at a time in the background. Start with configurable three-minute budgets per stage and a 128 MiB address-space limit for the native helper. Terminate and reap the helper on timeout or worker shutdown.
 - Rotate among sizes with a stock shortfall. Allow up to three attempts per size per replenishment cycle, then report the shortfall and retry in a later cycle. Store the verified definition and solution with the seed, settings, and versions so stored puzzles never depend on regeneration.
+
+The server image enables the worker by default. Local .NET runs can enable it with `HashiGeneration__Enabled=true` and set `HashiGeneration__ExecutablePath` to the compiled helper. The worker and CLI use one lock file beside the database. The operating system releases the lock when its holder exits. The inventory cap applies to unstarted stock for each size. Saved and completed boards retain their definitions.
+
+| `HashiGeneration` setting | Default |
+| --- | --- |
+| `Sizes` | 20, 25, 30, 35, 40, 45, 50 |
+| `Densities` | 10 and 20 percent requested, with at least 25 islands and 4% actual density |
+| `Difficulties` and `Solvabilities` | `Hard`, `Expert` and `BasicLogic`, `AdvancedLogic` |
+| `Expansion` and `UpstreamDifficulty` | 10 percent and 2 |
+| `TargetPerDifficulty` and `LowWatermark` | 2 unstarted puzzles per size and tier, with refill triggered at 1 |
+| `MaxUnstartedPerSize` and `AttemptsPerSize` | 12 unstarted puzzles per size and 3 attempts per size per pass |
+| `StageTimeoutSeconds` and `PollIntervalSeconds` | 180 seconds per stage and 600 seconds between passes |
+
+The density floor can be set with `MinIslands` and `MinDensityPercent`. For Compose array settings, set indexed environment keys such as `HashiGeneration__Sizes__0: "20"` and `HashiGeneration__Sizes__1: "50"`. A fresh server builds toward the configured targets. Later passes resume when stock reaches its low-water mark and continue to the target. To pause automatic replenishment while keeping stored Hashi available, set `HashiGeneration__Enabled=false`.
+
+Inspect the live worker at `/api/v2/hashi/status`. The CLI reads persisted stock and reports the outcome of the requested generation. `--diagnostic true` checks the seed, uniqueness, and rating without adding stock. Remove that option to store a verified puzzle that meets the density floor and inventory cap. CLI generation shares the worker lock, so it may report `busy` during a replenishment pass.
+
+```sh
+docker compose -f apps/server/compose.example.yaml exec server \
+  dotnet KoboNonogram.Server.dll hashi-status
+docker compose -f apps/server/compose.example.yaml exec server \
+  dotnet KoboNonogram.Server.dll hashi-generate --size 50 --seed 00000067 --density 10 --diagnostic true
+```
 
 ## Database upgrade and rollback
 

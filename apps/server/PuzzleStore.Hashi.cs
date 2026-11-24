@@ -47,10 +47,47 @@ public sealed partial class PuzzleStore
         return command.ExecuteNonQuery() == 1;
     }
 
+    internal bool HasHashiPuzzles()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM hashi_puzzles LIMIT 1";
+        return command.ExecuteScalar() is not null;
+    }
+
+    internal IReadOnlyList<HashiStockCount> ReadHashiStock(int minIslands, int minDensity)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT p.width, json_extract(p.metadata, '$.rating.difficulty') AS difficulty,
+                json_extract(p.metadata, '$.rating.solvability') AS solvability,
+                count(*) AS total, sum(s.content_hash IS NULL) AS unstarted,
+                sum(s.content_hash IS NULL AND json_extract(p.metadata, '$.islandCount') >= $minIslands
+                    AND json_extract(p.metadata, '$.actualDensity') >= $minDensity) AS eligible
+            FROM hashi_puzzles p LEFT JOIN hashi_progress s USING (content_hash)
+            GROUP BY p.width, difficulty, solvability ORDER BY p.width, difficulty, solvability
+            """;
+        command.Parameters.AddWithValue("$minIslands", minIslands);
+        command.Parameters.AddWithValue("$minDensity", minDensity);
+        using var reader = command.ExecuteReader();
+        var counts = new List<HashiStockCount>();
+        while (reader.Read())
+            counts.Add(new HashiStockCount(reader.GetInt32(0), reader.IsDBNull(1) ? null : (HashiDifficulty)reader.GetInt32(1),
+                (HashiSolvability)reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetInt32(5)));
+        return counts;
+    }
+
     public StoredHashiPuzzle? FindHashiPuzzle(string contentHash)
     {
         using var connection = Open();
         return FindHashiPuzzle(connection, null, contentHash);
+    }
+
+    internal StoredHashiPuzzle? FindUnstartedHashi(string contentHash)
+    {
+        using var connection = Open();
+        return FindHashiPuzzle(connection, null, contentHash, unstartedOnly: true);
     }
 
     public void SaveHashiProgress(IReadOnlyList<HashiProgressUpdate> boards, DateTimeOffset backedUpAt)
@@ -62,6 +99,13 @@ public sealed partial class PuzzleStore
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
+        WriteHashiProgress(connection, transaction, boards, backedUpAt);
+        transaction.Commit();
+    }
+
+    private static void WriteHashiProgress(SqliteConnection connection, SqliteTransaction transaction,
+        IReadOnlyList<HashiProgressUpdate> boards, DateTimeOffset backedUpAt)
+    {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
@@ -89,13 +133,18 @@ public sealed partial class PuzzleStore
             command.ExecuteNonQuery();
         }
 
-        transaction.Commit();
     }
 
     public IReadOnlyList<SavedHashiBoard> RestoreHashiProgress()
     {
         using var connection = Open();
+        return ReadHashiProgress(connection, null);
+    }
+
+    private static IReadOnlyList<SavedHashiBoard> ReadHashiProgress(SqliteConnection connection, SqliteTransaction? transaction)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             SELECT p.content_hash, p.width, p.height, p.islands, p.solution, p.metadata, s.marks, s.completed, s.backed_up_at
             FROM hashi_progress s JOIN hashi_puzzles p USING (content_hash) ORDER BY p.content_hash
@@ -115,14 +164,16 @@ public sealed partial class PuzzleStore
     }
 
     private static StoredHashiPuzzle? FindHashiPuzzle(SqliteConnection connection, SqliteTransaction? transaction,
-        string contentHash)
+        string contentHash, bool unstartedOnly = false)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            SELECT content_hash, width, height, islands, solution, metadata FROM hashi_puzzles WHERE content_hash = $hash
+            SELECT content_hash, width, height, islands, solution, metadata FROM hashi_puzzles
+            WHERE content_hash = $hash AND ($unstarted = 0 OR NOT EXISTS (SELECT 1 FROM hashi_progress WHERE content_hash = $hash))
             """;
         command.Parameters.AddWithValue("$hash", contentHash);
+        command.Parameters.AddWithValue("$unstarted", unstartedOnly);
         using var reader = command.ExecuteReader();
         return reader.Read() ? ReadHashiPuzzle(reader) : null;
     }
@@ -135,10 +186,12 @@ public sealed partial class PuzzleStore
         var solution = (byte[])reader.GetValue(4);
         if (puzzle.ContentHash != reader.GetString(0) || !puzzle.IsSolution(solution))
             throw new InvalidOperationException("The stored Hashi definition or solution is invalid.");
-        var metadata = JsonSerializer.Deserialize<HashiPuzzleMetadata>(reader.GetString(5), Json)
-            ?? throw new InvalidOperationException("Missing stored Hashi metadata.");
-        return new StoredHashiPuzzle(puzzle, Array.AsReadOnly(solution), metadata);
+        return new StoredHashiPuzzle(puzzle, Array.AsReadOnly(solution), ReadHashiMetadata(reader.GetString(5)));
     }
+
+    private static HashiPuzzleMetadata ReadHashiMetadata(string json) =>
+        JsonSerializer.Deserialize<HashiPuzzleMetadata>(json, Json)
+        ?? throw new InvalidOperationException("Missing stored Hashi metadata.");
 
     private static HashiEdgeMark[] ValidateHashiProgress(HashiPuzzle puzzle, HashiProgressUpdate board)
     {

@@ -105,6 +105,19 @@ public sealed partial class PuzzleStore(string databasePath)
         }
     }
 
+    internal FileStream? TryLockHashiGeneration()
+    {
+        try
+        {
+            return File.Open(Path.GetFullPath(databasePath) + ".hashi-generation.lock", FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException exception) when ((exception.HResult & 0xffff) is 11 or 32 or 33)
+        {
+            return null;
+        }
+    }
+
     public CatalogRefreshState GetCatalogRefreshState()
     {
         using var connection = Open();
@@ -278,6 +291,13 @@ public sealed partial class PuzzleStore(string databasePath)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
+        WriteNonogramProgress(connection, transaction, boards, backedUpAt);
+        transaction.Commit();
+    }
+
+    private static void WriteNonogramProgress(SqliteConnection connection, SqliteTransaction transaction,
+        IEnumerable<ProgressUpdate> boards, DateTimeOffset backedUpAt)
+    {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
@@ -298,13 +318,18 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
-        transaction.Commit();
     }
 
     public IReadOnlyList<SavedBoard> RestoreProgress()
     {
         using var connection = Open();
+        return ReadNonogramProgress(connection, null);
+    }
+
+    private static IReadOnlyList<SavedBoard> ReadNonogramProgress(SqliteConnection connection, SqliteTransaction? transaction)
+    {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             SELECT definition, puzzle_id, marks, completed, backed_up_at, metadata
             FROM progress JOIN puzzles ON puzzles.id = progress.puzzle_id

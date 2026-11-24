@@ -1,10 +1,15 @@
 using System.Collections.ObjectModel;
+using System.Text.Json.Serialization;
 
 namespace KoboNonogram.Server.Hashi;
 
 public sealed record HashiGenerationParameters(string Seed, int RequestedDensity, int Expansion, int UpstreamDifficulty)
 {
     public const string BridgesRevision = "616da16f25da428ccda805536209095bd062676e";
+
+    public bool IsValid() => Seed is { Length: >= 1 and <= 64 } &&
+        Seed.All(character => character is (>= '0' and <= '9') or (>= 'a' and <= 'f')) &&
+        RequestedDensity is >= 1 and <= 30 && Expansion is >= 0 and <= 100 && UpstreamDifficulty is >= 0 and <= 2;
 }
 
 public sealed record HashiPuzzleRating(HashiDifficulty? Difficulty, int? DifficultyScore, HashiSolvability Solvability,
@@ -32,10 +37,7 @@ public sealed class VerifiedHashiPuzzle
         HashiGenerationParameters generation, TimeSpan timeout, DateTimeOffset generatedAt,
         CancellationToken cancellationToken = default)
     {
-        if (generation.Seed is not { Length: >= 1 and <= 64 } ||
-            generation.Seed.Any(character => character is not ((>= '0' and <= '9') or (>= 'a' and <= 'f'))) ||
-            generation.RequestedDensity is < 1 or > 30 || generation.Expansion is < 0 or > 100 ||
-            generation.UpstreamDifficulty is < 0 or > 2)
+        if (!generation.IsValid())
             throw new ArgumentException("Supply valid Bridges generation parameters.", nameof(generation));
 
         var validation = new HashiExactSolver().Validate(candidate, timeout, cancellationToken);
@@ -61,7 +63,8 @@ public sealed class VerifiedHashiPuzzle
 
 public sealed record StoredHashiPuzzle(HashiPuzzle Puzzle, IReadOnlyList<byte> Solution, HashiPuzzleMetadata Metadata);
 
-public readonly record struct HashiEdgeMark(int Edge, int Count, bool NoBridge);
+public readonly record struct HashiEdgeMark([property: JsonRequired] int Edge, [property: JsonRequired] int Count,
+    [property: JsonRequired] bool NoBridge);
 
 public sealed record HashiProgressUpdate(string ContentHash, IReadOnlyList<HashiEdgeMark> Marks, bool Completed);
 

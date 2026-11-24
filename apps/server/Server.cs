@@ -1,3 +1,4 @@
+using KoboNonogram.Server.Hashi;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Options;
 
@@ -11,6 +12,11 @@ public static class Server
         services.AddProblemDetails();
         services.AddOptions<WebPbnOptions>().BindConfiguration("WebPbn").ValidateDataAnnotations().ValidateOnStart();
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<WebPbnOptions>>().Value);
+        services.AddOptions<HashiGenerationOptions>().BindConfiguration("HashiGeneration").ValidateDataAnnotations().ValidateOnStart();
+        services.AddSingleton(provider => provider.GetRequiredService<IOptions<HashiGenerationOptions>>().Value);
+        services.AddSingleton<IHashiCandidateGenerator, BridgesGenerator>();
+        services.AddSingleton<HashiInventory>();
+        services.AddHostedService<HashiInventoryWorker>();
         services.AddSingleton(provider => new PuzzleStore(
             provider.GetRequiredService<IConfiguration>()["Storage:DatabasePath"] ?? "data/kobononogram.db"));
         services.AddSingleton(TimeProvider.System);
@@ -19,6 +25,8 @@ public static class Server
         services.AddSingleton<IPuzzleProvider, LocalHashiPuzzleProvider>();
         services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<ProgressBackup>();
+        services.AddSingleton<GameCatalog>();
+        services.AddSingleton<GameProgressBackup>();
         if (builder.Configuration.GetValue("CatalogRefresh:Enabled", true))
             services.AddHostedService<CatalogRefreshWorker>();
         services.AddSingleton(provider => new WebPbnClient(new HttpClient(new SocketsHttpHandler
@@ -96,15 +104,8 @@ public static class Server
 
         api.MapGet("/restore", (PuzzleStore store) => store.RestoreProgress());
 
-        app.MapGet("/api/v2/puzzles/{id}", async (string id, bool? includeSolution, PuzzleProviders providers,
-            CancellationToken cancellationToken) =>
-        {
-            if (!PuzzleId.TryParse(id, out var puzzleId))
-                return BadRequest("Supply a namespaced puzzle ID such as nonogram-webpbn-12 or hashi-local-<content hash>.");
-            var definition = await providers.GetDefinitionAsync(puzzleId, includeSolution == true, cancellationToken);
-            return definition is null ? Results.NotFound() : Results.Ok(definition);
-        });
+        GameApi.MapEndpoints(app);
     }
 
-    private static IResult BadRequest(string detail) => Results.Problem(detail, statusCode: StatusCodes.Status400BadRequest);
+    internal static IResult BadRequest(string detail) => Results.Problem(detail, statusCode: StatusCodes.Status400BadRequest);
 }

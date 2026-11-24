@@ -10,6 +10,7 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       Storage__DatabasePath: "/data/kobononogram.db"
       CatalogRefresh__Enabled: "true" # Refresh on first startup and weekly thereafter.
+      HashiGeneration__Enabled: "true" # Replenish verified local Hashi stock in the background.
 
       # The server imports black-and-white puzzles with a unique solution and no blotted clues.
       WebPbn__MinArea: "1225" # Total cells.

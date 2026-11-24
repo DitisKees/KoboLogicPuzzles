@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <time.h>
 
 #include "puzzles.h"
@@ -35,6 +36,22 @@ static long peak_rss_kib(void)
     return peak;
 }
 
+static void limit_resources(void)
+{
+    const rlim_t memory_bytes = 128UL * 1024 * 1024;
+    struct rlimit address_space;
+    if (getrlimit(RLIMIT_AS, &address_space) != 0)
+        fatal("Failed to read the address space limit");
+    if (address_space.rlim_cur > memory_bytes) {
+        address_space.rlim_cur = memory_bytes;
+        if (setrlimit(RLIMIT_AS, &address_space) != 0)
+            fatal("Failed to limit the address space");
+    }
+    struct rlimit core_size = { 0, 0 };
+    if (setrlimit(RLIMIT_CORE, &core_size) != 0)
+        fatal("Failed to disable core dumps");
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 6) {
@@ -53,6 +70,7 @@ int main(int argc, char **argv)
         return 2;
     }
 
+    limit_resources();
     char encoded[64];
     snprintf(encoded, sizeof encoded, "%dx%di%de%dm2d%d", size, size, density, expansion, difficulty);
     game_params *params = thegame.default_params();

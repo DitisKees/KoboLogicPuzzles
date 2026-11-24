@@ -173,7 +173,7 @@ public sealed class ApiTests
         Assert.Equal("#x....", Assert.Single(database.Store.RestoreProgress()).Progress.Marks);
     }
 
-    private static WebApplication CreateApp(TestDatabase database, WebPbnClient source)
+    internal static WebApplication CreateApp(TestDatabase database, WebPbnClient source)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
