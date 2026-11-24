@@ -15,6 +15,9 @@ public static class Server
             provider.GetRequiredService<IConfiguration>()["Storage:DatabasePath"] ?? "data/kobononogram.db"));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<PuzzleLibrary>();
+        services.AddSingleton<IPuzzleProvider, WebPbnPuzzleProvider>();
+        services.AddSingleton<IPuzzleProvider, LocalHashiPuzzleProvider>();
+        services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<ProgressBackup>();
         if (builder.Configuration.GetValue("CatalogRefresh:Enabled", true))
             services.AddHostedService<CatalogRefreshWorker>();
@@ -92,6 +95,15 @@ public static class Server
         });
 
         api.MapGet("/restore", (PuzzleStore store) => store.RestoreProgress());
+
+        app.MapGet("/api/v2/puzzles/{id}", async (string id, bool? includeSolution, PuzzleProviders providers,
+            CancellationToken cancellationToken) =>
+        {
+            if (!PuzzleId.TryParse(id, out var puzzleId))
+                return BadRequest("Supply a namespaced puzzle ID such as nonogram-webpbn-12 or hashi-local-<content hash>.");
+            var definition = await providers.GetDefinitionAsync(puzzleId, includeSolution == true, cancellationToken);
+            return definition is null ? Results.NotFound() : Results.Ok(definition);
+        });
     }
 
     private static IResult BadRequest(string detail) => Results.Problem(detail, statusCode: StatusCodes.Status400BadRequest);

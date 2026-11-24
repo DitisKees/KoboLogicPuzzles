@@ -4,8 +4,9 @@ using Microsoft.Data.Sqlite;
 
 namespace KoboNonogram.Server;
 
-public sealed class PuzzleStore(string databasePath)
+public sealed partial class PuzzleStore(string databasePath)
 {
+    private const int SchemaVersion = 1;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -21,8 +22,22 @@ public sealed class PuzzleStore(string databasePath)
         command.CommandText = "PRAGMA journal_mode = WAL";
         command.ExecuteNonQuery();
 
-        using var transaction = connection.BeginTransaction();
+        using var transaction = connection.BeginTransaction(deferred: false);
         command.Transaction = transaction;
+        command.CommandText = "PRAGMA user_version";
+        var version = (long)command.ExecuteScalar()!;
+        if (version > SchemaVersion)
+            throw new InvalidOperationException($"Database schema {version} is newer than the supported schema {SchemaVersion}.");
+        if (version == 0)
+        {
+            command.CommandText = """
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'table' AND name IN ('catalog', 'puzzles', 'progress') LIMIT 1
+                """;
+            if (command.ExecuteScalar() is not null)
+                BackupBeforeHashi();
+        }
+
         command.CommandText = "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'puzzle_metadata'";
         var needsMetadata = command.ExecuteScalar() is null;
         command.CommandText = """
@@ -60,7 +75,34 @@ public sealed class PuzzleStore(string databasePath)
             command.CommandText = "UPDATE catalog_refresh SET completed_at = NULL";
             command.ExecuteNonQuery();
         }
+        if (version == 0)
+            InitializeHashiSchema(command);
         transaction.Commit();
+    }
+
+    private void BackupBeforeHashi()
+    {
+        var backupPath = Path.GetFullPath(databasePath) + ".before-hashi";
+        var temporaryPath = backupPath + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            // The migration connection holds the writer lock. A separate connection reads the committed snapshot.
+            using (var source = Open())
+            using (var backup = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = temporaryPath,
+                Pooling = false,
+            }.ToString()))
+            {
+                backup.Open();
+                source.BackupDatabase(backup);
+            }
+            File.Move(temporaryPath, backupPath, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
     }
 
     public CatalogRefreshState GetCatalogRefreshState()

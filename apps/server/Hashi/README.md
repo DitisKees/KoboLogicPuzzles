@@ -38,3 +38,9 @@ docker run --rm --network none --entrypoint /app/hashi/bridgegen \
 - Request upstream difficulty 2, expansion 10%, and densities of 10% and 20% with fresh seeds. Require at least 25 islands and at least 4% actual density, rounded up. The default stock counts in the table apply this floor, deduplicate by content hash, and select hard or expert boards solved with basic or advanced logic.
 - Run one candidate at a time in the background. Start with configurable three-minute budgets per stage and a 128 MiB address-space limit for the native helper. Terminate and reap the helper on timeout or worker shutdown.
 - Rotate among sizes with a stock shortfall. Allow up to three attempts per size per replenishment cycle, then report the shortfall and retry in a later cycle. Store the verified definition and solution with the seed, settings, and versions so stored puzzles never depend on regeneration.
+
+## Database upgrade and rollback
+
+Keep `Storage__DatabasePath=/data/kobononogram.db` and mount the existing server volume at `/data`. The standard Compose deployment calls this volume `kobo-nonogram-data`. Schema 1 adds `hashi_puzzles` and `hashi_progress` in one transaction and preserves existing Nonogram tables, integer IDs, and refresh state. The first startup against a legacy database writes a consistent SQLite snapshot beside it as `kobononogram.db.before-hashi`, then commits the new schema. Subsequent starts reuse schema 1.
+
+Stop the old server and keep a separate backup of the volume and the old image reference before upgrading. Before normal use, check that v1 restore still returns your saved boards. If you need to restore the snapshot, stop the server, archive the upgraded database and its WAL and shared-memory files together, and install a copy of `kobononogram.db.before-hashi` at `/data/kobononogram.db`. Preserve the container user’s access to the file and restart the old image on the same volume.

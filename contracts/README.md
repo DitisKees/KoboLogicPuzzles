@@ -1,4 +1,6 @@
-# Puzzle and progress API v1
+# Puzzle and progress API
+
+## Version 1
 
 The server and clients exchange JSON over HTTP under `/api/v1`. WebPBN puzzle IDs are positive integers and identify both puzzle definitions and saves. The server keeps cached puzzle definitions for restore.
 
@@ -38,3 +40,16 @@ A progress request carries one mark per cell in row-major order. `.` is blank, `
 ```
 
 On a clean installation, retrieve `/restore` before sending progress. During regular sync, upload edited boards before asking the server to top up the queue. Record the last backup time when the progress endpoint acknowledges the write. A later queue failure can be retried independently. Requests that fail validation return `400`. Upstream download failures return `502` or `504` and can be retried.
+
+## Version 2 puzzle definitions
+
+`GET /api/v2/puzzles/{id}` returns `game`, `schemaVersion` (currently 1), `id`, `width`, `height`, and game-specific fields. IDs are canonical and case-sensitive. A malformed ID returns `400`. An unavailable puzzle returns `404`. Pass `includeSolution=true` to request a solution.
+
+| Game | ID format | Definition fields |
+| --- | --- | --- |
+| `nonogram` | `nonogram-webpbn-12` for WebPBN ID 12 | `title`, `author`, `rowClues`, `columnClues`, and optional WebPBN `metadata`. The requested `solution`, when available, uses the v1 row-major string. |
+| `hashi` | `hashi-local-` followed by the 64-character lowercase SHA-256 of the canonical clue layout | `islands` contains `{ x, y, clue }` objects. `edges` contains `{ first, second }` pairs of island indices. The requested `solution` is an array of counts aligned with `edges`. |
+
+Hashi coordinates and array indices start at zero. Island indices follow `(x, y)` order and edges follow `(first, second)` order. An edge joins the nearest islands in one row or column. Hashi `metadata` carries `islandCount`, `actualDensity` as a percentage, `solvability`, and `difficulty` and `difficultyScore` when rated.
+
+The installed KOReader plugin uses v1 for catalog, queue, and sync.

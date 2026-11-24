@@ -11,6 +11,51 @@ namespace KoboNonogram.Server.Tests;
 public sealed class ApiTests
 {
     [Fact]
+    public async Task V2DefinitionsUseTypedIdsAndOptionalSolutionsForBothGames()
+    {
+        using var database = new TestDatabase();
+        database.Store.CachePuzzle(TestData.Puzzle(12) with { Solution = "#.#.##", Metadata = new PuzzleMetadata(4, 5, 2) });
+        var hashi = TestData.VerifyHashi(TestData.HashiPair());
+        Assert.True(database.Store.SaveHashiPuzzle(hashi));
+        var hashiId = PuzzleId.FromHashi(hashi.Puzzle.ContentHash);
+
+        using var source = TestData.Source(_ => throw new InvalidOperationException("Unexpected upstream call."));
+        await using var app = CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+
+        var nonogram = await http.GetFromJsonAsync<JsonElement>("/api/v2/puzzles/nonogram-webpbn-12");
+        Assert.Equal("nonogram", nonogram.GetProperty("game").GetString());
+        Assert.Equal("nonogram-webpbn-12", nonogram.GetProperty("id").GetString());
+        Assert.Equal(1, nonogram.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, nonogram.GetProperty("rowClues").GetArrayLength());
+        Assert.Equal(4, nonogram.GetProperty("metadata").GetProperty("difficulty").GetDecimal());
+        Assert.False(nonogram.TryGetProperty("solution", out _));
+        var nonogramWithSolution = await http.GetFromJsonAsync<JsonElement>("/api/v2/puzzles/nonogram-webpbn-12?includeSolution=true");
+        Assert.Equal("#.#.##", nonogramWithSolution.GetProperty("solution").GetString());
+
+        var puzzle = await http.GetFromJsonAsync<JsonElement>($"/api/v2/puzzles/{hashiId}");
+        Assert.Equal("hashi", puzzle.GetProperty("game").GetString());
+        Assert.Equal(hashiId.Value, puzzle.GetProperty("id").GetString());
+        Assert.Equal(1, puzzle.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(20, puzzle.GetProperty("width").GetInt32());
+        Assert.Equal(2, puzzle.GetProperty("islands").GetArrayLength());
+        var edge = Assert.Single(puzzle.GetProperty("edges").EnumerateArray());
+        Assert.Equal(0, edge.GetProperty("first").GetInt32());
+        Assert.Equal(1, edge.GetProperty("second").GetInt32());
+        Assert.Equal("basic_logic", puzzle.GetProperty("metadata").GetProperty("solvability").GetString());
+        Assert.False(puzzle.TryGetProperty("solution", out _));
+        var hashiWithSolution = await http.GetFromJsonAsync<JsonElement>($"/api/v2/puzzles/{hashiId}?includeSolution=true");
+        Assert.Equal(1, Assert.Single(hashiWithSolution.GetProperty("solution").EnumerateArray()).GetInt32());
+
+        Assert.Equal(12, (await http.GetFromJsonAsync<PuzzleDefinition>("/api/v1/puzzles/12"))?.Id);
+        using var invalid = await http.GetAsync("/api/v2/puzzles/12");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var missing = await http.GetAsync($"/api/v2/puzzles/hashi-local-{new string('b', 64)}");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task DownloadsAndBacksUpPartialBoardThenRestoresAfterRestart()
     {
         using var database = new TestDatabase();

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using KoboNonogram.Server;
+using KoboNonogram.Server.Hashi;
 using Microsoft.Data.Sqlite;
 
 namespace KoboNonogram.Server.Tests;
@@ -10,6 +11,21 @@ internal static class TestData
     public static PuzzleDefinition Puzzle(int id) => new(id, $"Puzzle {id}", "Tess", 3, 2, [[1, 1], [2]], [[1], [1], [2]]);
 
     public static PuzzleSummary Summary(int id, int width = 3, int height = 2) => new(id, $"Puzzle {id}", "Tess", width, height);
+
+    public static HashiCandidate HashiPair(int row = 0, int count = 1)
+    {
+        var description = Enumerable.Repeat('a', 400).ToArray();
+        description[row * 20] = description[row * 20 + 4] = (char)('0' + count);
+        return HashiCandidate.ParseBridges(20, new string(description), $"S;L0,{row},4,{row},{count}");
+    }
+
+    public static VerifiedHashiPuzzle VerifyHashi(HashiCandidate candidate, string seed = "00000001")
+    {
+        var (validation, puzzle) = VerifiedHashiPuzzle.Verify(candidate, new HashiGenerationParameters(seed, 10, 10, 2),
+            TimeSpan.FromMinutes(3), new DateTimeOffset(2026, 11, 24, 11, 0, 0, TimeSpan.Zero));
+        Assert.Equal(HashiValidationStatus.Unique, validation.Status);
+        return Assert.IsType<VerifiedHashiPuzzle>(puzzle);
+    }
 
     public static string Export(int id) => $$"""
         <?xml version="1.0"?>
@@ -72,10 +88,11 @@ internal sealed class TestDatabase : IDisposable
     public string Path => System.IO.Path.Combine(directory.FullName, "test.db");
     public PuzzleStore Store { get; }
 
-    public TestDatabase()
+    public TestDatabase(bool initialize = true)
     {
         Store = new PuzzleStore(Path);
-        Store.Initialize();
+        if (initialize)
+            Store.Initialize();
     }
 
     public void SeedCatalog(IEnumerable<PuzzleSummary> puzzles, DateTimeOffset? completedAt = null) =>

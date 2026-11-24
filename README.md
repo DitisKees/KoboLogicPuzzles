@@ -92,6 +92,8 @@ Keep puzzle definitions and progress in persistent storage on the home server so
 
 Verify recovery by saving a partially solved puzzle with fills and crosses, syncing it, then restoring into clean app data. Reopen the restored board and continue playing offline.
 
+The Hashi storage upgrade uses the existing server volume and database path. [Database upgrade and rollback](apps/server/Hashi/README.md#database-upgrade-and-rollback)
+
 ## Future Android and web play
 
 An Android app or web player can use the same puzzle IDs, catalog, and versioned save format. The Kobo is the only device that edits progress in the first release. When a second client can edit, add per-puzzle revision checks and preserve both versions if the same board was edited on two devices while offline.
