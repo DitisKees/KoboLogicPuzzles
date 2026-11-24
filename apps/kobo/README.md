@@ -7,6 +7,8 @@
 3. Open **Tools → Kobo Nonogram → Settings → Home server URL**. Enter the server’s HTTP address on your home network, for example `http://192.168.1.10:8080`.
 4. Choose **Sync now**. On a fresh installation, the app restores any backed-up boards and then downloads puzzles. You can also choose an individual puzzle under **Browse server catalog**.
 
+The multi-game build requires a home server with API v2 for catalog browsing and sync. In the library, choose **Game → Check for Hashi** to discover Hashi on the server. Once Hashi puzzles are cached, you can switch to their library offline.
+
 For a tested build, download `kobononogram.koplugin.zip` under **Artifacts** on a successful run. Extract the ZIP and use its `kobononogram.koplugin` folder in step 2. [Build KOReader plugin workflow](https://github.com/DitisKees/KoboNonogram/actions/workflows/kobo-plugin.yml)
 
 See the [home server setup](../../README.md#running-the-home-server) for running the .NET server and the [API contract](../../contracts/README.md) for how the client exchanges puzzle and progress data.
@@ -25,7 +27,7 @@ Bump `version` in `kobononogram.koplugin/_meta.lua` and push or merge the change
 
 The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA store from curl, dated 2026-11-05. The bundle is licensed under MPL 2.0, included beside it. [CA bundle source](https://curl.se/docs/caextract.html)
 
-## Play large boards
+## Play Nonogram
 
 - Choose **Fill**, **Cross**, **Clear**, or **Cycle**. Tap a cell or drag along a row or column to apply the mark. In **Cycle** mode, taps fill, cross, then clear the cell. A drag applies the starting cell’s next mark along the line. In **Fill** or **Cross** mode, starting on a cell with the selected mark erases the run. Hold the drag at the edge of the grid to keep marking as it scrolls. **Undo** and **Redo** apply to the whole drag.
 - Drag in **Pan** mode or start a drag in a clue gutter to move the visible grid. On devices with multitouch, a two-finger drag pans in any mode. **Overview** shows the full board. Tap it to jump to an area. Use **−** and **+** to change cell size.
@@ -34,9 +36,16 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 - Tap **Check** to compare filled and crossed cells with the known solution, when available. It reports how many marks disagree without revealing their locations. For a puzzle downloaded before solution support was added, the first check needs the updated home server and network access to look for the solution. Subsequent checks work offline once the solution is cached.
 - Marks and the viewport save locally as you play. The library shows the percentage of cells filled or crossed and a miniature of your marks for started and solved puzzles. It lists in-progress puzzles first. The game marks a board solved when the filled cells satisfy both sets of clues.
 
+## Play Hashi
+
+- Select **Bridge**, tap a numbered island, then tap its nearest neighbor in the same row or column. Repeat taps on that neighbor to cycle through one bridge, two bridges, and zero bridges. Tap the selected island or an empty cell to deselect it. **No bridge** toggles a crossed-out candidate, and **Clear** removes either kind of mark.
+- A thick ring means the island has the right number of bridges. A white number on a black island means it has too many. Bridges cannot cross. To solve the puzzle, match every number and connect all islands in one network. The optional dotted guides show candidates around the selected island. Toggle them in **Hashi settings → Candidate bridges**.
+- Drag to pan. Use **−** and **+** to change scale, or open **Overview** and tap an area to jump there. The game saves your view and marks as you play. **Undo**, **Redo**, **Checkpoint**, and **Restart** are available offline.
+- **Check** counts decisions that disagree with the stored solution. It leaves the board intact and gives no locations. The library shows the fraction of candidate edges you have marked and a thumbnail of the current board.
+
 ## Backup and offline puzzles
 
-**Sync now** sends changed boards to the home server and tops up your offline queue. Set the target number of unstarted boards under **Settings → Offline queue size**. You can play previously downloaded boards offline, including partially solved boards. The library shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
+**Sync now** backs up changed boards and tops up both available games. Set each game's target under **Settings → Offline queue size**. **Catalog and queue filters** set each game's size, difficulty, and solvability preferences. Sync reports open queue slots when the server has fewer matching puzzles available. Downloaded boards remain playable offline. The library shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
 
 On a clean KOReader installation, install the plugin, enter the same server URL, and choose **Sync now** to restore your boards. Local settings and board files live in the `kobononogram/` folder in KOReader’s data directory.
 

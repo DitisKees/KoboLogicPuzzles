@@ -82,4 +82,4 @@ Send `schemaVersion: 1` and a `boards` array to `/progress`. Each board supplies
 
 Each restored progress object carries `puzzleId`, `schemaVersion`, `marks`, `completed`, and `backedUpAt`. Restore uses one consistent database snapshot across both games. Restore before the first upload, and keep local edits pending until the server acknowledges the batch. Top up after sending changes so the server can exclude played boards.
 
-The installed KOReader plugin uses v1 for catalog, queue, and sync.
+The original Kobo Nonogram release uses v1. The multi-game KOReader build checks v2 capabilities before catalog browsing or sync and uses the advertised games.

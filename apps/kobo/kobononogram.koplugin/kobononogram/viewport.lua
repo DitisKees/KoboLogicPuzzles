@@ -38,8 +38,11 @@ function Viewport:new(width, height, puzzle, zoom, clueLimit)
     -- Preserve room for at least four grid cells where the screen allows it.
     local maxLeft = math.max(1, math.floor((availableW - math.min(4, puzzle.width) * cell) / step))
     local maxTop = math.max(1, math.floor((availableH - math.min(4, puzzle.height) * cell) / step))
-    local leftSlots, leftEllipsis = clueSlots(puzzle.rowClues, clueLimit, maxLeft)
-    local topSlots, topEllipsis = clueSlots(puzzle.columnClues, clueLimit, maxTop)
+    local leftSlots, leftEllipsis, topSlots, topEllipsis = 0, false, 0, false
+    if puzzle.game ~= "hashi" then
+        leftSlots, leftEllipsis = clueSlots(puzzle.rowClues, clueLimit, maxLeft)
+        topSlots, topEllipsis = clueSlots(puzzle.columnClues, clueLimit, maxTop)
+    end
     local gridX, gridY = pad + leftSlots * step, headerY + topSlots * step
     local columns = clamp(math.floor((availableW - leftSlots * step) / cell), 1, puzzle.width)
     local rows = clamp(math.floor((availableH - topSlots * step) / cell), 1, puzzle.height)

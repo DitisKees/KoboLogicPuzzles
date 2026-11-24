@@ -38,6 +38,7 @@ local function text(bb, value, face, region, color, leading, strike)
         bb:paintRect(x, region.y + math.floor(region.h / 2), size.x, 2, color)
     end
 end
+Game.paintText = text
 
 function CluePanel:init()
     self.lineHeight = screen:scaleBySize(23)
@@ -75,7 +76,7 @@ function CluePanel:paintTo(bb, x, y)
 end
 
 function Game:init()
-    self.mode = "fill"
+    self.mode = self.defaultMode or "fill"
     self.row = math.max(1, math.floor(tonumber(self.record.row) or 1))
     self.column = math.max(1, math.floor(tonumber(self.record.column) or 1))
     self.zoom = math.max(Viewport.minZoom, math.min(Viewport.maxZoom,
@@ -124,8 +125,9 @@ function Game:resize()
             self.buttons[action] = rectangle(x, y, math.floor(i * step) - x, button)
         end
     end
-    row({ "fill", "cross", "clear", "cycle", "pan" }, layout.footerY)
-    row({ "undo", "redo", "minus", "plus", "clues", "check" }, layout.footerY + button + pad)
+    row(self.buttonRows and self.buttonRows[1] or { "fill", "cross", "clear", "cycle", "pan" }, layout.footerY)
+    row(self.buttonRows and self.buttonRows[2] or { "undo", "redo", "minus", "plus", "clues", "check" },
+        layout.footerY + button + pad)
 end
 
 function Game:paintButtons(bb, frame, full)
@@ -137,7 +139,7 @@ function Game:paintButtons(bb, frame, full)
             or (action == "plus" and self.zoom == Viewport.maxZoom)
         local state = active and "active" or disabled and "disabled" or "enabled"
         if full or frame.buttons[action] ~= state then
-            local label = labels[action]
+            local label = (self.buttonLabels and self.buttonLabels[action]) or labels[action]
                 or (action == "library" and "Library" or (self.overview and "Grid" or "Overview"))
             local color = active and BB.COLOR_WHITE or (disabled and BB.COLOR_GRAY_7 or BB.COLOR_BLACK)
             bb:paintRect(region.x, region.y, region.w, region.h, active and BB.COLOR_BLACK or BB.COLOR_WHITE)

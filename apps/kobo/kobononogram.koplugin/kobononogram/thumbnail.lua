@@ -1,4 +1,6 @@
 local BB = require("ffi/blitbuffer")
+local Hashi = require("kobononogram/hashiboard")
+local HashiRender = require("kobononogram/hashirender")
 local RenderImage = require("ui/renderimage")
 local Widget = require("ui/widget/widget")
 
@@ -7,6 +9,15 @@ local colors = { [string.byte("#")] = BB.COLOR_BLACK, [string.byte("x")] = BB.CO
 
 function Thumbnail:render()
     local puzzle, marks = self.record.puzzle, self.record.marks
+    if puzzle.game == "hashi" then
+        local size = self.dimen.w - 2
+        local cell = math.max(1, math.floor(size / puzzle.width))
+        local width, height = puzzle.width * cell, puzzle.height * cell
+        local source = BB.new(width, height, BB.TYPE_BB8)
+        HashiRender.paint(source, Hashi:new(puzzle, marks), 0, 0, cell, { x = 0, y = 0, w = width, h = height })
+        self.preview = width <= size and source or RenderImage:scaleBlitBuffer(source, size, size)
+        return
+    end
     local source = BB.new(puzzle.width, puzzle.height, BB.TYPE_BB8)
     source:fill(BB.COLOR_WHITE)
     for index = 0, #marks - 1 do

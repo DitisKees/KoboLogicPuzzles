@@ -6,25 +6,27 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local Menu = require("ui/widget/menu")
+local Puzzle = require("kobononogram/puzzle")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local Thumbnail = require("kobononogram/thumbnail")
 local VerticalGroup = require("ui/widget/verticalgroup")
 
 local PuzzleMenu = Menu:extend{ modal = true, items_per_page = 10, single_line = true }
-local solvability = {
-    "Trivial", "Line logic", "Moderate lookahead", "Deep lookahead", "Some guessing", "Much guessing",
-}
-
 local function rating(value)
     if type(value) == "number" and value >= 1 and value <= 5 then return value .. "/5" end
     return "–"
 end
 
-function PuzzleMenu.details(metadata)
+function PuzzleMenu.details(metadata, game)
     metadata = type(metadata) == "table" and metadata or {}
+    if game == "hashi" then
+        return (Puzzle.difficultyNames[metadata.difficulty] or "Difficulty unknown") .. " · "
+            .. (Puzzle.hashiSolvabilityNames[metadata.solvability] or "Solvability unknown")
+    end
     return string.format("Difficulty %s · Quality %s · %s",
-        rating(metadata.difficulty), rating(metadata.quality), solvability[metadata.solvability] or "Solvability unknown")
+        rating(metadata.difficulty), rating(metadata.quality),
+        Puzzle.nonogramSolvabilityNames[metadata.solvability] or "Solvability unknown")
 end
 
 function PuzzleMenu:onMenuSelect(item)

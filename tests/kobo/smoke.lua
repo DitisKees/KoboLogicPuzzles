@@ -13,7 +13,10 @@ require("ui/bidi").setup()
 package.path = pluginRoot .. "/?.lua;" .. package.path
 
 local Board = require("kobononogram/board")
+local API = require("kobononogram/api")
 local Geom = require("ui/geometry")
+local Hashi = require("kobononogram/hashiboard")
+local Puzzle = require("kobononogram/puzzle")
 local Store = require("kobononogram/store")
 local Sync = require("kobononogram/sync")
 local UI = require("ui/uimanager")
@@ -24,6 +27,193 @@ local Viewport = require("kobononogram/viewport")
 local function smallPuzzle(id)
     return { id = id, title = "Bricks & Steps", author = "Sample", width = 3, height = 2,
         rowClues = { { 1, 1 }, { 2 } }, columnClues = { { 1 }, { 1 }, { 2 } } }
+end
+
+local function wireNonogram(id)
+    local puzzle = smallPuzzle(id)
+    puzzle.id, puzzle.game, puzzle.schemaVersion = "nonogram-webpbn-" .. id, "nonogram", 1
+    return puzzle
+end
+
+local function hashiFixture(size, suffix, points, usesEdge)
+    local puzzle = { id = "hashi-local-" .. string.rep(suffix, 64), game = "hashi", schemaVersion = 1,
+        width = size, height = size, islands = {}, edges = {}, solution = {},
+        metadata = { difficulty = "hard", solvability = "advanced_logic" } }
+    for _, p in ipairs(points) do
+        puzzle.islands[#puzzle.islands + 1] = { x = p[1], y = p[2], clue = 0 }
+    end
+    for first, a in ipairs(puzzle.islands) do
+        local horizontal, vertical = false, false
+        for second = first + 1, #puzzle.islands do
+            local b = puzzle.islands[second]
+            if (a.y == b.y and not horizontal) or (a.x == b.x and not vertical) then
+                horizontal, vertical = horizontal or a.y == b.y, vertical or a.x == b.x
+                local count = usesEdge(a, b) and 1 or 0
+                puzzle.edges[#puzzle.edges + 1] = { first = first - 1, second = second - 1 }
+                puzzle.solution[#puzzle.solution + 1] = count
+                a.clue, b.clue = a.clue + count, b.clue + count
+            end
+        end
+    end
+    assert(Hashi.validPuzzle(puzzle))
+    return puzzle
+end
+
+local function hashiSquare(suffix)
+    return hashiFixture(20, suffix, {{0,0}, {0,4}, {4,0}, {4,4}}, function() return true end)
+end
+
+local function testHashiRules()
+    local puzzle = hashiSquare("a")
+    local board = Hashi:new(puzzle, "2..2")
+    assert(board.degreesMatch and not board:isComplete())
+    assert(not Hashi.validMarks(puzzle, "2..2", true))
+    assert(board:restart() and board:marks() == "...." and board:undoStroke() and board:marks() == "2..2")
+    assert(board:restoreCheckpoint("1111") and board:isComplete() and board:checkSolution() == 0)
+    assert(board:edit(1, 2, "noBridge") and board:marks() == "x111" and board:checkSolution() == 1)
+    assert(board:edit(1, 2, "clear") and board:marks() == ".111" and board:checkSolution() == 0)
+    assert(not board:edit(1, 4, "bridge"))
+    local bad = Hashi.encodeMarks("1x..")
+    assert(Hashi.decodeMarks(puzzle, bad, false) == "1x..")
+    bad[2].edge = bad[1].edge
+    assert(not Hashi.decodeMarks(puzzle, bad, false))
+
+    puzzle = hashiFixture(20, "b", {{0,0}, {0,2}, {0,4}, {2,0}, {2,4}, {4,0}, {4,2}, {4,4}},
+        function(a, b) return (a.x == b.x and a.x ~= 2) or (a.y == b.y and a.y ~= 2) end)
+    board = Hashi:new(puzzle)
+    assert(board:edit(2, 7, "bridge"))
+    local unchanged = board:marks()
+    local changes, err = board:edit(4, 5, "bridge")
+    assert(not changes and err and board:marks() == unchanged and #board.undo == 1)
+    assert(not board:edit(1, 3, "bridge"))
+    puzzle.edges[1].second = 2
+    assert(not Hashi.validPuzzle(puzzle))
+end
+
+local function testHashiSync()
+    local root = home .. "/mixed-sync"
+    local store = assert(Store.open(root))
+    local games = assert(API.capabilities(function()
+        return { apiVersion = 2, schemaVersion = 1, games = { "nonogram", "hashi" } }
+    end))
+    local old, upgrade = API.capabilities(function() return nil, "Not found", 404 end)
+    assert(not old and upgrade:find("Update the home server", 1, true))
+    local nonogramOnly = assert(API.capabilities(function()
+        return { apiVersion = 2, schemaVersion = 1, games = { "nonogram" } }
+    end))
+
+    assert(store:updateSettings({ server = "http://example.test:8080", restoredServer = "http://example.test:8080",
+        target = 1, hashiTarget = 3, lastGame = "hashi" }))
+    assert(store:setFilters("hashi", { width = 20, height = 20, difficulty = "hard", solvability = "advanced_logic" }))
+    assert(store:setFilters("nonogram", { width = 3 }))
+    local localHashi, savedHashi, queuedHashi = hashiSquare("c"), hashiSquare("d"), hashiSquare("e")
+    assert(store:download(smallPuzzle(7)) and store:download(localHashi))
+    local view = { row = 3, column = 4, zoom = 3 }
+    local board = Hashi:new(localHashi, "x...")
+    assert(store:saveGame(board, view, true) and store:saveCheckpoint(board))
+    board = Board:new(store.records[7].puzzle, "#x....")
+    assert(store:saveGame(board, view, true) and store:saveCheckpoint(board))
+    assert(io.open(root .. "/7.json", "rb")):close()
+    local stamp = "2026-11-22T10:00:00+00:00"
+    local result, err = Sync.run(store, function(_, path)
+        if path == "/restore" then
+            return {{ puzzle = savedHashi, progress = { schemaVersion = 1, puzzleId = savedHashi.id,
+                marks = Hashi.encodeMarks("1111"), completed = true, backedUpAt = stamp } }}
+        end
+        assert(path == "/progress")
+        return nil, "Connection interrupted"
+    end, games)
+    assert(err == "Connection interrupted" and result.restored == 1)
+    store = assert(Store.open(root))
+    assert(store.records[localHashi.id].dirty and store.records[7].dirty)
+    assert(store.records[localHashi.id].checkpoint == "x..." and store.records[7].checkpoint == "#x....")
+    assert(store.records[localHashi.id].column == view.column and store.records[7].row == view.row)
+    assert(store.records[savedHashi.id].completed and store.settings.lastBackup == stamp)
+    local uploaded, queues = {}, {}
+    result, err = Sync.run(store, function(_, path, payload)
+        if path == "/progress" then
+            for _, upload in ipairs(payload.boards) do uploaded[upload.puzzleId] = upload end
+            return { savedCount = 2, backedUpAt = stamp }
+        end
+        assert(path == "/offline-queue")
+        queues[payload.game] = payload
+        if payload.game == "hashi" then return { puzzles = { queuedHashi }, remaining = 2 } end
+        return { puzzles = { wireNonogram(8) }, remaining = 0 }
+    end, games)
+    assert(not err and result.backedUp == 2 and result.added == 2 and result.shortfalls.hashi == 2)
+    assert(uploaded["nonogram-webpbn-7"].marks == "#x....")
+    assert(uploaded[localHashi.id].marks[1].noBridge and uploaded[localHashi.id].marks[1].edge == 0)
+    assert(queues.nonogram.targetCount == 1 and queues.nonogram.width == 3 and not queues.nonogram.difficulty)
+    assert(queues.hashi.targetCount == 3 and queues.hashi.width == 20 and queues.hashi.height == 20
+        and queues.hashi.difficulty == "hard" and queues.hashi.solvability == "advanced_logic")
+    assert(#queues.nonogram.excludedPuzzleIds == 1 and #queues.hashi.excludedPuzzleIds == 2)
+    store = assert(Store.open(root))
+    assert(store.settings.lastGame == "hashi" and #store:list("hashi") == 3 and #store:list("nonogram") == 2)
+    assert(not store.records[7].dirty and not store.records[localHashi.id].dirty)
+    assert(store:saveGame(Hashi:new(localHashi, "...."), view, true))
+    result, err = Sync.run(store, function() error("An unsupported game was sent to the server") end, nonogramOnly)
+    assert(not err and result.pending == 1 and store.records[localHashi.id].dirty)
+
+    store = assert(Store.open(home .. "/fresh-restore"))
+    assert(store:updateSettings({ server = "http://example.test:8080", target = 0, hashiTarget = 0 }))
+    result, err = Sync.run(store, function(_, path)
+        assert(path == "/restore")
+        return {
+            { puzzle = wireNonogram(7), progress = { schemaVersion = 1, puzzleId = "nonogram-webpbn-7",
+                marks = "#x....", completed = false } },
+            { puzzle = localHashi, progress = { schemaVersion = 1, puzzleId = localHashi.id,
+                marks = Hashi.encodeMarks("x..."), completed = false } },
+        }
+    end, games)
+    assert(not err and result.restored == 2 and result.backedUp == 0)
+    store = assert(Store.open(store.root))
+    assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
+end
+
+local function testApiTransport()
+    local http = require("socket.http")
+    local json = require("json")
+    local socket = require("socket")
+    local trapper = require("ui/trapper")
+    local originalRequest = http.request
+    local server = "http://example.test:8080"
+    http.request = function(options)
+        local prefix = server .. "/api/v2"
+        assert(options.url:sub(1, #prefix) == prefix)
+        local path = options.url:sub(#prefix + 1)
+        local reply
+        if path == "/puzzles?game=hashi" then
+            reply = '{"puzzles":[],"nextBeforeId":null}'
+        elseif path == "/restore" then
+            reply = "[]"
+        else
+            assert(path == "/progress" and options.method == "POST")
+            local payload = json.decode(assert(options.source()))
+            assert(payload.boards[1].puzzleId == "hashi-local-" .. string.rep("a", 64))
+            assert(json.util.IsArray(payload.boards[1].marks))
+            reply = '{"savedCount":1,"backedUpAt":"2026-11-22T10:00:00Z"}'
+        end
+        options.sink(reply)
+        return 1, 200
+    end
+    local passed, failure
+    trapper:wrap(function()
+        passed, failure = pcall(function()
+            local page = assert(API.request(server, "GET", "/puzzles?game=hashi"))
+            assert(page.nextBeforeId == nil and #page.puzzles == 0)
+            assert(#assert(API.request(server, "GET", "/restore")) == 0)
+            local receipt = assert(API.request(server, "POST", "/progress", { schemaVersion = 1,
+                boards = { Puzzle.encodeProgress({ puzzleId = hashiSquare("a").id, marks = "....", completed = false }) } }))
+            assert(receipt.savedCount == 1)
+        end)
+    end)
+    for _ = 1, 160 do
+        if passed ~= nil then break end
+        UI:_checkTasks()
+        socket.sleep(0.025)
+    end
+    http.request = originalRequest
+    assert(passed, failure or "API subprocess did not return")
 end
 
 local function testBoard()
@@ -121,22 +311,24 @@ local function testSync()
     assert(store:saveGame(board, { row = 1, column = 1, zoom = 2 }, true))
     local stamp = "2026-11-21T10:00:00+00:00"
     local calls = {}
+    local games = { nonogram = true }
     local result, err = Sync.run(store, function(method, path, payload)
         calls[#calls + 1] = method .. " " .. path
         if path == "/restore" then
             return {
-                { puzzle = smallPuzzle(1), progress = { puzzleId = 1, marks = "......", completed = false } },
-                { puzzle = smallPuzzle(3), progress = { puzzleId = 3, marks = "x.#...", completed = false } },
+                { puzzle = wireNonogram(1), progress = { schemaVersion = 1, puzzleId = "nonogram-webpbn-1", marks = "......", completed = false } },
+                { puzzle = wireNonogram(3), progress = { schemaVersion = 1, puzzleId = "nonogram-webpbn-3", marks = "x.#...", completed = false } },
             }
         elseif path == "/progress" then
-            assert(#payload.boards == 1 and payload.boards[1].marks == "#x....")
+            assert(payload.schemaVersion == 1 and #payload.boards == 1
+                and payload.boards[1].puzzleId == "nonogram-webpbn-1" and payload.boards[1].marks == "#x....")
             return { savedCount = 1, backedUpAt = stamp }
         else
             assert(payload.targetCount == 3 and #payload.cachedUnstartedPuzzleIds == 1
-                and payload.cachedUnstartedPuzzleIds[1] == 2)
+                and payload.cachedUnstartedPuzzleIds[1] == "nonogram-webpbn-2")
             return nil, "Temporary queue failure"
         end
-    end)
+    end, games)
     assert(err == "Temporary queue failure" and result.backedUp == 1 and result.restored == 1)
     assert(table.concat(calls, ",") == "GET /restore,POST /progress,POST /offline-queue")
     store = assert(Store.open(root))
@@ -144,8 +336,8 @@ local function testSync()
     assert(store.records[3].marks == "x.#..." and store.settings.lastBackup == stamp)
     result, err = Sync.run(store, function(_, path)
         assert(path == "/offline-queue")
-        return { puzzles = { smallPuzzle(4), smallPuzzle(5) } }
-    end)
+        return { puzzles = { wireNonogram(4), wireNonogram(5) }, remaining = 0 }
+    end, games)
     assert(not err and result.added == 2 and store.records[4] and store.records[5])
 
     assert(store:updateSettings({ target = 30 }))
@@ -155,23 +347,23 @@ local function testSync()
         batches = batches + 1
         if batches == 2 then
             assert(payload.targetCount == 30 and #payload.cachedUnstartedPuzzleIds == 18)
-            return { puzzles = {} }
+            return { puzzles = {}, remaining = 12 }
         end
         assert(payload.targetCount == 18 and #payload.cachedUnstartedPuzzleIds == 3)
         local puzzles = {}
-        for id = 6, 20 do puzzles[#puzzles + 1] = smallPuzzle(id) end
-        return { puzzles = puzzles }
-    end)
-    assert(not err and batches == 2 and result.added == 15)
+        for id = 6, 20 do puzzles[#puzzles + 1] = wireNonogram(id) end
+        return { puzzles = puzzles, remaining = 0 }
+    end, games)
+    assert(not err and batches == 2 and result.added == 15 and result.shortfalls.nonogram == 12)
 
     assert(Sync.refreshMetadata(store, function(method, path)
-        assert(method == "GET" and path:find("^/puzzles/metadata%?") and path:match("[?&]id=1&"))
-        return { ["1"] = { difficulty = 3.75, quality = 4.25, solvability = 3 } }
+        assert(method == "GET" and path:find("^/puzzles/metadata%?") and path:match("[?&]id=nonogram%-webpbn%-1&"))
+        return { ["nonogram-webpbn-1"] = { difficulty = 3.75, quality = 4.25, solvability = 3 } }
     end))
     store = assert(Store.open(root))
     assert(store.records[1].puzzle.metadata.difficulty == 3.75 and store.records[1].marks == "#x....")
     assert(store.records[1].zoom == 2 and not store.records[1].dirty)
-    assert(Sync.refreshMetadata(store, function() return nil, "Not found", 404 end))
+    assert(not Sync.refreshMetadata(store, function() return nil, "Not found", 404 end))
 end
 
 local function squarePuzzle(size)
@@ -472,9 +664,9 @@ local function testGameUI()
     plugin:showLibrary()
     assert(plugin.library and plugin.store)
     local menu = plugin.library
-    menu:onMenuSelect(menu.item_table[3])
+    menu:onMenuSelect(menu.item_table[4])
     local settings = UI:getTopmostVisibleWidget()
-    assert(settings.title == "Kobo Nonogram settings")
+    assert(settings.title == "Nonogram settings")
     local function enterValue(title, value)
         local input
         for widget in UI:topdown_widgets_iter() do
@@ -492,22 +684,22 @@ local function testGameUI()
     enterValue("Home server URL", "http://example.test:8080")
     assert(plugin.store.settings.server == "http://example.test:8080" and UI:getTopmostVisibleWidget() == menu)
     assert(plugin.store.settings.clueLimit == Viewport.defaultClueLimit)
-    menu:onMenuSelect(menu.item_table[3])
-    UI:getTopmostVisibleWidget().buttons[3][1].callback()
+    menu:onMenuSelect(menu.item_table[4])
+    UI:getTopmostVisibleWidget().buttons[4][1].callback()
     enterValue("Clues shown per row or column", "2")
     assert(assert(Store.open(plugin.store.root)).settings.clueLimit == 2)
     local checked
     plugin.checkPluginUpdate = function() checked = true end
-    menu:onMenuSelect(menu.item_table[3])
-    UI:getTopmostVisibleWidget().buttons[4][1].callback()
+    menu:onMenuSelect(menu.item_table[4])
+    UI:getTopmostVisibleWidget().buttons[5][1].callback()
     assert(checked and UI:getTopmostVisibleWidget() == menu)
 
     assert(plugin.store:download(smallPuzzle(1)))
     plugin:showGame(1)
     plugin.online = function(_, operation)
         operation(function(method, path)
-            assert(method == "GET" and path == "/puzzles/1?includeSolution=true")
-            local puzzle = smallPuzzle(1)
+            assert(method == "GET" and path == "/puzzles/nonogram-webpbn-1?includeSolution=true")
+            local puzzle = wireNonogram(1)
             puzzle.solution = "#.#.##"
             return puzzle
         end)
@@ -544,16 +736,16 @@ local function testGameUI()
     plugin:updateLibrary()
     UI:forceRePaint()
     local items = plugin.library.item_table
-    assert(items[4].mandatory == "3×2  16%" and plugin.library.item_group[4].thumbnail.preview)
-    assert(items[5].mandatory == "3×2  0%" and not plugin.library.item_group[5].thumbnail)
-    assert(items[6].mandatory == "3×2  83%  Solved" and plugin.library.item_group[6].thumbnail.preview)
+    assert(items[5].mandatory == "3×2  16%" and plugin.library.item_group[5].thumbnail.preview)
+    assert(items[6].mandatory == "3×2  0%" and not plugin.library.item_group[6].thumbnail)
+    assert(items[7].mandatory == "3×2  83%  Solved" and plugin.library.item_group[7].thumbnail.preview)
     local metadata = { difficulty = 3.75, quality = 4.25, solvability = 3 }
     local details = "Difficulty 3.75/5 · Quality 4.25/5 · Moderate lookahead"
-    assert(items[4].details:find("Solvability unknown", 1, true))
+    assert(items[5].details:find("Solvability unknown", 1, true))
     assert(plugin.store:saveMetadata(1, metadata))
     plugin:updateLibrary()
-    assert(plugin.library.item_table[4].details == details)
-    local libraryRow = plugin.library.item_group[4]
+    assert(plugin.library.item_table[5].details == details)
+    local libraryRow = plugin.library.item_group[5]
     local libraryLines = libraryRow._underline_container[1][1][3]
     assert(libraryLines[2].text == details and not libraryLines[2]:isTruncated())
     assert(libraryLines:getSize().h <= libraryRow.dimen.h)
@@ -562,17 +754,17 @@ local function testGameUI()
         operation(function(method, path)
             assert(method == "GET")
             if path == "/restore" then return {} end
-            assert(path == "/puzzles?limit=25")
-            local puzzle = smallPuzzle(1)
+            assert(path == "/puzzles?limit=25&game=nonogram")
+            local puzzle = wireNonogram(1)
             puzzle.metadata = metadata
-            return { puzzle }
-        end)
+            return { puzzles = { puzzle } }
+        end, { nonogram = true })
     end
     plugin:browse()
     UI:forceRePaint()
-    local catalogRow = plugin.catalog.item_group[1]
+    local catalogRow = plugin.catalog.item_group[2]
     local catalogLines = catalogRow._underline_container[1][1]
-    assert(catalogRow.entry.mandatory == "3×2  Offline")
+    assert(catalogRow.entry.mandatory == "3×2  In progress")
     assert(catalogLines[2].text == details and not catalogLines[2]:isTruncated())
     assert(catalogLines:getSize().h <= catalogRow.dimen.h)
     device.screen.bb:writePNG(home .. "/catalog.png")
@@ -719,15 +911,169 @@ local function testGameUI()
     assert(plugin.game.zoom == Viewport.minZoom)
     plugin.game:onClose()
     UI:forceRePaint()
-    assert(plugin.library.item_table[4].mandatory == "80×80  <1%")
+    assert(plugin.library.item_table[5].mandatory == "80×80  <1%")
     device.screen.bb:writePNG(home .. "/library.png")
+    plugin.library:onClose()
+end
+
+local function testHashiUI()
+    local BB = require("ffi/blitbuffer")
+    local Render = require("kobononogram/hashirender")
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } },
+        store = assert(Store.open(home .. "/hashi-ui")),
+    }
+    local small = hashiSquare("a")
+    local points = {}
+    for x = 0, 49, 3 do
+        for y = 0, 49, 3 do points[#points + 1] = { x, y } end
+    end
+    local large = hashiFixture(50, "f", points, function(a, b) return a.y == b.y or a.x == 0 end)
+    assert(plugin.store:download(small) and plugin.store:download(smallPuzzle(1)))
+    plugin:showLibrary()
+    plugin:chooseGame()
+    UI:getTopmostVisibleWidget().buttons[1][2].callback()
+    assert(plugin.store.settings.lastGame == "hashi" and plugin.library.item_table[5].text == Puzzle.title(small))
+    assert(#plugin.library.item_table == 5 and plugin.library.item_table[5].details == "Hard · Advanced logic")
+    assert(plugin.library.item_table[5].mandatory == "20×20  Not started")
+    plugin:filterSettings("hashi")
+    UI:getTopmostVisibleWidget().buttons[1][1].callback()
+    UI:getTopmostVisibleWidget().buttons[4][2].callback()
+    plugin:filterSettings("hashi")
+    UI:getTopmostVisibleWidget().buttons[1][2].callback()
+    UI:getTopmostVisibleWidget().buttons[2][2].callback()
+
+    local catalogPath = "/puzzles?limit=25&game=hashi&width=50&height=50&difficulty=hard"
+    local hashiSummary = { id = large.id, game = "hashi", width = 50, height = 50, metadata = large.metadata }
+    local calls = {}
+    plugin.online = function(_, operation)
+        operation(function(method, path)
+            assert(method == "GET")
+            calls[#calls + 1] = path
+            if path == "/restore" then return {} end
+            if path == catalogPath then return { puzzles = { hashiSummary }, nextBeforeId = large.id } end
+            if path == catalogPath .. "&beforeId=" .. large.id then return { puzzles = { hashiSummary } } end
+            assert(path == "/puzzles/" .. large.id .. "?includeSolution=true")
+            return large
+        end, { nonogram = true, hashi = true })
+    end
+    assert(plugin.store:updateSettings({ server = "http://example.test:8080" }))
+    plugin:browse()
+    plugin.catalog.item_table[3].callback()
+    assert(plugin.catalog.item_table[3].text == "Back to newest puzzles")
+    plugin.catalog.item_table[2].callback()
+    assert(#calls == 4 and calls[1] == "/restore" and plugin.store.records[large.id])
+    local game = assert(plugin.game)
+    local function point(x, y)
+        local l = game.layout
+        return Geom:new{ x = l.gridX + (x - game.column + 1) * l.cell + math.floor(l.cell / 2),
+            y = l.gridY + (y - game.row + 1) * l.cell + math.floor(l.cell / 2) }
+    end
+    local function tap(x, y) assert(game:onGesture{ ges = "tap", pos = point(x, y) }) end
+    UI:forceRePaint()
+    local function verifyPatch(action)
+        local patchArea = 0
+        local paint = Render.paint
+        Render.paint = function(bb, board, x, y, cell, region, ...)
+            patchArea = patchArea + region.w * region.h
+            return paint(bb, board, x, y, cell, region, ...)
+        end
+        UI:forceRePaint()
+        Render.paint = paint
+        assert(patchArea > 0 and patchArea < game.grid.w * game.grid.h, action .. " redrew the whole board")
+        local pixels = BB.tostring(device.screen.bb)
+        game.frame = nil
+        UI:setDirty(game, "ui")
+        UI:forceRePaint()
+        assert(BB.tostring(device.screen.bb) == pixels, action .. " differs from a full redraw")
+    end
+    tap(0, 0)
+    assert(game.selectedIsland == 1 and not plugin.store.records[large.id].marks)
+    verifyPatch("Island selection")
+    tap(0, 3)
+    assert(game.board.states[1] == "1" and plugin.store.records[large.id].dirty)
+    verifyPatch("Single bridge")
+    tap(0, 3)
+    assert(game.board.states[1] == "2" and game.board.degree[1] == large.islands[1].clue)
+    verifyPatch("Double bridge")
+    tap(3, 0)
+    assert(game.board.degree[1] > large.islands[1].clue)
+    verifyPatch("Overfilled island")
+    game:onButton("undo")
+    verifyPatch("Undo")
+    tap(0, 3)
+    assert(game.board.states[1] == ".")
+    verifyPatch("Bridge removal")
+    game:onButton("noBridge")
+    tap(0, 3)
+    assert(game.board.states[1] == "x")
+    verifyPatch("Explicit no bridge")
+    game:onButton("check")
+    assert(UI:getTopmostVisibleWidget().text == "1 marked edge disagrees with the solution.")
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("checkpoint")
+    UI:getTopmostVisibleWidget().buttons[1][1].callback()
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("clear")
+    tap(0, 3)
+    assert(game.board.states[1] == ".")
+    game:onButton("checkpoint")
+    UI:getTopmostVisibleWidget().buttons[2][1].callback()
+    assert(game.board.states[1] == "x")
+    game:onButton("undo")
+    assert(game.board.states[1] == ".")
+    game:onButton("redo")
+    assert(game.board.states[1] == "x")
+    game:onButton("restart")
+    assert(game.board.states[1] == "x")
+    local confirm = UI:getTopmostVisibleWidget()
+    confirm.ok_callback()
+    UI:close(confirm)
+    assert(game.board.states[1] == ".")
+    game:onButton("undo")
+    assert(game.board.states[1] == "x")
+    local marks = game.board:marks()
+    local start, finish = point(12, 12), point(6, 6)
+    game:onGesture{ ges = "pan", start_pos = start, pos = finish }
+    game:onGesture{ ges = "pan_release", pos = finish }
+    assert(game.row == 7 and game.column == 7 and game.board:marks() == marks)
+    game:onButton("plus")
+    game:onButton("overview")
+    UI:forceRePaint()
+    device.screen.bb:writePNG(home .. "/hashi-50-overview.png")
+    local x, y, cell = game.layout:overview()
+    game:onGesture{ ges = "tap", pos = Geom:new{ x = x + 48 * cell, y = y + 48 * cell } }
+    assert(not game.overview and game.row > 7 and game.column > 7)
+    local row, column, zoom = game.row, game.column, game.zoom
+    game:onClose()
+    plugin.store = assert(Store.open(plugin.store.root))
+    plugin.online = function() error("Offline play attempted a network request") end
+    plugin:showGame(large.id)
+    assert(plugin.game.row == row and plugin.game.column == column and plugin.game.zoom == zoom)
+    assert(plugin.game.board:marks() == marks and plugin.store.records[large.id].checkpoint == marks)
+    plugin.game:onClose()
+    UI:forceRePaint()
+    assert(plugin.library.item_group[5].thumbnail.preview)
+    plugin:showGame(small.id)
+    game = assert(plugin.game)
+    tap(0, 0); tap(0, 4); tap(4, 0); tap(4, 4); tap(4, 0); tap(0, 4); tap(4, 4)
+    assert(game.board:marks() == "1111" and plugin.store.records[small.id].completed)
+    UI:close(UI:getTopmostVisibleWidget())
+    UI:forceRePaint()
+    device.screen.bb:writePNG(home .. "/hashi-20-solved.png")
+    game:onClose()
+    plugin.library:onClose()
 end
 
 testBoard()
 testSync()
+testHashiRules()
+testHashiSync()
+testApiTransport()
 testPluginUpdate()
 testClueLayout()
 testSuspendResume()
 testMoveRedraw()
 testGameUI()
+testHashiUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)
