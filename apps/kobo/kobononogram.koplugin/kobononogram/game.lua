@@ -87,6 +87,7 @@ function Game:init()
 end
 
 function Game:resize()
+    self:freeBuffers()
     local w, h = screen:getWidth(), screen:getHeight()
     local layout = Viewport:new(w, h, self.board.puzzle, self.zoom, self.store.settings.clueLimit)
     self.layout = layout
@@ -127,18 +128,25 @@ function Game:resize()
     row({ "undo", "redo", "minus", "plus", "clues", "check" }, layout.footerY + button + pad)
 end
 
-function Game:paintButtons(bb)
+function Game:paintButtons(bb, frame, full)
     for action, region in pairs(self.buttons) do
-        local label = labels[action] or (action == "library" and "Library" or (self.overview and "Grid" or "Overview"))
         local active = self.mode == action or (action == "overview" and self.overview)
         local disabled = (action == "undo" and #self.board.undo == 0)
             or (action == "redo" and #self.board.redo == 0)
             or (action == "minus" and self.zoom == Viewport.minZoom)
             or (action == "plus" and self.zoom == Viewport.maxZoom)
-        local color = active and BB.COLOR_WHITE or (disabled and BB.COLOR_GRAY_7 or BB.COLOR_BLACK)
-        bb:paintRect(region.x, region.y, region.w, region.h, active and BB.COLOR_BLACK or BB.COLOR_WHITE)
-        bb:paintBorder(region.x, region.y, region.w, region.h, 1, disabled and BB.COLOR_LIGHT_GRAY or BB.COLOR_BLACK)
-        text(bb, label, self.buttonFace, region, color)
+        local state = active and "active" or disabled and "disabled" or "enabled"
+        if full or frame.buttons[action] ~= state then
+            local label = labels[action]
+                or (action == "library" and "Library" or (self.overview and "Grid" or "Overview"))
+            local color = active and BB.COLOR_WHITE or (disabled and BB.COLOR_GRAY_7 or BB.COLOR_BLACK)
+            bb:paintRect(region.x, region.y, region.w, region.h, active and BB.COLOR_BLACK or BB.COLOR_WHITE)
+            bb:paintBorder(region.x, region.y, region.w, region.h, 1,
+                disabled and BB.COLOR_LIGHT_GRAY or BB.COLOR_BLACK)
+            text(bb, label, self.buttonFace, region, color)
+            frame.buttons[action] = state
+            if not full then UIManager:setDirty(nil, "ui", region:copy()) end
+        end
     end
 end
 
@@ -158,50 +166,126 @@ local function paintClue(bb, face, region, clues, slot, slots, ellipsis, status)
     end
 end
 
-function Game:paintGrid(bb)
+function Game:freeBuffers()
+    if self.buffers then
+        for _, buffer in pairs(self.buffers) do buffer:free() end
+        self.buffers = nil
+    end
+    self.frame = nil
+end
+
+function Game:makeBuffers()
+    local l = self.layout
+    local buffers = {
+        screen = BB.new(l.width, l.height, BB.TYPE_BB8),
+        rowClues = BB.new(l.gridX - l.pad, l.cell, BB.TYPE_BB8),
+        columnClues = BB.new(l.cell, l.gridY - l.headerY, BB.TYPE_BB8),
+        cross = BB.new(l.cell, l.cell, BB.TYPE_BB8),
+    }
+    buffers.cross:fill(BB.COLOR_WHITE)
+    text(buffers.cross, "×", self.markFace, rectangle(0, 0, l.cell, l.cell), BB.COLOR_GRAY_5)
+    self.buffers = buffers
+end
+
+function Game:paintRowClues(bb, row, y)
+    local l, board, strip = self.layout, self.board, self.buffers.rowClues
+    local status = board.rows[row]
+    strip:fill(row == self.selectedRow and BB.COLOR_GRAY_D or BB.COLOR_WHITE)
+    for slot = 1, l.leftSlots do
+        paintClue(strip, self.gridClueFace, rectangle((slot - 1) * l.step, 0, l.step, l.cell),
+            board.puzzle.rowClues[row], slot, l.leftSlots, l.leftEllipsis, status)
+    end
+    if status.impossible then strip:paintRect(strip:getWidth() - 4, 2, 3, l.cell - 4, BB.COLOR_BLACK) end
+    bb:blitFrom(strip, l.pad, y)
+end
+
+function Game:paintColumnClues(bb, column, x)
+    local l, board, strip = self.layout, self.board, self.buffers.columnClues
+    local status = board.columns[column]
+    strip:fill(column == self.selectedColumn and BB.COLOR_GRAY_D or BB.COLOR_WHITE)
+    for slot = 1, l.topSlots do
+        paintClue(strip, self.gridClueFace, rectangle(0, (slot - 1) * l.step, l.cell, l.step),
+            board.puzzle.columnClues[column], slot, l.topSlots, l.topEllipsis, status)
+    end
+    if status.impossible then strip:paintRect(2, strip:getHeight() - 4, l.cell - 4, 3, BB.COLOR_BLACK) end
+    bb:blitFrom(strip, x, l.headerY)
+end
+
+local function horizontalLine(bb, x, y, width, major)
+    bb:paintRect(x, y, width, major and 2 or 1, major and BB.COLOR_BLACK or BB.COLOR_GRAY_9)
+end
+
+local function verticalLine(bb, x, y, height, major)
+    bb:paintRect(x, y, major and 2 or 1, height, major and BB.COLOR_BLACK or BB.COLOR_GRAY_9)
+end
+
+local function isMajorLine(offset, first, count)
+    return offset == 0 or offset == count or (first + offset - 1) % 5 == 0
+end
+
+function Game:paintCell(bb, mark, r, c, full)
+    local l = self.layout
+    local x, y, cell = l.gridX + c * l.cell, l.gridY + r * l.cell, l.cell
+    if mark == "x" then
+        bb:blitFrom(self.buffers.cross, x, y)
+    else
+        if not full then bb:paintRect(x, y, cell, cell, BB.COLOR_WHITE) end
+        if mark == "#" then bb:paintRect(x + 2, y + 2, cell - 3, cell - 3, BB.COLOR_BLACK) end
+    end
+    if not full then
+        -- The leading grid lines belong to this cell and are erased with its mark.
+        horizontalLine(bb, x, y, cell, isMajorLine(r, self.row, l.rows))
+        verticalLine(bb, x, y, cell, isMajorLine(c, self.column, l.columns))
+    end
+end
+
+function Game:paintGrid(bb, frame, full)
     local l, board = self.layout, self.board
     local gridX, gridY, cell = l.gridX, l.gridY, l.cell
-    local thin, thick = BB.COLOR_GRAY_9, BB.COLOR_BLACK
+    local firstRow, lastRow, firstColumn, lastColumn
     for r = 0, l.rows - 1 do
-        local y, row = gridY + r * cell, self.row + r
-        if row == self.selectedRow then
-            bb:paintRect(l.pad, y, gridX - l.pad, cell, BB.COLOR_GRAY_D)
+        local row = self.row + r
+        if full or frame.rows[row] ~= board.rows[row]
+            or (row == frame.selectedRow) ~= (row == self.selectedRow) then
+            self:paintRowClues(bb, row, gridY + r * cell)
+            frame.rows[row] = board.rows[row]
+            firstRow, lastRow = firstRow or r, r
         end
-        local status = board.rows[row]
-        for slot = 1, l.leftSlots do
-            paintClue(bb, self.gridClueFace, rectangle(l.pad + (slot - 1) * l.step, y, l.step, cell),
-                board.puzzle.rowClues[row], slot, l.leftSlots, l.leftEllipsis, status)
-        end
-        if status.impossible then bb:paintRect(gridX - 4, y + 2, 3, cell - 4, BB.COLOR_BLACK) end
         for c = 0, l.columns - 1 do
-            local x, column = gridX + c * cell, self.column + c
-            local mark = board:get(row, column)
-            if mark == "#" then
-                bb:paintRect(x + 2, y + 2, cell - 3, cell - 3, BB.COLOR_BLACK)
-            elseif mark == "x" then
-                text(bb, "×", self.markFace, rectangle(x, y, cell, cell), BB.COLOR_GRAY_5)
+            local index = (row - 1) * board.width + self.column + c
+            local mark = board.cells[index]
+            if full or frame.cells[index] ~= mark then
+                self:paintCell(bb, mark, r, c, full)
+                frame.cells[index] = mark
             end
         end
     end
     for c = 0, l.columns - 1 do
-        local x, column = gridX + c * cell, self.column + c
-        if column == self.selectedColumn then
-            bb:paintRect(x, l.headerY, cell, gridY - l.headerY, BB.COLOR_GRAY_D)
+        local column = self.column + c
+        if full or frame.columns[column] ~= board.columns[column]
+            or (column == frame.selectedColumn) ~= (column == self.selectedColumn) then
+            self:paintColumnClues(bb, column, gridX + c * cell)
+            frame.columns[column] = board.columns[column]
+            firstColumn, lastColumn = firstColumn or c, c
         end
-        local status = board.columns[column]
-        for slot = 1, l.topSlots do
-            paintClue(bb, self.gridClueFace, rectangle(x, l.headerY + (slot - 1) * l.step, cell, l.step),
-                board.puzzle.columnClues[column], slot, l.topSlots, l.topEllipsis, status)
+    end
+    frame.selectedRow, frame.selectedColumn = self.selectedRow, self.selectedColumn
+    if full then
+        for r = 0, l.rows do
+            horizontalLine(bb, gridX, gridY + r * cell, l.columns * cell + 1, isMajorLine(r, self.row, l.rows))
         end
-        if status.impossible then bb:paintRect(x + 2, gridY - 4, cell - 4, 3, BB.COLOR_BLACK) end
-    end
-    for r = 0, l.rows do
-        local major = r == 0 or r == l.rows or (self.row + r - 1) % 5 == 0
-        bb:paintRect(gridX, gridY + r * cell, l.columns * cell + 1, major and 2 or 1, major and thick or thin)
-    end
-    for c = 0, l.columns do
-        local major = c == 0 or c == l.columns or (self.column + c - 1) % 5 == 0
-        bb:paintRect(gridX + c * cell, gridY, major and 2 or 1, l.rows * cell + 1, major and thick or thin)
+        for c = 0, l.columns do
+            verticalLine(bb, gridX + c * cell, gridY, l.rows * cell + 1, isMajorLine(c, self.column, l.columns))
+        end
+    else
+        if firstRow then
+            UIManager:setDirty(nil, "ui", rectangle(l.pad, gridY + firstRow * cell, gridX - l.pad,
+                (lastRow - firstRow + 1) * cell))
+        end
+        if firstColumn then
+            UIManager:setDirty(nil, "ui", rectangle(gridX + firstColumn * cell, l.headerY,
+                (lastColumn - firstColumn + 1) * cell, gridY - l.headerY))
+        end
     end
 end
 
@@ -225,17 +309,37 @@ end
 
 function Game:paintTo(bb)
     local l = self.layout
-    bb:paintRect(0, 0, l.width, l.height, BB.COLOR_WHITE)
-    self:paintButtons(bb)
-    local title = self.board.puzzle.title
-    if self.board:isComplete() then title = title .. "  ·  Solved" end
-    text(bb, title, self.titleFace, rectangle(l.pad, l.pad + l.button, l.width - 2 * l.pad, l.title),
-        BB.COLOR_BLACK, true)
-    if self.overview then self:paintOverview(bb) else self:paintGrid(bb) end
-    local status = self.overview and "Tap the overview to jump to a location" or string.format(
-        "Rows %d–%d of %d   ·   Columns %d–%d of %d", self.row, self.row + l.rows - 1, self.board.height,
-        self.column, self.column + l.columns - 1, self.board.width)
-    text(bb, status, self.clueFace, rectangle(l.pad, l.footerY - l.status, l.width - 2 * l.pad, l.status), BB.COLOR_BLACK)
+    if not self.buffers then self:makeBuffers() end
+    local canvas, frame = self.buffers.screen, self.frame
+    if canvas:getInverse() ~= bb:getInverse() then
+        canvas:setInverse(bb:getInverse())
+        frame = nil
+    end
+    local complete = self.board:isComplete()
+    local full = self.overview or not frame or frame.overview
+        or frame.row ~= self.row or frame.column ~= self.column or frame.complete ~= complete
+    if full then
+        frame = {
+            row = self.row, column = self.column, overview = self.overview, complete = complete,
+            cells = {}, rows = {}, columns = {}, buttons = {},
+        }
+        self.frame = frame
+        canvas:fill(BB.COLOR_WHITE)
+        local title = self.board.puzzle.title
+        if complete then title = title .. "  ·  Solved" end
+        text(canvas, title, self.titleFace, rectangle(l.pad, l.pad + l.button, l.width - 2 * l.pad, l.title),
+            BB.COLOR_BLACK, true)
+        local status = self.overview and "Tap the overview to jump to a location" or string.format(
+            "Rows %d–%d of %d   ·   Columns %d–%d of %d", self.row, self.row + l.rows - 1, self.board.height,
+            self.column, self.column + l.columns - 1, self.board.width)
+        text(canvas, status, self.clueFace, rectangle(l.pad, l.footerY - l.status, l.width - 2 * l.pad, l.status),
+            BB.COLOR_BLACK)
+    end
+    self:paintButtons(canvas, frame, full)
+    if self.overview then self:paintOverview(canvas) else self:paintGrid(canvas, frame, full) end
+    -- KOReader may repaint after dismissing a dialog. Copy the whole background so
+    -- cached cells also replace pixels that were covered by an overlay.
+    bb:blitFrom(canvas)
 end
 
 function Game:showClues(row, column)
@@ -313,6 +417,7 @@ function Game:changed(changes, refreshAll)
     end
     local saved = self:save()
     if refreshAll or self.overview or complete ~= self.wasComplete then
+        self.frame = nil
         UIManager:setDirty(self, "ui")
     else
         self:refreshStroke(changes)
@@ -324,21 +429,28 @@ function Game:changed(changes, refreshAll)
 end
 
 function Game:refreshStroke(changes)
-    local l = self.layout
+    local l, frame, board = self.layout, self.frame, self.board
     local lastVisibleRow, lastVisibleColumn = self.row + l.rows - 1, self.column + l.columns - 1
     local minRow, maxRow, minColumn, maxColumn = lastVisibleRow + 1, 0, lastVisibleColumn + 1, 0
+    local cluesChanged = false
     for _, change in ipairs(changes) do
-        minRow, maxRow = math.min(minRow, change.row), math.max(maxRow, change.row)
-        minColumn, maxColumn = math.min(minColumn, change.column), math.max(maxColumn, change.column)
+        local rowVisible = change.row >= self.row and change.row <= lastVisibleRow
+        local columnVisible = change.column >= self.column and change.column <= lastVisibleColumn
+        if rowVisible and columnVisible then
+            minRow, maxRow = math.min(minRow, change.row), math.max(maxRow, change.row)
+            minColumn, maxColumn = math.min(minColumn, change.column), math.max(maxColumn, change.column)
+        elseif frame then
+            cluesChanged = cluesChanged or (rowVisible and frame.rows[change.row] ~= board.rows[change.row])
+                or (columnVisible and frame.columns[change.column] ~= board.columns[change.column])
+        end
     end
-    local firstRow, lastRow = math.max(self.row, minRow), math.min(lastVisibleRow, maxRow)
-    local firstColumn, lastColumn = math.max(self.column, minColumn), math.min(lastVisibleColumn, maxColumn)
-    if firstRow <= lastRow and firstColumn <= lastColumn then
-        self:preview(firstRow, firstColumn, lastRow, lastColumn, "ui")
+    if minRow <= maxRow then
+        -- Refresh the committed cells even if a fast drag preview already painted them.
+        self:preview(minRow, minColumn, maxRow, maxColumn, "ui")
+    elseif not frame or cluesChanged or (frame.buttons.undo == "disabled") ~= (#board.undo == 0)
+        or (frame.buttons.redo == "disabled") ~= (#board.redo == 0) then
+        UIManager:setDirty(self)
     end
-    UIManager:setDirty(self, "ui", rectangle(l.pad, l.gridY, l.gridX - l.pad, l.rows * l.cell))
-    UIManager:setDirty(self, "ui", rectangle(l.gridX, l.headerY, l.columns * l.cell, l.gridY - l.headerY))
-    UIManager:setDirty(self, "ui", rectangle(0, l.footerY, l.width, l.height - l.footerY))
 end
 
 function Game:moveViewport(row, column)
@@ -369,10 +481,9 @@ function Game:onButton(action)
             self:save()
             UIManager:setDirty(self, "ui")
         end
-    else
+    elseif self.mode ~= action then
         self.mode = action
-        UIManager:setDirty(self, "ui", rectangle(0, self.layout.footerY, self.layout.width,
-            self.layout.height - self.layout.footerY))
+        UIManager:setDirty(self)
     end
     return true
 end
@@ -380,6 +491,12 @@ end
 function Game:markAt(row, column)
     if self.mode == "cycle" then return cycle[self.board:get(row, column)] end
     return marks[self.mode]
+end
+
+function Game:selectCell(row, column)
+    if row == self.selectedRow and column == self.selectedColumn then return end
+    self.selectedRow, self.selectedColumn = row, column
+    UIManager:setDirty(self)
 end
 
 function Game:onGesture(gesture)
@@ -404,14 +521,11 @@ function Game:onTap(_, gesture)
     end
     local row, column = l:cellAt(x, y, self.row, self.column)
     if row then
-        self.selectedRow, self.selectedColumn = row, column
+        self:selectCell(row, column)
         local mark = self:markAt(row, column)
         if mark then
             self.board:beginStroke(row, column, mark)
-            local changes = self.board:finishStroke()
-            if changes then self:changed(changes) else UIManager:setDirty(self, "ui") end
-        else
-            UIManager:setDirty(self, "ui")
+            self:changed(self.board:finishStroke())
         end
     elseif x >= l.pad and x < l.gridX then
         local clueRow = l:cellAt(l.gridX, y, self.row, self.column)
@@ -442,7 +556,7 @@ function Game:beginMotion(start, multi)
         paint = not multi and row and self:markAt(row, column) }
     if self.motion.paint then
         self.motion.selectedRow, self.motion.selectedColumn = self.selectedRow, self.selectedColumn
-        self.selectedRow, self.selectedColumn = row, column
+        self:selectCell(row, column)
         if self.board:beginStroke(row, column, self.motion.paint) then
             self:preview(row, column, row, column)
         end
@@ -452,6 +566,10 @@ end
 function Game:preview(firstRow, firstColumn, lastRow, lastColumn, refreshType)
     if not firstRow then return end
     local l = self.layout
+    firstRow, firstColumn = math.max(firstRow, self.row), math.max(firstColumn, self.column)
+    lastRow = math.min(lastRow, self.row + l.rows - 1)
+    lastColumn = math.min(lastColumn, self.column + l.columns - 1)
+    if firstRow > lastRow or firstColumn > lastColumn then return end
     UIManager:setDirty(self, refreshType or "fast", rectangle(l.gridX + (firstColumn - self.column) * l.cell,
         l.gridY + (firstRow - self.row) * l.cell,
         (lastColumn - firstColumn + 1) * l.cell, (lastRow - firstRow + 1) * l.cell))
@@ -642,6 +760,7 @@ function Game:refreshAfterWake()
     if self.layout.width ~= screen:getWidth() or self.layout.height ~= screen:getHeight() then
         self:resize()
     end
+    self.frame = nil
     UIManager:setDirty(self, "full")
 end
 
@@ -649,7 +768,10 @@ function Game:onResume()
     self.suspended = false
     if not Device.screen_saver_mode then self:refreshAfterWake() end
     if self.pendingSave or self.pendingViewSave then
-        UIManager:tickAfterNext(self.saveAfterWake, self)
+        -- Queue the save from the repaint phase so storage cannot delay the wake refresh.
+        UIManager:setDirty(nil, function()
+            UIManager:nextTick(self.saveAfterWake, self)
+        end)
     end
 end
 
@@ -676,6 +798,7 @@ end
 
 function Game:onCloseWidget()
     self:cancelEdgePan()
+    self:freeBuffers()
 end
 
 return Game

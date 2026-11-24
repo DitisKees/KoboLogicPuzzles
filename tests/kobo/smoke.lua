@@ -306,6 +306,7 @@ local function testSuspendResume()
     local Screensaver = require("ui/screensaver")
     local ScreenSaverWidget = require("ui/widget/screensaverwidget")
     local Widget = require("ui/widget/widget")
+    local time = require("ui/time")
     local store = assert(Store.open(home .. "/suspend"))
     local function showGame(puzzle, marks)
         assert(store:download(puzzle))
@@ -386,7 +387,12 @@ local function testSuspendResume()
         painted = true
         Game.paintTo(self, ...)
     end
+    local actualNow, wakeTime = time.now, time.now()
+    time.now = function() return wakeTime end
     device:_afterResume()
+    UI:_checkTasks()
+    time.now = actualNow
+    assert(store.records[40].column == 1, "The pending save ran before the wake redraw")
     UI:forceRePaint()
     assert(painted and store.records[40].column == 1)
     device:_beforeSuspend()
@@ -396,6 +402,67 @@ local function testSuspendResume()
     advanceUI()
     assert(store.records[40].column == 2 and UI:getTopmostVisibleWidget() == game)
     game:onClose()
+end
+
+local function testMoveRedraw()
+    local BB = require("ffi/blitbuffer")
+    local Game = require("kobononogram/game")
+    local store = assert(Store.open(home .. "/redraw"))
+    local puzzle = smallPuzzle(1)
+    assert(store:download(puzzle))
+    local game = Game:new{ board = Board:new(puzzle), record = store.records[1], store = store,
+        onExit = function() end }
+    UI:show(game, "full")
+    UI:forceRePaint()
+
+    local cellsPainted = 0
+    function game:paintCell(...)
+        cellsPainted = cellsPainted + 1
+        Game.paintCell(self, ...)
+    end
+    local function verifyRedraw(expected, action)
+        UI:forceRePaint()
+        assert(cellsPainted == expected, action .. " repainted the wrong number of cells")
+        local pixels = BB.tostring(device.screen.bb)
+        game.frame = nil
+        UI:setDirty(game, "ui")
+        UI:forceRePaint()
+        assert(BB.tostring(device.screen.bb) == pixels, action .. " differs from a full redraw")
+        cellsPainted = 0
+    end
+    local function point(row, column)
+        local l = game.layout
+        return Geom:new{ x = l.gridX + (column - 1) * l.cell + 5, y = l.gridY + (row - 1) * l.cell + 5 }
+    end
+    game:onGesture{ ges = "tap", pos = point(1, 1) }
+    assert(game.board:marks() == "#..x..")
+    verifyRedraw(2, "Automatic cross")
+    game:onGesture{ ges = "tap", pos = point(1, 3) }
+    assert(game.board:marks() == "#x#x..")
+    verifyRedraw(2, "Selection change and row completion")
+    game:onButton("undo")
+    verifyRedraw(1, "Undo")
+    game:onButton("redo")
+    verifyRedraw(1, "Redo")
+
+    game:onButton("cross")
+    verifyRedraw(0, "Mode change")
+    local start, finish = point(2, 2), point(2, 3)
+    game:onGesture{ ges = "pan", start_pos = start, pos = finish }
+    verifyRedraw(2, "Drag preview")
+    game:onGesture{ ges = "pan_release", pos = finish }
+    verifyRedraw(0, "Drag commit after preview")
+
+    local pixels = BB.tostring(device.screen.bb)
+    game:onButton("clues")
+    UI:forceRePaint()
+    UI:close(UI:getTopmostVisibleWidget())
+    UI:forceRePaint()
+    assert(cellsPainted == 0 and BB.tostring(device.screen.bb) == pixels,
+        "Dismissed dialog left pixels on the cached board")
+    local canvas = game.buffers.screen
+    game:onClose()
+    assert(not game.buffers and canvas:getAllocated() == 0)
 end
 
 local function testGameUI()
@@ -661,5 +728,6 @@ testSync()
 testPluginUpdate()
 testClueLayout()
 testSuspendResume()
+testMoveRedraw()
 testGameUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)
