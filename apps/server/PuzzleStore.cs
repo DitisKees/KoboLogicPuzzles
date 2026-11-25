@@ -28,81 +28,64 @@ public sealed partial class PuzzleStore(string databasePath)
         var version = (long)command.ExecuteScalar()!;
         if (version > SchemaVersion)
             throw new InvalidOperationException($"Database schema {version} is newer than the supported schema {SchemaVersion}.");
-        if (version == 0)
+        if (version == SchemaVersion)
         {
-            command.CommandText = """
-                SELECT 1 FROM sqlite_schema
-                WHERE type = 'table' AND name IN ('catalog', 'puzzles', 'progress') LIMIT 1
-                """;
-            if (command.ExecuteScalar() is not null)
-                BackupBeforeHashi();
+            transaction.Commit();
+            return;
         }
+        if (version != 0)
+            throw new InvalidOperationException($"The database must use schema {SchemaVersion}.");
 
-        command.CommandText = "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'puzzle_metadata'";
-        var needsMetadata = command.ExecuteScalar() is null;
-        command.CommandText = """
-            CREATE TABLE IF NOT EXISTS catalog (
+        command.CommandText = "SELECT 1 FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' LIMIT 1";
+        if (command.ExecuteScalar() is not null)
+            throw new InvalidOperationException($"The database must use schema {SchemaVersion}.");
+
+        command.CommandText = $"""
+            CREATE TABLE catalog (
                 id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
                 author TEXT NOT NULL,
                 width INTEGER NOT NULL,
                 height INTEGER NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS puzzle_metadata (
+            CREATE TABLE puzzle_metadata (
                 id INTEGER PRIMARY KEY,
                 metadata TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS puzzles (
+            CREATE TABLE puzzles (
                 id INTEGER PRIMARY KEY,
                 definition TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS progress (
+            CREATE TABLE progress (
                 puzzle_id INTEGER PRIMARY KEY REFERENCES puzzles(id),
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL,
                 backed_up_at TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS catalog_refresh (
+            CREATE TABLE catalog_refresh (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 revision INTEGER NOT NULL,
                 completed_at TEXT
             );
-            INSERT OR IGNORE INTO catalog_refresh (id, revision) VALUES (1, 0);
+            INSERT INTO catalog_refresh (id, revision) VALUES (1, 0);
+            CREATE TABLE hashi_puzzles (
+                content_hash TEXT NOT NULL PRIMARY KEY CHECK (length(content_hash) = 64),
+                width INTEGER NOT NULL CHECK (width > 0),
+                height INTEGER NOT NULL CHECK (height > 0),
+                islands TEXT NOT NULL,
+                solution BLOB NOT NULL,
+                metadata TEXT NOT NULL
+            );
+            CREATE TABLE hashi_progress (
+                content_hash TEXT NOT NULL PRIMARY KEY REFERENCES hashi_puzzles(content_hash) ON DELETE RESTRICT,
+                marks TEXT NOT NULL,
+                completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                backed_up_at TEXT NOT NULL
+            );
+            PRAGMA user_version = {SchemaVersion};
             """;
         command.ExecuteNonQuery();
-        if (needsMetadata)
-        {
-            command.CommandText = "UPDATE catalog_refresh SET completed_at = NULL";
-            command.ExecuteNonQuery();
-        }
-        if (version == 0)
-            InitializeHashiSchema(command);
         transaction.Commit();
-    }
-
-    private void BackupBeforeHashi()
-    {
-        var backupPath = Path.GetFullPath(databasePath) + ".before-hashi";
-        var temporaryPath = backupPath + $".{Guid.NewGuid():N}.tmp";
-        try
-        {
-            // The migration connection holds the writer lock. A separate connection reads the committed snapshot.
-            using (var source = Open())
-            using (var backup = new SqliteConnection(new SqliteConnectionStringBuilder
-            {
-                DataSource = temporaryPath,
-                Pooling = false,
-            }.ToString()))
-            {
-                backup.Open();
-                source.BackupDatabase(backup);
-            }
-            File.Move(temporaryPath, backupPath, overwrite: true);
-        }
-        finally
-        {
-            File.Delete(temporaryPath);
-        }
     }
 
     internal FileStream? TryLockHashiGeneration()

@@ -7,28 +7,6 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore
 {
-    private static void InitializeHashiSchema(SqliteCommand command)
-    {
-        command.CommandText = """
-            CREATE TABLE hashi_puzzles (
-                content_hash TEXT NOT NULL PRIMARY KEY CHECK (length(content_hash) = 64),
-                width INTEGER NOT NULL CHECK (width > 0),
-                height INTEGER NOT NULL CHECK (height > 0),
-                islands TEXT NOT NULL,
-                solution BLOB NOT NULL,
-                metadata TEXT NOT NULL
-            );
-            CREATE TABLE hashi_progress (
-                content_hash TEXT NOT NULL PRIMARY KEY REFERENCES hashi_puzzles(content_hash) ON DELETE RESTRICT,
-                marks TEXT NOT NULL,
-                completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
-                backed_up_at TEXT NOT NULL
-            );
-            PRAGMA user_version = 1;
-            """;
-        command.ExecuteNonQuery();
-    }
-
     public bool SaveHashiPuzzle(VerifiedHashiPuzzle verified)
     {
         using var connection = Open();

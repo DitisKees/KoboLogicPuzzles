@@ -1,4 +1,3 @@
-local Migration = require("kobologicpuzzles/migration")
 local Puzzle = require("kobologicpuzzles/puzzle")
 local Viewport = require("kobologicpuzzles/viewport")
 local JSON = require("json")
@@ -190,12 +189,6 @@ function Store:list(game)
         return a.puzzle.id > b.puzzle.id
     end)
     return records
-end
-
-function Store.openLibrary(dataDir)
-    local root, err = Migration.prepare(dataDir)
-    if not root then return nil, "Could not migrate Kobo Nonogram data.\n" .. tostring(err) end
-    return Store.open(root)
 end
 
 function Store:target(game) return game == "hashi" and self.settings.hashiTarget or self.settings.target end

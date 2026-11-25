@@ -2,7 +2,7 @@
 
 ## Version 2
 
-Kobo Logic Puzzles uses `/api/v2` for both games. Requests to the original Kobo Nonogram `/api/v1` routes return `404`. Existing Nonogram definitions and saves retain their WebPBN IDs in SQLite. The v2 API exposes those IDs with the `nonogram-webpbn-` prefix.
+Kobo Logic Puzzles uses `/api/v2` for both games. Nonogram definitions and saves use their WebPBN IDs in SQLite. The API exposes those IDs with the `nonogram-webpbn-` prefix.
 
 | Method and path | Purpose |
 | --- | --- |

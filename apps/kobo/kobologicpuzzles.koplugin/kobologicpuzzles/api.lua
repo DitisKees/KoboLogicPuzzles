@@ -60,15 +60,15 @@ end
 function API.capabilities(request)
     local reply, err, status = request("GET", "/capabilities", nil, "Checking puzzle server…")
     if not reply and status ~= 404 then return nil, err end
-    local upgrade = "This plugin needs a puzzle server that supports API v2. Update the home server or check its URL."
+    local unsupportedServer = "The home server must support puzzle API v2. Check its URL and configuration."
     if not reply or reply.apiVersion ~= 2 or reply.schemaVersion ~= 1 or type(reply.games) ~= "table" then
-        return nil, upgrade
+        return nil, unsupportedServer
     end
     local games = {}
     for _, game in ipairs(reply.games) do
         if game == "nonogram" or game == "hashi" then games[game] = true end
     end
-    if not games.nonogram then return nil, upgrade end
+    if not games.nonogram then return nil, unsupportedServer end
     return games
 end
 

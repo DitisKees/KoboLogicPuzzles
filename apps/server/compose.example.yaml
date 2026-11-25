@@ -1,5 +1,5 @@
 # For a private GHCR image, run docker login ghcr.io -u YOUR_GITHUB_USERNAME with a classic read:packages token first.
-# For a fresh installation, create the volume once with docker volume create kobo-nonogram-data.
+# Create the volume once with docker volume create kobo-kobologicpuzzles-data.
 # From the repository root, run docker compose -f apps/server/compose.example.yaml up -d.
 name: kobo-logic-puzzles
 
@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
-      Storage__DatabasePath: "/data/kobononogram.db"
+      Storage__DatabasePath: "/data/kobologicpuzzles.db"
       CatalogRefresh__Enabled: "true" # Refresh on first startup and weekly thereafter.
       HashiGeneration__Enabled: "true" # Replenish verified local Hashi stock in the background.
 
@@ -35,6 +35,5 @@ services:
 
 volumes:
   data:
-    # Keep the historical default so the renamed project reuses the existing data.
-    name: ${KOBOLOGICPUZZLES_VOLUME:-kobo-nonogram-data}
+    name: ${KOBOLOGICPUZZLES_VOLUME:-kobo-kobologicpuzzles-data}
     external: true

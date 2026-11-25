@@ -26,7 +26,7 @@ WORKDIR /app
 RUN mkdir /data && chown "$APP_UID" /data
 COPY --from=build /out ./
 COPY --from=bridges-build /out/ ./hashi/
-ENV Storage__DatabasePath=/data/kobononogram.db
+ENV Storage__DatabasePath=/data/kobologicpuzzles.db
 ENV HashiGeneration__Enabled=true
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080

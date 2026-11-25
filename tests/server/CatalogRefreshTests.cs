@@ -1,7 +1,6 @@
 using System.Net;
 using System.Threading.Channels;
 using KoboLogicPuzzles.Server;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
@@ -80,31 +79,21 @@ public sealed class CatalogRefreshTests
         Assert.Equal(12, Assert.Single(database.Store.ListCatalog(null, 10)).Id);
     }
 
-    [Theory]
-    [InlineData(false, 0)]
-    [InlineData(true, 1)]
-    public void ExistingDatabaseKeepsCatalogAndProgressAndSchedulesRefresh(bool keepRefreshTable, long revision)
+    [Fact]
+    public void ReopeningDatabasePreservesCatalogProgressAndRefreshState()
     {
         using var database = new TestDatabase();
-        database.SeedCatalog([TestData.Summary(12)], Start);
+        var puzzle = TestData.Summary(12) with { Metadata = new PuzzleMetadata(4, 5, 3) };
+        database.SeedCatalog([puzzle], Start);
         database.Store.CachePuzzle(TestData.Puzzle(12));
-        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], DateTimeOffset.UtcNow);
-        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = database.Path, ForeignKeys = true,
-        }.ToString()))
-        {
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = keepRefreshTable ? "DROP TABLE puzzle_metadata" : "DROP TABLE catalog_refresh";
-            command.ExecuteNonQuery();
-        }
+        database.Store.SaveProgress([new ProgressUpdate(12, "#x....", false)], Start);
 
-        database.Store.Initialize();
+        var reopened = new PuzzleStore(database.Path);
+        reopened.Initialize();
 
-        Assert.Equal(new CatalogRefreshState(revision, null), database.Store.GetCatalogRefreshState());
-        Assert.Equal(12, Assert.Single(database.Store.ListCatalog(null, 10)).Id);
-        Assert.Equal("#x....", Assert.Single(database.Store.RestoreProgress()).Progress.Marks);
+        Assert.Equal(new CatalogRefreshState(1, Start), reopened.GetCatalogRefreshState());
+        Assert.Equal(puzzle, Assert.Single(reopened.ListCatalog(null, 10)));
+        Assert.Equal(new SavedProgress(12, "#x....", false, Start), Assert.Single(reopened.RestoreProgress()).Progress);
     }
 
     private static CatalogRefreshWorker CreateWorker(PuzzleStore store, WebPbnClient source, TimeProvider time) =>

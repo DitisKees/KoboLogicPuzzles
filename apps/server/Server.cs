@@ -18,7 +18,7 @@ public static class Server
         services.AddSingleton<HashiInventory>();
         services.AddHostedService<HashiInventoryWorker>();
         services.AddSingleton(provider => new PuzzleStore(
-            provider.GetRequiredService<IConfiguration>()["Storage:DatabasePath"] ?? "data/kobononogram.db"));
+            provider.GetRequiredService<IConfiguration>()["Storage:DatabasePath"] ?? "data/kobologicpuzzles.db"));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<PuzzleLibrary>();
         services.AddSingleton<IPuzzleProvider, WebPbnPuzzleProvider>();

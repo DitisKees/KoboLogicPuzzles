@@ -24,7 +24,7 @@ dotnet test KoboLogicPuzzles.slnx
 
 ## Running the home server
 
-Start the server to run the API and the catalog refresh together. The server defaults to `data/kobononogram.db`, relative to its working directory. It keeps the existing SQLite filename so upgrades can use the same database.
+Start the server to run the API and the catalog refresh together. The server defaults to `data/kobologicpuzzles.db`, relative to its working directory.
 
 ```sh
 dotnet run --project apps/server -- --urls http://localhost:8080
@@ -35,16 +35,12 @@ For a home LAN deployment, build the image and keep `/data` on a persistent volu
 ```sh
 docker build -t kobo-logic-puzzles apps/server
 docker run -d --name kobo-logic-puzzles --restart unless-stopped \
-  -p 8080:8080 -v kobo-nonogram-data:/data kobo-logic-puzzles
+  -p 8080:8080 -v kobo-kobologicpuzzles-data:/data kobo-logic-puzzles
 ```
 
 On pushes to `main` that change the server, its tests, or its workflow, GitHub Actions verifies and publishes a `linux/amd64` image at `ghcr.io/ditiskees/kobologicpuzzles`. Use `:latest` for the current build or `:sha-<full-commit>` for a specific revision. [Server image workflow](.github/workflows/server-image.yml)
 
-For a fresh Compose deployment, run `docker volume create kobo-nonogram-data` once, then `docker compose -f apps/server/compose.example.yaml up -d`. An upgrade uses the existing volume.
-
-## Upgrade from Kobo Nonogram
-
-The 1.0.0 release renames the repository, container image, and KOReader plugin. Install the server image and replace the old plugin folder manually in the same maintenance window. The server opens the existing volume and database. On first open, the new plugin copies your downloaded boards, progress, settings, and updater token to its new data directory. [Server cutover and rollback](apps/server/Hashi/README.md#database-upgrade-and-rollback) · [Kobo plugin cutover and rollback](apps/kobo/README.md#upgrade-from-kobo-nonogram)
+The container stores the database at `/data/kobologicpuzzles.db`. For a Compose deployment, run `docker volume create kobo-kobologicpuzzles-data` once, then `docker compose -f apps/server/compose.example.yaml up -d`.
 
 ## WebPBN refresh
 
@@ -56,7 +52,7 @@ To refresh immediately, run the manual command against the server's database.
 docker exec kobo-logic-puzzles dotnet KoboLogicPuzzles.Server.dll refresh
 ```
 
-The local equivalent is `dotnet run --project apps/server -- refresh`. Set `CatalogRefresh__Enabled=false` to run in manual-only mode. If you installed a host cron entry for the earlier setup, remove it when switching to the built-in schedule.
+The local equivalent is `dotnet run --project apps/server -- refresh`. Set `CatalogRefresh__Enabled=false` to run in manual-only mode.
 
 The API is intended for a trusted home LAN. See the [API and client sync formats](contracts/README.md).
 
@@ -99,8 +95,6 @@ The Kobo keeps a configurable number of unstarted puzzles downloaded and retains
 Keep puzzle definitions and progress in persistent storage on the home server so they survive replacement of the server container. A fresh Kobo installation restores progress from the server before its first upload. Recovery returns the player to the most recent successful backup.
 
 Verify recovery by saving a partially solved puzzle with fills and crosses, syncing it, then restoring into clean app data. Reopen the restored board and continue playing offline.
-
-The server upgrade uses the existing volume and database path. [Database upgrade and rollback](apps/server/Hashi/README.md#database-upgrade-and-rollback)
 
 ## Future Android and web play
 

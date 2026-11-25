@@ -141,18 +141,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.package.outputs.version }}
         run: |
-          notes="$(mktemp)"
-          if [[ "$VERSION" == "1.0.0" ]]; then
-            cat > "$notes" <<'NOTES'
-          Kobo Logic Puzzles adds offline Hashi alongside Nonogram.
-
-          For this one-time upgrade, install the renamed server image and manually replace
-          the old plugin with `kobologicpuzzles.koplugin`. The new plugin copies the existing
-          local library on first open. See the upgrade and rollback instructions in the repository.
-          NOTES
-          else
-            printf '%s\n' "Tested KOReader plugin ZIP. Extract kobologicpuzzles.koplugin into KOReader's plugins directory." > "$notes"
-          fi
           gh release create "kobo-v$VERSION" "$RUNNER_TEMP/kobologicpuzzles.koplugin.zip" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Kobo Logic Puzzles $VERSION" \
-            --notes-file "$notes"
+            --notes "Extract kobologicpuzzles.koplugin into KOReader's plugins directory."

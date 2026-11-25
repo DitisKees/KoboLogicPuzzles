@@ -48,8 +48,6 @@ public sealed class ApiTests
         var hashiWithSolution = await http.GetFromJsonAsync<JsonElement>($"/api/v2/puzzles/{hashiId}?includeSolution=true");
         Assert.Equal(1, Assert.Single(hashiWithSolution.GetProperty("solution").EnumerateArray()).GetInt32());
 
-        using var oldClient = await http.GetAsync("/api/v1/puzzles/12");
-        Assert.Equal(HttpStatusCode.NotFound, oldClient.StatusCode);
         using var invalid = await http.GetAsync("/api/v2/puzzles/12");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         using var missing = await http.GetAsync($"/api/v2/puzzles/hashi-local-{new string('b', 64)}");

@@ -150,11 +150,9 @@ public sealed class GameApiTests
                 },
             });
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-            var oldClient = new { Boards = new[] { new ProgressUpdate(12, "#.#.##", true) } };
-            using var incompatible = await http.PostAsJsonAsync("/api/v2/progress", oldClient);
-            Assert.Equal(HttpStatusCode.BadRequest, incompatible.StatusCode);
-            using var removed = await http.PostAsJsonAsync("/api/v1/progress", oldClient);
-            Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
+            var untypedPuzzleId = new { SchemaVersion = 1, Boards = new[] { new ProgressUpdate(12, "#.#.##", true) } };
+            using var untyped = await http.PostAsJsonAsync("/api/v2/progress", untypedPuzzleId);
+            Assert.Equal(HttpStatusCode.BadRequest, untyped.StatusCode);
         }
 
         await using var restarted = ApiTests.CreateApp(database, source);
@@ -171,8 +169,6 @@ public sealed class GameApiTests
         Assert.Equal(1, Assert.Single(restored[1].Progress.Marks.EnumerateArray()).GetProperty("count").GetInt32());
         Assert.IsType<HashiPuzzleDefinition>(Assert.Single((await restoredClient.GetFromJsonAsync<GameSavedBoard[]>(
             "/api/v2/restore?game=hashi"))!).Puzzle);
-        using var oldRestore = await restoredClient.GetAsync("/api/v1/restore");
-        Assert.Equal(HttpStatusCode.NotFound, oldRestore.StatusCode);
     }
 
     private static PuzzleId AddHashi(TestDatabase database, int row, int size = 20)

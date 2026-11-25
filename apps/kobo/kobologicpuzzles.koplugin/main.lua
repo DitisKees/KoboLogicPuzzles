@@ -80,7 +80,7 @@ end
 
 function LogicPuzzles:showLibrary()
     if not self.store then
-        local store, err = Store.openLibrary(DataStorage:getDataDir())
+        local store, err = Store.open(DataStorage:getDataDir() .. "/kobologicpuzzles")
         if not store then return notice("Could not open the local puzzle library.\n" .. tostring(err)) end
         self.store = store
     end
@@ -156,7 +156,7 @@ function LogicPuzzles:editServer()
         local address = API.normalize(value)
         if not address then return nil, "Enter the home server's HTTP address, including http://." end
         if address == self.store.settings.server then return true end
-        local ok, err = self.store:updateSettings({ server = address, restoredServer = false, restoredV2Server = false, lastBackup = false })
+        local ok, err = self.store:updateSettings({ server = address, restoredV2Server = false, lastBackup = false })
         if ok then
             self.games = nil
             self:updateLibrary()

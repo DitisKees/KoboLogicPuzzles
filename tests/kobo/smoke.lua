@@ -96,13 +96,13 @@ local function testHashiSync()
     local games = assert(API.capabilities(function()
         return { apiVersion = 2, schemaVersion = 1, games = { "nonogram", "hashi" } }
     end))
-    local old, upgrade = API.capabilities(function() return nil, "Not found", 404 end)
-    assert(not old and upgrade:find("Update the home server", 1, true))
+    local unsupported, capabilityError = API.capabilities(function() return nil, "Not found", 404 end)
+    assert(not unsupported and capabilityError:find("puzzle API v2", 1, true))
     local nonogramOnly = assert(API.capabilities(function()
         return { apiVersion = 2, schemaVersion = 1, games = { "nonogram" } }
     end))
 
-    assert(store:updateSettings({ server = "http://example.test:8080", restoredServer = "http://example.test:8080",
+    assert(store:updateSettings({ server = "http://example.test:8080",
         target = 1, hashiTarget = 3, lastGame = "hashi" }))
     assert(store:setFilters("hashi", { width = 20, height = 20, difficulty = "hard", solvability = "advanced_logic" }))
     assert(store:setFilters("nonogram", { width = 3 }))
@@ -399,62 +399,11 @@ local function testClueLayout()
     assert(dense.gridY + dense.rows * dense.cell < dense.footerY - dense.status)
 end
 
-local function testLibraryMigration()
+local function testPluginDiscovery()
     local lfs = require("libs/libkoreader-lfs")
-    local function read(path)
-        local file = assert(io.open(path, "rb"))
-        local contents = assert(file:read("*all"))
-        assert(file:close())
-        return contents
-    end
-    local function write(path, contents)
-        local file = assert(io.open(path, "wb"))
-        assert(file:write(contents))
-        assert(file:close())
-    end
-    local data = home .. "/manual-upgrade"
-    assert(lfs.mkdir(data))
-    local legacy = assert(Store.open(data .. "/kobononogram"))
-    local hashi = hashiSquare("e")
-    local server, timestamp = "http://example.test:8080", "2026-11-23T12:00:00Z"
-    assert(legacy:updateSettings({ server = server, target = 4, hashiTarget = 3, clueLimit = 2, lastGame = "hashi",
-        lastBackup = timestamp, restoredServer = server, restoredV2Server = server }))
-    assert(legacy:download(smallPuzzle(1)) and legacy:download(smallPuzzle(2)) and legacy:download(hashi))
-    local board = Board:new(smallPuzzle(1), "#x....")
-    local view = { row = 2, column = 1, zoom = 3 }
-    assert(legacy:saveGame(board, view, true) and legacy:saveCheckpoint(board))
-    local hashiBoard = Hashi:new(hashi, "1111")
-    assert(legacy:saveGame(hashiBoard, view, true))
-    write(legacy.root .. "/github-update-token.txt", "github_pat_placeholder\n")
-    write(legacy.root .. "/settings.json.tmp", "unused update file")
-
-    local target = data .. "/kobologicpuzzles"
-    local rename = os.rename
-    os.rename = function(from, to)
-        if to == target then return nil, "simulated promotion error" end
-        return rename(from, to)
-    end
-    local failed, err = Store.openLibrary(data)
-    os.rename = rename
-    assert(not failed and err:find("simulated promotion error", 1, true) and not lfs.attributes(target))
-    for entry in lfs.dir(data) do assert(not entry:find("migrate-", 1, true)) end
-
-    local store = assert(Store.openLibrary(data))
-    for _, name in ipairs({ "settings.json", "github-update-token.txt", "1.json", "2.json", hashi.id .. ".json" }) do
-        assert(read(legacy.root .. "/" .. name) == read(store.root .. "/" .. name))
-    end
-    assert(not lfs.attributes(store.root .. "/settings.json.tmp"))
-    assert(store.settings.lastBackup == timestamp and store.settings.restoredV2Server == server)
-    assert(store.records[1].dirty and store.records[1].checkpoint == "#x...." and store.records[1].zoom == 3)
-    assert(not store.records[2].marks and store.records[hashi.id].completed)
-    assert(store:updateSettings({ clueLimit = 4 }))
-    assert(assert(Store.openLibrary(data)).settings.clueLimit == 4)
-    assert(assert(Store.open(legacy.root)).settings.clueLimit == 2)
-
-    -- KOReader's actual discovery ignores moved-aside plugin folders during the manual install.
-    local plugins = data .. "/plugins"
+    local plugins = home .. "/plugin-discovery"
     assert(lfs.mkdir(plugins))
-    assert(lfs.mkdir(plugins .. "/kobononogram.koplugin.previous"))
+    assert(lfs.mkdir(plugins .. "/kobologicpuzzles.koplugin.previous"))
     assert(lfs.link(pluginRoot, plugins .. "/kobologicpuzzles.koplugin", true))
     local extra = G_reader_settings:readSetting("extra_plugin_paths")
     G_reader_settings:saveSetting("extra_plugin_paths", { plugins })
@@ -516,7 +465,7 @@ local function testPluginUpdate()
     local releases = JSON.encode({
         { tag_name = "kobo-v1.10.0", prerelease = true, assets = { asset } },
         { tag_name = "server-v2.0.0", assets = { asset } },
-        { tag_name = "kobo-v0.2.3", assets = { { name = "kobononogram.koplugin.zip", state = "uploaded" } } },
+        { tag_name = "kobo-v1.9.0", assets = { { name = "unrelated.koplugin.zip", state = "uploaded" } } },
         { tag_name = "kobo-v1.1.0", assets = { asset } },
     })
     local realRequest = http.request
@@ -545,7 +494,7 @@ local function testPluginUpdate()
     http.request = realRequest
 
     assert(not UpdateArchive.install(installed, archive("kobologicpuzzles.koplugin/../unexpected"), "1.1.0"))
-    assert(not UpdateArchive.install(installed, archive("kobononogram.koplugin/extra.lua"), "1.1.0"))
+    assert(not UpdateArchive.install(installed, archive("unrelated.koplugin/extra.lua"), "1.1.0"))
     assert(not UpdateArchive.install(installed, zip, "1.2.0"))
     assert(read(installed .. "/main.lua") == "return 'old'" and not lfs.attributes(installed .. ".previous"))
     assert(UpdateArchive.install(installed, zip, release.version))
@@ -1144,7 +1093,7 @@ testSync()
 testHashiRules()
 testHashiSync()
 testApiTransport()
-testLibraryMigration()
+testPluginDiscovery()
 testPluginUpdate()
 testClueLayout()
 testSuspendResume()
