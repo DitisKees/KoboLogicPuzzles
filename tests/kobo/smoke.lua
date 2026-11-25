@@ -78,14 +78,23 @@ local function testHashiRules()
     bad[2].edge = bad[1].edge
     assert(not Hashi.decodeMarks(puzzle, bad, false))
 
+    puzzle.solution[1] = 2
+    puzzle.islands[1].clue, puzzle.islands[2].clue = 3, 3
+    assert(Hashi.validPuzzle(puzzle))
+    local errors, complete = Hashi:new(puzzle, "1..."):checkSolution()
+    assert(errors == 0 and not complete)
+    assert(Hashi:new(puzzle, "x..."):checkSolution() == 1)
+    assert(Hashi:new(puzzle, ".2.."):checkSolution() == 1)
+
     puzzle = hashiFixture(20, "b", {{0,0}, {0,2}, {0,4}, {2,0}, {2,4}, {4,0}, {4,2}, {4,4}},
         function(a, b) return (a.x == b.x and a.x ~= 2) or (a.y == b.y and a.y ~= 2) end)
     board = Hashi:new(puzzle)
-    assert(board:edit(2, 7, "bridge"))
+    assert(board:edit(2, 7, "bridge") and board:checkSolution() == 1)
     local unchanged = board:marks()
     local changes, err = board:edit(4, 5, "bridge")
     assert(not changes and err and board:marks() == unchanged and #board.undo == 1)
     assert(not board:edit(1, 3, "bridge"))
+    assert(board:edit(2, 7, "noBridge") and board:checkSolution() == 0)
     puzzle.edges[1].second = 2
     assert(not Hashi.validPuzzle(puzzle))
 end
@@ -987,6 +996,7 @@ local function testHashiUI()
     plugin.catalog.item_table[2].callback()
     assert(#calls == 4 and calls[1] == "/restore" and plugin.store.records[large.id])
     local game = assert(plugin.game)
+    assert(game.grid.x > game.layout.pad and game.layout.width - game.grid.x - game.grid.w > game.layout.pad)
     local function point(x, y)
         local l = game.layout
         return Geom:new{ x = l.gridX + (x - game.column + 1) * l.cell + math.floor(l.cell / 2),
@@ -1019,6 +1029,8 @@ local function testHashiUI()
     tap(0, 3)
     assert(game.board.states[1] == "2" and game.board.degree[1] == large.islands[1].clue)
     verifyPatch("Double bridge")
+    local firstIsland = point(0, 0)
+    assert(game.buffers.screen:getPixel(firstIsland.x, firstIsland.y) == BB.COLOR_GRAY_6)
     tap(3, 0)
     assert(game.board.degree[1] > large.islands[1].clue)
     verifyPatch("Overfilled island")
@@ -1056,10 +1068,33 @@ local function testHashiUI()
     game:onButton("undo")
     assert(game.board.states[1] == "x")
     local marks = game.board:marks()
-    local start, finish = point(12, 12), point(6, 6)
-    game:onGesture{ ges = "pan", start_pos = start, pos = finish }
-    game:onGesture{ ges = "pan_release", pos = finish }
+    local neighbor = point(0, 3)
+    game:onGesture{ ges = "swipe", pos = firstIsland, end_pos = point(0, 6) }
+    assert(game.row == 1 and game.column == 1 and game.board:marks() == marks)
+    game:onGesture{ ges = "pan", start_pos = firstIsland, pos = neighbor }
+    assert(game.row == 1 and game.column == 1 and game.board:marks() == marks)
+    game:onGesture{ ges = "pan_release", pos = neighbor }
+    assert(game.board.states[1] == "1")
+    game:onGesture{ ges = "swipe", pos = neighbor, end_pos = firstIsland }
+    assert(game.board.states[1] == "2")
+    game:onGesture{ ges = "multiswipe", pos = firstIsland, end_pos = neighbor }
+    assert(game.board.states[1] == ".")
+    for _, mark in ipairs({ "2", "1", "x" }) do
+        game:onButton("undo")
+        assert(game.board.states[1] == mark)
+    end
+    local emptyStart, emptyEnd = point(13, 13), point(7, 7)
+    game:onGesture{ ges = "pan", start_pos = emptyStart, pos = emptyEnd }
+    game:onGesture{ ges = "pan_release", pos = emptyEnd }
     assert(game.row == 7 and game.column == 7 and game.board:marks() == marks)
+    game:moveViewport(1, 1)
+
+    local start, finish = point(12, 12), point(6, 6)
+    game:onGesture{ ges = "pan", start_pos = start, pos = point(12, 9) }
+    game:onGesture{ ges = "two_finger_pan", start_pos = start, pos = finish }
+    game:onGesture{ ges = "two_finger_pan_release", pos = finish }
+    assert(not game.motion and game.row == 7 and game.column == 7 and game.board:marks() == marks)
+    assert(plugin.store.records[large.id].row == 7 and plugin.store.records[large.id].column == 7)
     game:onButton("plus")
     game:onButton("overview")
     UI:forceRePaint()

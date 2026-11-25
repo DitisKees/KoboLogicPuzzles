@@ -77,7 +77,7 @@ function HashiGame:paintTo(bb)
 
     if full or frame.disconnected ~= disconnected then
         local status = self.overview and "Tap the overview to jump to a location" or disconnected and "Connect all islands"
-            or string.format("Rows %d–%d  ·  Columns %d–%d  ·  Drag to pan", self.row, self.row + l.rows - 1,
+            or string.format("Rows %d–%d  ·  Columns %d–%d  ·  Two-finger drag to pan", self.row, self.row + l.rows - 1,
                 self.column, self.column + l.columns - 1)
         local region = rect(l.pad, l.footerY - l.status, l.width - 2 * l.pad, l.status)
         canvas:paintRect(region.x, region.y, region.w, region.h, BB.COLOR_WHITE)
@@ -132,6 +132,17 @@ function HashiGame:selectIsland(id)
     invalidate(id)
 end
 
+function HashiGame:islandAt(position)
+    local row, column = self.layout:cellAt(position.x, position.y, self.row, self.column)
+    return row and self.board:islandAt(row, column)
+end
+
+function HashiGame:editEdge(first, second, mode)
+    local changes, err = self.board:edit(first, second, mode)
+    self:changed(changes)
+    if err then UIManager:show(InfoMessage:new{ text = err, timeout = 2 }) end
+end
+
 function HashiGame:onTap(_, gesture)
     if self.motion then
         local scrolled = self.motion.scrolled
@@ -153,15 +164,12 @@ function HashiGame:onTap(_, gesture)
         return true
     end
 
-    local row, column = l:cellAt(x, y, self.row, self.column)
-    local id = row and self.board:islandAt(row, column)
+    local id = self:islandAt(gesture.pos)
     local selected = self.selectedIsland
     if not id or id == selected then
         self:selectIsland(nil)
     elseif selected and self.board.graph.neighbors[selected][id] then
-        local changes, err = self.board:edit(selected, id, self.mode)
-        self:changed(changes)
-        if err then UIManager:show(InfoMessage:new{ text = err, timeout = 2 }) end
+        self:editEdge(selected, id, self.mode)
     else
         self:selectIsland(id)
     end
@@ -171,10 +179,25 @@ end
 function HashiGame:markAt() return nil end
 function HashiGame:onHold() return true end
 
+function HashiGame:beginMotion(start, multi)
+    Game.beginMotion(self, start, multi)
+    if self.motion and not multi then self.motion.island = self:islandAt(start) end
+end
+
 function HashiGame:onPan(_, gesture)
     if not self.motion then self:beginMotion(gesture.start_pos) end
-    if self.motion and not self.motion.multi then self:panMotion(self.motion, gesture.pos) end
+    local motion = self.motion
+    if motion and not motion.multi and not motion.island then self:panMotion(motion, gesture.pos) end
     return true
+end
+
+function HashiGame:finishMotion(position)
+    local motion = self.motion
+    if not motion or not motion.island then return Game.finishMotion(self, position) end
+    -- Edit on release so a second finger can turn the gesture into a pan.
+    self.motion = nil
+    local target = position and self:islandAt(position)
+    if target then self:editEdge(motion.island, target, "bridge") end
 end
 
 function HashiGame:onButton(action)

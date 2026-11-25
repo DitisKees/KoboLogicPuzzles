@@ -38,10 +38,10 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 
 ## Play Hashi
 
-- Select **Bridge**, tap a numbered island, then tap its nearest neighbor in the same row or column. Repeat taps on that neighbor to cycle through one bridge, two bridges, and zero bridges. Tap the selected island or an empty cell to deselect it. **No bridge** toggles a crossed-out candidate, and **Clear** removes either kind of mark.
-- A thick ring means the island has the right number of bridges. A white number on a black island means it has too many. Bridges cannot cross. To solve the puzzle, match every number and connect all islands in one network. The optional dotted guides show candidates around the selected island. Toggle them in **Hashi settings → Candidate bridges**.
-- Drag to pan. Use **−** and **+** to change scale, or open **Overview** and tap an area to jump there. The game saves your view and marks as you play. **Undo**, **Redo**, **Checkpoint**, and **Restart** are available offline.
-- **Check** counts decisions that disagree with the stored solution. It leaves the board intact and gives no locations. The library shows the fraction of candidate edges you have marked and a thumbnail of the current board.
+- Drag from a numbered island to its nearest neighbor in the same row or column to cycle through one bridge, two bridges, and zero bridges. You can also select **Bridge**, tap an island, and repeat taps on its neighbor. Tap the selected island or an empty cell to deselect it. With taps, **No bridge** toggles a crossed-out candidate, and **Clear** removes either kind of mark.
+- An island turns grey and its number is struck through when it has the right number of bridges. A white number on a black island means it has too many. Bridges cannot cross. To solve the puzzle, match every number and connect all islands in one network. The optional dotted guides show candidates around the selected island. Toggle them in **Hashi settings → Candidate bridges**.
+- Drag with two fingers to pan, or start a one-finger drag in an empty cell. Use **−** and **+** to change scale, or open **Overview** and tap an area to jump there. The game saves your view and marks as you play. **Undo**, **Redo**, **Checkpoint**, and **Restart** are available offline.
+- **Check** counts decisions that disagree with the stored solution. A single bridge on an edge that ultimately needs two is accepted. The library shows the fraction of candidate edges you have marked and a thumbnail of the current board.
 
 ## Backup and offline puzzles
 
@@ -63,7 +63,7 @@ Use the tested plugin ZIP and a test server with generated fixtures. To seed the
 2. Back up the active plugin and its data directory, then install the candidate using the [manual update instructions](#update-the-plugin).
 3. Eject the Kobo, open KOReader, and check that **Tools** has one **Kobo Logic Puzzles** entry. Before changing the server URL, reopen the large Nonogram with Wi-Fi off. Verify its marks, viewport, clues, and checkpoint.
 4. Exit KOReader and set the original data folder aside. Restart with empty plugin data, enable Wi-Fi, and enter the test server URL. Choose **Game → Check for Hashi**, then download **20×20**, **35×35**, and **50×50** boards. Use **Browse server catalog** and the size filter if the offline queue fills with other sizes.
-5. Disable Wi-Fi. On each size, place a single and double bridge, try a crossing, mark no bridge, undo and redo, and test zoom, panning, and overview jumps. Check that a drag never places a bridge. Note tap accuracy and whether ordinary moves avoid a full-screen flash. Reopen the game after a KOReader restart to verify marks and viewport.
+5. Disable Wi-Fi. On each size, drag between neighboring islands to cycle through one, two, and zero bridges. Try a crossing, mark no bridge, undo and redo, and test zoom, two-finger panning, and overview jumps. Note tap accuracy near screen edges and whether ordinary moves avoid a full-screen flash. Reopen the game after a KOReader restart to verify marks and viewport.
 6. Finish a test puzzle offline and use **Check**. Back up that board and an unfinished one to the test server. With KOReader closed, archive the test data and reinstall the candidate from the ZIP. Start with empty plugin data, connect to the test server, and sync. Verify the restored boards offline.
 7. To return to the live setup, exit KOReader. Archive the test plugin and test data separately, then put both original folders back in their original locations. Eject the Kobo and verify the original server URL, the single Tools entry, and the large Nonogram.
 

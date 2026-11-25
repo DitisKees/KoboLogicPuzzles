@@ -77,21 +77,28 @@ function Render.paint(canvas, board, originX, originY, cell, region, face, selec
     for id, island in ipairs(board.puzzle.islands) do
         if Render.clip(Render.islandRect(island, originX, originY, cell), region) then
             local centerX, centerY = x + island.x * cell, y + island.y * cell
+            local done = board.degree[id] == island.clue
+            local outline = done and BB.COLOR_GRAY_6 or BB.COLOR_BLACK
             if not face then
                 local mark = math.max(1, math.floor(cell / 2))
-                bb:paintRect(centerX - math.floor(mark / 2), centerY - math.floor(mark / 2), mark, mark, BB.COLOR_BLACK)
+                bb:paintRect(centerX - math.floor(mark / 2), centerY - math.floor(mark / 2), mark, mark, outline)
             else
                 local radius = math.max(2, math.floor(cell * 0.36))
-                local conflict, done = board.degree[id] > island.clue, board.degree[id] == island.clue
-                bb:paintCircle(centerX, centerY, radius, conflict and BB.COLOR_BLACK or BB.COLOR_WHITE)
-                bb:setPixelClamped(centerX, centerY, conflict and BB.COLOR_BLACK or BB.COLOR_WHITE)
-                bb:paintCircle(centerX, centerY, radius, BB.COLOR_BLACK, done and 2 or 1)
+                local conflict = board.degree[id] > island.clue
+                local fill = conflict and BB.COLOR_BLACK or (done and BB.COLOR_GRAY_D or BB.COLOR_WHITE)
+                bb:paintCircle(centerX, centerY, radius, fill)
+                bb:setPixelClamped(centerX, centerY, fill)
+                bb:paintCircle(centerX, centerY, radius, outline, 1)
                 if selected == id then bb:paintCircle(centerX, centerY, radius + 2, BB.COLOR_BLACK, 1) end
                 local label = tostring(island.clue)
                 local size = RenderText:sizeUtf8Text(0, false, face, label, false)
                 RenderText:renderUtf8Text(bb, centerX - math.floor(size.x / 2),
                     centerY + math.floor((size.y_top - size.y_bottom) / 2), face, label,
-                    false, false, conflict and BB.COLOR_WHITE or BB.COLOR_BLACK)
+                    false, false, conflict and BB.COLOR_WHITE or outline)
+                if done then
+                    local strike = math.min(radius - 1, math.ceil(size.x / 2) + 1)
+                    bb:paintRect(centerX - strike, centerY, 2 * strike + 1, math.max(1, math.floor(cell / 24)), outline)
+                end
             end
         end
     end

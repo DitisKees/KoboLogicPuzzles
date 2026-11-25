@@ -34,7 +34,8 @@ function Viewport:new(width, height, puzzle, zoom, clueLimit)
     local headerY = pad + button + title
     local footerY = height - 2 * (button + pad)
     clueLimit = clueLimit or Viewport.defaultClueLimit
-    local availableW, availableH = width - 2 * pad - 1, footerY - status - headerY - 1
+    local sidePad = puzzle.game == "hashi" and 2 * pad or pad
+    local availableW, availableH = width - 2 * sidePad - 1, footerY - status - headerY - 1
     -- Preserve room for at least four grid cells where the screen allows it.
     local maxLeft = math.max(1, math.floor((availableW - math.min(4, puzzle.width) * cell) / step))
     local maxTop = math.max(1, math.floor((availableH - math.min(4, puzzle.height) * cell) / step))
@@ -43,7 +44,7 @@ function Viewport:new(width, height, puzzle, zoom, clueLimit)
         leftSlots, leftEllipsis = clueSlots(puzzle.rowClues, clueLimit, maxLeft)
         topSlots, topEllipsis = clueSlots(puzzle.columnClues, clueLimit, maxTop)
     end
-    local gridX, gridY = pad + leftSlots * step, headerY + topSlots * step
+    local gridX, gridY = sidePad + leftSlots * step, headerY + topSlots * step
     local columns = clamp(math.floor((availableW - leftSlots * step) / cell), 1, puzzle.width)
     local rows = clamp(math.floor((availableH - topSlots * step) / cell), 1, puzzle.height)
 

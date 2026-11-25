@@ -236,7 +236,8 @@ function Board:redoStroke() return self:replay(self.redo, self.undo, false) end
 function Board:checkSolution()
     local errors = 0
     for i, mark in ipairs(self.states) do
-        if mark ~= "." and self.counts[i] ~= self.puzzle.solution[i] then errors = errors + 1 end
+        local required = self.puzzle.solution[i]
+        if self.counts[i] > required or (mark == "x" and required > 0) then errors = errors + 1 end
     end
     return errors, self.complete
 end
