@@ -21,7 +21,7 @@ internal static class HashiCli
         if (!ParseNumber(config["size"], 0, out var size) || !HashiGenerationOptions.IsSupportedSize(size) ||
             !ParseNumber(config["density"], options.SelectedDensities[0], out var density) ||
             !ParseNumber(config["expansion"], options.Expansion, out var expansion) ||
-            !ParseNumber(config["upstream-difficulty"], options.UpstreamDifficulty, out var difficulty) ||
+            !ParseNumber(config["upstream-difficulty"], options.UpstreamDifficulty ?? 2, out var difficulty) ||
             (config["diagnostic"] is { } setting && !bool.TryParse(setting, out diagnostic)))
             return Usage();
 

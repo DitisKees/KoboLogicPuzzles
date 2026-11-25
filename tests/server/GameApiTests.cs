@@ -94,28 +94,26 @@ public sealed class GameApiTests
     public async Task HashiQueuePrefersWorkerRatingsUnlessTheClientSetsItsOwnFilter()
     {
         using var database = new TestDatabase();
-        var easy = AddHashi(database, row: 0);
-        using var fixtures = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "HashiFixtures.json")));
-        var fixture = fixtures.RootElement.EnumerateArray().Single(row => row.GetProperty("size").GetInt32() == 20 &&
-            row.GetProperty("seed").GetString() == "00000065");
-        var candidate = HashiCandidate.ParseBridges(20, fixture.GetProperty("description").GetString()!,
-            fixture.GetProperty("solution").GetString()!);
-        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(candidate, "00000065")));
-        var preferredId = PuzzleId.FromHashi(candidate.Puzzle.ContentHash).Value;
+        var medium = TestData.HashiFixture(20, "00000066", upstreamDifficulty: 1);
+        var expert = TestData.HashiFixture(20, "00000066");
+        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(medium, "00000066")));
+        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(expert, "00000066")));
+        var mediumId = PuzzleId.FromHashi(medium.Puzzle.ContentHash).Value;
+        var expertId = PuzzleId.FromHashi(expert.Puzzle.ContentHash).Value;
         using var source = UnavailableSource();
         await using var app = ApiTests.CreateApp(database, source);
         await app.StartAsync();
         using var http = app.GetTestClient();
 
-        using var preferred = await http.PostAsJsonAsync("/api/v2/offline-queue", new { Game = "hashi", TargetCount = 2 });
+        using var preferred = await http.PostAsJsonAsync("/api/v2/offline-queue", new { Game = "hashi", TargetCount = 1 });
         preferred.EnsureSuccessStatusCode();
         var queue = (await preferred.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!;
-        Assert.Equal(new[] { preferredId, easy.Value }, queue.Puzzles.Select(puzzle => puzzle.Id));
+        Assert.Equal(mediumId, Assert.Single(queue.Puzzles).Id);
         using var matching = await http.PostAsJsonAsync("/api/v2/offline-queue",
-            new { Game = "hashi", TargetCount = 1, Difficulty = "easy" });
+            new { Game = "hashi", TargetCount = 1, Solvability = "bounded_lookahead" });
         matching.EnsureSuccessStatusCode();
         var filtered = (await matching.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!;
-        Assert.Equal(easy.Value, Assert.Single(filtered.Puzzles).Id);
+        Assert.Equal(expertId, Assert.Single(filtered.Puzzles).Id);
     }
 
     [Fact]

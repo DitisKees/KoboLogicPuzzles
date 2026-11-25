@@ -12,7 +12,7 @@ The classifier records island quotas, crossing exclusions, isolated-pair and gro
 
 The three-minute sweep used 18 candidates for each grid size, with requested densities of 10% and 20%, expansion of 10%, upstream difficulties 0 through 2, and seeds 101 through 103. All 126 candidates proved unique. They contained 124 distinct layouts, and each size yielded at least one hard or expert board that the classifier solved with deductions alone and that met the density floor below. The timings describe the original feasibility tools on a Linux x86-64 Intel i5-4200M.
 
-| Grid | Generation median / max | Exact max | Classifier max | Easy / medium / hard / expert | Default stock candidates |
+| Grid | Generation median / max | Exact max | Classifier max | Easy / medium / hard / expert | Original stock candidates |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 20×20 | 5.9 / 30.9 ms | 2.5 ms | 5.0 ms | 6 / 9 / 2 / 1 | 2 |
 | 25×25 | 25.7 / 252.6 ms | 9.6 ms | 19.1 ms | 2 / 13 / 1 / 2 | 1 |
@@ -24,7 +24,9 @@ The three-minute sweep used 18 candidates for each grid size, with requested den
 
 The generator peaked at 2.2 MiB of resident memory. The process that validated and classified the original run peaked at 20.2 MiB. The 50×50 board with seed `00000067`, requested density 10%, expansion 10%, and upstream difficulty 2 has 250 islands and rates hard using advanced logic. Repeating its seed produced the same clues and solution.
 
-The C# port matched the reference results for 638 generated candidates, including 469 distinct layouts, and 1,884 small-board fixture cases. The comparison covered solution counts, assignments, hashes, and rating statistics. Nine seeded fixtures remain in the .NET suite, including all seven sizes. The original benchmark tools and reproduction instructions are preserved in the local `hashi-feasibility` branch at `920d58f`. [Seeded fixtures](../../../tests/server/HashiFixtures.json) · [.NET tests](../../../tests/server/HashiTests.cs)
+The original stock counts apply the density floor, deduplicate by content hash, and count Hard and Expert candidates solved with Basic or Advanced logic.
+
+The C# port matched the reference results for 638 generated candidates, including 469 distinct layouts, and 1,884 small-board fixture cases. The comparison covered solution counts, assignments, hashes, and rating statistics. The .NET suite includes seeded fixtures for all seven sizes. The original benchmark tools and reproduction instructions are preserved in the local `hashi-feasibility` branch at `920d58f`. [Seeded fixtures](../../../tests/server/HashiFixtures.json) · [.NET tests](../../../tests/server/HashiTests.cs)
 
 ```sh
 dotnet test KoboLogicPuzzles.slnx
@@ -35,7 +37,7 @@ docker run --rm --network none --entrypoint /app/hashi/bridgegen \
 
 ## Background inventory
 
-- Request upstream difficulty 2, expansion 10%, and densities of 10% and 20% with fresh seeds. Require at least 25 islands and at least 4% actual density, rounded up. The default stock counts in the table apply this floor, deduplicate by content hash, and select hard or expert boards solved with basic or advanced logic.
+- Fill Easy, Medium, Hard, and Expert stock for each size. Choose the Bridges generator settings based on which tier needs stock, then use the server's own verified rating to decide where the candidate belongs. Require at least 25 islands and at least 4% actual density.
 - Run one candidate at a time in the background. Start with configurable three-minute budgets per stage and a 128 MiB address-space limit for the native helper. Terminate and reap the helper on timeout or worker shutdown.
 - Rotate among sizes with a stock shortfall. Allow up to three attempts per size per replenishment cycle, then report the shortfall and retry in a later cycle. Store the verified definition and solution with the seed, settings, and versions so stored puzzles never depend on regeneration.
 
@@ -44,14 +46,15 @@ The server image enables the worker by default. Local .NET runs can enable it wi
 | `HashiGeneration` setting | Default |
 | --- | --- |
 | `Sizes` | 20, 25, 30, 35, 40, 45, 50 |
-| `Densities` | 10 and 20 percent requested, with at least 25 islands and 4% actual density |
-| `Difficulties` and `Solvabilities` | `Hard`, `Expert` and `BasicLogic`, `AdvancedLogic` |
-| `Expansion` and `UpstreamDifficulty` | 10 percent and 2 |
+| `Densities` | Hard and Expert use 10% and 20%. Easy and Medium also try 8% at 20×20 and 6% at larger sizes. An explicit list applies to all tiers. |
+| `Difficulties` and `Solvabilities` | `Easy`, `Medium`, `Hard`, `Expert` and `BasicLogic`, `AdvancedLogic` |
+| `Expansion` | 10 percent |
+| `UpstreamDifficulty` | The worker uses 0 for Easy, 1 for Medium, and 2 for Hard and Expert. An explicit value applies to all tiers. The CLI defaults to 2. |
 | `TargetPerDifficulty` and `LowWatermark` | 2 unstarted puzzles per size and tier, with refill triggered at 1 |
 | `MaxUnstartedPerSize` and `AttemptsPerSize` | 12 unstarted puzzles per size and 3 attempts per size per pass |
 | `StageTimeoutSeconds` and `PollIntervalSeconds` | 180 seconds per stage and 600 seconds between passes |
 
-The density floor can be set with `MinIslands` and `MinDensityPercent`. For Compose array settings, set indexed environment keys such as `HashiGeneration__Sizes__0: "20"` and `HashiGeneration__Sizes__1: "50"`. A fresh server builds toward the configured targets. Later passes resume when stock reaches its low-water mark and continue to the target. To pause automatic replenishment while keeping stored Hashi available, set `HashiGeneration__Enabled=false`.
+The density floor can be set with `MinIslands` and `MinDensityPercent`. For Compose array settings, set indexed environment keys such as `HashiGeneration__Sizes__0: "20"` and `HashiGeneration__Sizes__1: "50"`. The worker checks all configured targets at startup, so an updated server adds the new tiers to its existing catalog. Later passes resume when stock reaches its low-water mark and continue to the target. To pause automatic replenishment while keeping stored Hashi available, set `HashiGeneration__Enabled=false`.
 
 Inspect the live worker at `/api/v2/hashi/status`. The CLI reads persisted stock and reports the outcome of the requested generation. `--diagnostic true` checks the seed, uniqueness, and rating without adding stock. Remove that option to store a verified puzzle that meets the density floor and inventory cap. CLI generation shares the worker lock, so it may report `busy` during a replenishment pass.
 

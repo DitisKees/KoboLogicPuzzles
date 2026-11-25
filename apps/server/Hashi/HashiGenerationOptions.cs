@@ -6,7 +6,10 @@ public sealed class HashiGenerationOptions : IValidatableObject
 {
     private static readonly int[] DefaultSizes = [20, 25, 30, 35, 40, 45, 50];
     private static readonly int[] DefaultDensities = [10, 20];
-    private static readonly HashiDifficulty[] DefaultDifficulties = [HashiDifficulty.Hard, HashiDifficulty.Expert];
+    private static readonly int[] IntroductoryDensities = [6, 10, 20];
+    private static readonly int[] IntroductoryDensities20 = [8, 10, 20];
+    private static readonly HashiDifficulty[] DefaultDifficulties =
+        [HashiDifficulty.Easy, HashiDifficulty.Medium, HashiDifficulty.Hard, HashiDifficulty.Expert];
     private static readonly HashiSolvability[] DefaultSolvabilities = [HashiSolvability.BasicLogic, HashiSolvability.AdvancedLogic];
 
     public bool Enabled { get; init; }
@@ -16,7 +19,7 @@ public sealed class HashiGenerationOptions : IValidatableObject
     public HashiDifficulty[]? Difficulties { get; init; }
     public HashiSolvability[]? Solvabilities { get; init; }
     [Range(0, 100)] public int Expansion { get; init; } = 10;
-    [Range(0, 2)] public int UpstreamDifficulty { get; init; } = 2;
+    [Range(0, 2)] public int? UpstreamDifficulty { get; init; }
     [Range(2, 750)] public int MinIslands { get; init; } = 25;
     [Range(0, 30)] public int MinDensityPercent { get; init; } = 4;
     [Range(1, 20)] public int TargetPerDifficulty { get; init; } = 2;
@@ -33,6 +36,13 @@ public sealed class HashiGenerationOptions : IValidatableObject
     internal TimeSpan StageTimeout => TimeSpan.FromSeconds(StageTimeoutSeconds);
 
     internal static bool IsSupportedSize(int size) => size is >= 20 and <= 50 && size % 5 == 0;
+
+    internal IReadOnlyList<int> DensitiesFor(int size, HashiDifficulty tier)
+    {
+        if (Densities is null && (tier is HashiDifficulty.Easy or HashiDifficulty.Medium))
+            return size == 20 ? IntroductoryDensities20 : IntroductoryDensities;
+        return SelectedDensities;
+    }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

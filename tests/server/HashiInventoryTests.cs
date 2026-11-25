@@ -8,6 +8,44 @@ public sealed class HashiInventoryTests
     private static readonly HashiGenerationParameters Parameters = new("00000001", 10, 10, 2);
 
     [Fact]
+    public async Task DefaultInventoryAddsBasicLogicToAnExistingAdvancedLogicCatalog()
+    {
+        using var database = new TestDatabase();
+        var easy = TestData.HashiFixture(20, "00000065", upstreamDifficulty: 0);
+        var medium = TestData.HashiFixture(20, "00000066", upstreamDifficulty: 1);
+        var hard = TestData.HashiFixture(20, "00000065");
+        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(hard)));
+
+        var attempts = new List<(int Difficulty, int Density)>();
+        var generator = new Stub((_, parameters, _) =>
+        {
+            attempts.Add((parameters.UpstreamDifficulty, parameters.RequestedDensity));
+            var candidate = parameters.UpstreamDifficulty switch
+            {
+                0 => easy,
+                1 => medium,
+                _ => hard,
+            };
+            return Task.FromResult(new GeneratedHashiCandidate(candidate, 1, 2000));
+        });
+        var inventory = new HashiInventory(database.Store, generator, new HashiGenerationOptions
+        {
+            Enabled = true, Sizes = [20], TargetPerDifficulty = 1, LowWatermark = 0,
+        }, TimeProvider.System, NullLogger<HashiInventory>.Instance);
+
+        await inventory.RunCycleAsync(CancellationToken.None);
+
+        Assert.Equal([(0, 8), (2, 10), (1, 10)], attempts);
+        var status = inventory.GetStatus();
+        Assert.Equal(["easy", "medium", "hard", "expert"], status.Targets.Select(target => target.Difficulty));
+        Assert.Equal([1, 1, 1, 0], status.Targets.Select(target => target.Unstarted));
+        Assert.Equal([("easy", "basic_logic"), ("medium", "basic_logic"), ("hard", "advanced_logic")],
+            status.Stock.Select(bucket => (bucket.Difficulty, bucket.Solvability)));
+        Assert.Equal(2, status.Outcomes["stored"]);
+        Assert.Equal(1, status.Outcomes["rating_rejected"]);
+    }
+
+    [Fact]
     public async Task RefillsEverySizeAndKeepsReplenishingAfterAPartialPass()
     {
         using var database = new TestDatabase();
@@ -105,6 +143,7 @@ public sealed class HashiInventoryTests
         new(new PuzzleStore(database.Path), generator, new HashiGenerationOptions
         {
             Enabled = true, Sizes = sizes, Difficulties = [HashiDifficulty.Easy], AttemptsPerSize = attempts,
+            Densities = [10, 20],
             TargetPerDifficulty = 2, LowWatermark = 0, MaxUnstartedPerSize = 2, MinIslands = 2, MinDensityPercent = 0,
         }, TimeProvider.System, NullLogger<HashiInventory>.Instance);
 

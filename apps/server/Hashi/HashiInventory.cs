@@ -64,15 +64,28 @@ public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator g
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 stock = ReadStock();
-                if (AtCapacity(stock, size) || options.SelectedDifficulties.All(tier =>
-                        EligibleStock(stock, size, tier) >= options.TargetPerDifficulty))
+                if (AtCapacity(stock, size))
                     continue;
 
-                var density = options.SelectedDensities[(int)((cycle + (uint)round) % options.SelectedDensities.Count)];
-                var parameters = new HashiGenerationParameters(NewSeed(), density, options.Expansion, options.UpstreamDifficulty);
+                var missing = options.SelectedDifficulties.Where(tier =>
+                    EligibleStock(stock, size, tier) < options.TargetPerDifficulty).ToArray();
+                if (missing.Length == 0)
+                    continue;
+
+                var attempt = cycle + (uint)round;
+                var target = missing[(int)(attempt % missing.Length)];
+                var densities = options.DensitiesFor(size, target);
+                // Rotate through the missing tiers and try a different density on each trip through the list.
+                var density = densities[(int)((attempt / (uint)missing.Length) % densities.Count)];
+                var upstream = options.UpstreamDifficulty ?? (target switch
+                {
+                    HashiDifficulty.Easy => 0,
+                    HashiDifficulty.Medium => 1,
+                    _ => 2,
+                });
+                var parameters = new HashiGenerationParameters(NewSeed(), density, options.Expansion, upstream);
                 await AttemptAsync(size, parameters, diagnostic: false, rating => rating.Difficulty is { } tier &&
-                    options.SelectedDifficulties.Contains(tier) && options.SelectedSolvabilities.Contains(rating.Solvability) &&
-                    EligibleStock(stock, size, tier) < options.TargetPerDifficulty, cancellationToken);
+                    missing.Contains(tier) && options.SelectedSolvabilities.Contains(rating.Solvability), cancellationToken);
             }
         }
 

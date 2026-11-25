@@ -1,4 +1,3 @@
-using System.Text.Json;
 using KoboLogicPuzzles.Server.Hashi;
 
 namespace KoboLogicPuzzles.Server.Tests;
@@ -109,11 +108,7 @@ public sealed class HashiStorageTests
     public void RejectsCrossingBridgesEvenForIncompleteProgress()
     {
         using var database = new TestDatabase();
-        using var fixtures = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "HashiFixtures.json")));
-        var fixture = fixtures.RootElement.EnumerateArray().Single(row => row.GetProperty("size").GetInt32() == 20 &&
-            row.GetProperty("seed").GetString() == "00000065");
-        var candidate = HashiCandidate.ParseBridges(20, fixture.GetProperty("description").GetString()!,
-            fixture.GetProperty("solution").GetString()!);
+        var candidate = TestData.HashiFixture(20, "00000065");
         var verified = TestData.VerifyHashi(candidate, "00000065");
         database.Store.SaveHashiPuzzle(verified);
 

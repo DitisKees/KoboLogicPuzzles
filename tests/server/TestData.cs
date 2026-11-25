@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Text.Json;
 using KoboLogicPuzzles.Server;
 using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.Data.Sqlite;
@@ -17,6 +18,15 @@ internal static class TestData
         var description = Enumerable.Repeat('a', size * size).ToArray();
         description[row * size] = description[row * size + 4] = (char)('0' + count);
         return HashiCandidate.ParseBridges(size, new string(description), $"S;L0,{row},4,{row},{count}");
+    }
+
+    public static HashiCandidate HashiFixture(int size, string seed, int upstreamDifficulty = 2)
+    {
+        using var fixtures = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "HashiFixtures.json")));
+        var fixture = fixtures.RootElement.EnumerateArray().Single(row => row.GetProperty("size").GetInt32() == size &&
+            row.GetProperty("seed").GetString() == seed && row.GetProperty("upstreamDifficulty").GetInt32() == upstreamDifficulty);
+        return HashiCandidate.ParseBridges(size, fixture.GetProperty("description").GetString()!,
+            fixture.GetProperty("solution").GetString()!);
     }
 
     public static VerifiedHashiPuzzle VerifyHashi(HashiCandidate candidate, string seed = "00000001")
