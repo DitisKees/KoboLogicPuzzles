@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed record PuzzleFilter(PuzzleGame Game, int? Width, int? Height, decimal? WebPbnDifficulty, int? WebPbnSolvability,
     HashiDifficulty? HashiDifficulty, HashiSolvability? HashiSolvability)

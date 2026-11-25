@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed class WebPbnOptions : IValidatableObject
 {

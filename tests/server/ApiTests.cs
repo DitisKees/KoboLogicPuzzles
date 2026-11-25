@@ -1,12 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using KoboNonogram.Server;
+using KoboLogicPuzzles.Server;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class ApiTests
 {
@@ -48,7 +48,8 @@ public sealed class ApiTests
         var hashiWithSolution = await http.GetFromJsonAsync<JsonElement>($"/api/v2/puzzles/{hashiId}?includeSolution=true");
         Assert.Equal(1, Assert.Single(hashiWithSolution.GetProperty("solution").EnumerateArray()).GetInt32());
 
-        Assert.Equal(12, (await http.GetFromJsonAsync<PuzzleDefinition>("/api/v1/puzzles/12"))?.Id);
+        using var oldClient = await http.GetAsync("/api/v1/puzzles/12");
+        Assert.Equal(HttpStatusCode.NotFound, oldClient.StatusCode);
         using var invalid = await http.GetAsync("/api/v2/puzzles/12");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         using var missing = await http.GetAsync($"/api/v2/puzzles/hashi-local-{new string('b', 64)}");
@@ -72,24 +73,25 @@ public sealed class ApiTests
         {
             await app.StartAsync();
             using var http = app.GetTestClient();
-            var firstPage = await http.GetFromJsonAsync<PuzzleSummary[]>("/api/v1/puzzles?limit=1");
-            var summary = Assert.Single(firstPage!);
-            Assert.Equal(13, summary.Id);
-            Assert.Equal(metadata, summary.Metadata);
-            var nextPage = await http.GetFromJsonAsync<JsonElement[]>("/api/v1/puzzles?beforeId=13");
-            var unrated = Assert.Single(nextPage!);
-            Assert.Equal(12, unrated.GetProperty("id").GetInt32());
-            Assert.False(unrated.TryGetProperty("metadata", out _));
+            var firstPage = (await http.GetFromJsonAsync<GameCatalogPage>("/api/v2/puzzles?game=nonogram&limit=1"))!;
+            var summary = Assert.Single(firstPage.Puzzles);
+            Assert.Equal("nonogram-webpbn-13", summary.Id);
+            Assert.Equal(metadata, Assert.IsType<JsonElement>(summary.Metadata).Deserialize<PuzzleMetadata>(JsonSerializerOptions.Web));
+            var nextPage = (await http.GetFromJsonAsync<GameCatalogPage>(
+                $"/api/v2/puzzles?game=nonogram&beforeId={firstPage.NextBeforeId}"))!;
+            var unrated = Assert.Single(nextPage.Puzzles);
+            Assert.Equal("nonogram-webpbn-12", unrated.Id);
+            Assert.Null(unrated.Metadata);
 
-            using var queue = await http.PostAsJsonAsync("/api/v1/offline-queue", new OfflineQueueRequest(1, []));
+            using var queue = await http.PostAsJsonAsync("/api/v2/offline-queue", new { Game = "nonogram", TargetCount = 1 });
             queue.EnsureSuccessStatusCode();
-            var response = await queue.Content.ReadFromJsonAsync<OfflineQueueResponse>();
-            Assert.Equal(metadata, Assert.Single(response!.Puzzles).Metadata);
-            var ratings = await http.GetFromJsonAsync<Dictionary<int, PuzzleMetadata>>("/api/v1/puzzles/metadata?id=13&id=99");
-            Assert.Equal(new KeyValuePair<int, PuzzleMetadata>(13, metadata), Assert.Single(ratings!));
+            var response = await queue.Content.ReadFromJsonAsync<GameOfflineQueueResponse>();
+            Assert.Equal(metadata, Assert.IsType<NonogramPuzzleDefinition>(Assert.Single(response!.Puzzles)).Metadata);
+            var ratings = await http.GetFromJsonAsync<Dictionary<string, PuzzleMetadata>>(
+                "/api/v2/puzzles/metadata?id=nonogram-webpbn-13&id=nonogram-webpbn-99");
+            Assert.Equal(new KeyValuePair<string, PuzzleMetadata>("nonogram-webpbn-13", metadata), Assert.Single(ratings!));
 
-            using var backup = await http.PostAsJsonAsync("/api/v1/progress",
-                new ProgressUpload([new ProgressUpdate(13, "#x....", false)]));
+            using var backup = await http.PostAsJsonAsync("/api/v2/progress", Upload(13, "#x....", false));
             backup.EnsureSuccessStatusCode();
             var receipt = await backup.Content.ReadFromJsonAsync<ProgressReceipt>();
             Assert.Equal(1, receipt!.SavedCount);
@@ -101,13 +103,14 @@ public sealed class ApiTests
         await using var restarted = CreateApp(database, unavailableSource);
         await restarted.StartAsync();
         using var freshClient = restarted.GetTestClient();
-        var restored = Assert.Single((await freshClient.GetFromJsonAsync<SavedBoard[]>("/api/v1/restore"))!);
+        var restored = Assert.Single((await freshClient.GetFromJsonAsync<GameSavedBoard[]>("/api/v2/restore"))!);
 
-        Assert.Equal(13, restored.Puzzle.Id);
-        Assert.Equal(metadata, restored.Puzzle.Metadata);
-        Assert.Equal("#x....", restored.Progress.Marks);
+        Assert.Equal("nonogram-webpbn-13", restored.Puzzle.Id);
+        Assert.Equal(metadata, Assert.IsType<NonogramPuzzleDefinition>(restored.Puzzle).Metadata);
+        Assert.Equal("#x....", restored.Progress.Marks.GetString());
         Assert.False(restored.Progress.Completed);
-        Assert.Equal(13, (await freshClient.GetFromJsonAsync<PuzzleDefinition>("/api/v1/puzzles/13"))?.Id);
+        Assert.Equal("nonogram-webpbn-13",
+            (await freshClient.GetFromJsonAsync<GamePuzzleDefinition>("/api/v2/puzzles/nonogram-webpbn-13"))?.Id);
     }
 
     [Fact]
@@ -125,17 +128,17 @@ public sealed class ApiTests
         await app.StartAsync();
         using var http = app.GetTestClient();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/api/v1/puzzles/40883")).StatusCode);
-        using var backup = await http.PostAsJsonAsync("/api/v1/progress",
-            new ProgressUpload([new ProgressUpdate(40883, "#x....", false)]));
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/api/v2/puzzles/nonogram-webpbn-40883")).StatusCode);
+        using var backup = await http.PostAsJsonAsync("/api/v2/progress", Upload(40883, "#x....", false));
         backup.EnsureSuccessStatusCode();
-        var boards = await http.GetFromJsonAsync<SavedBoard[]>("/api/v1/restore");
+        var boards = await http.GetFromJsonAsync<GameSavedBoard[]>("/api/v2/restore");
         var restored = Assert.Single(boards!);
-        Assert.Equal(40883, restored.Puzzle.Id);
-        Assert.Equal("#x....", restored.Progress.Marks);
+        Assert.Equal("nonogram-webpbn-40883", restored.Puzzle.Id);
+        Assert.Equal("#x....", restored.Progress.Marks.GetString());
         Assert.Empty(database.Store.ListCatalog(null, 10));
-        var ratings = await http.GetFromJsonAsync<Dictionary<int, JsonElement>>("/api/v1/puzzles/metadata?id=40883");
-        var classification = ratings![40883];
+        var ratings = await http.GetFromJsonAsync<Dictionary<string, JsonElement>>(
+            "/api/v2/puzzles/metadata?id=nonogram-webpbn-40883");
+        var classification = ratings!["nonogram-webpbn-40883"];
         Assert.Equal(3, classification.GetProperty("solvability").GetInt32());
         Assert.False(classification.TryGetProperty("difficulty", out _));
         Assert.False(classification.TryGetProperty("quality", out _));
@@ -153,25 +156,27 @@ public sealed class ApiTests
         await app.StartAsync();
         using var http = app.GetTestClient();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/api/v1/puzzles/99")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await http.GetAsync("/api/v1/puzzles?limit=0")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/api/v2/puzzles/nonogram-webpbn-99")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await http.GetAsync("/api/v2/puzzles?game=nonogram&limit=0")).StatusCode);
 
-        using var invalidQueue = await http.PostAsJsonAsync("/api/v1/offline-queue", new OfflineQueueRequest(101, []));
+        using var invalidQueue = await http.PostAsJsonAsync("/api/v2/offline-queue", new { Game = "nonogram", TargetCount = 101 });
         Assert.Equal(HttpStatusCode.BadRequest, invalidQueue.StatusCode);
 
-        using var invalidBackup = await http.PostAsJsonAsync("/api/v1/progress",
-            new ProgressUpload([new ProgressUpdate(12, "#x....", true)]));
+        using var invalidBackup = await http.PostAsJsonAsync("/api/v2/progress", Upload(12, "#x....", true));
         Assert.Equal(HttpStatusCode.BadRequest, invalidBackup.StatusCode);
 
-        using var failedDownload = await http.PostAsJsonAsync("/api/v1/offline-queue", new OfflineQueueRequest(1, []));
+        using var failedDownload = await http.PostAsJsonAsync("/api/v2/offline-queue", new { Game = "nonogram", TargetCount = 1 });
         Assert.Equal(HttpStatusCode.BadGateway, failedDownload.StatusCode);
 
-        using var emptyBackup = await http.PostAsJsonAsync("/api/v1/progress", new ProgressUpload([]));
+        using var emptyBackup = await http.PostAsJsonAsync("/api/v2/progress", new GameProgressUpload(1, []));
         emptyBackup.EnsureSuccessStatusCode();
         var receipt = await emptyBackup.Content.ReadFromJsonAsync<ProgressReceipt>();
         Assert.Null(receipt!.BackedUpAt);
         Assert.Equal("#x....", Assert.Single(database.Store.RestoreProgress()).Progress.Marks);
     }
+
+    private static GameProgressUpload Upload(int id, string marks, bool completed) =>
+        new(1, [new GameProgressUpdate($"nonogram-webpbn-{id}", JsonSerializer.SerializeToElement(marks), completed)]);
 
     internal static WebApplication CreateApp(TestDatabase database, WebPbnClient source)
     {

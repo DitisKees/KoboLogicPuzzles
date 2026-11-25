@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
@@ -236,22 +236,6 @@ public sealed partial class PuzzleStore(string databasePath)
         command.CommandText = "SELECT 1 FROM catalog WHERE id = $id";
         command.Parameters.AddWithValue("$id", id);
         return command.ExecuteScalar() is not null;
-    }
-
-    public IReadOnlyList<int> ListUnstartedIds()
-    {
-        using var connection = Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id FROM catalog WHERE NOT EXISTS (SELECT 1 FROM progress WHERE puzzle_id = catalog.id)
-            ORDER BY id DESC
-            """;
-        using var reader = command.ExecuteReader();
-        var ids = new List<int>();
-        while (reader.Read())
-            ids.Add(reader.GetInt32(0));
-
-        return ids;
     }
 
     public PuzzleDefinition? FindPuzzle(int id)

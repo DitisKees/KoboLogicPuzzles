@@ -1,4 +1,4 @@
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 public sealed class HashiInventoryWorker(HashiInventory inventory, HashiGenerationOptions options, TimeProvider time,
     ILogger<HashiInventoryWorker> logger) : BackgroundService

@@ -1,11 +1,11 @@
 using System.Net;
 using System.Threading.Channels;
-using KoboNonogram.Server;
+using KoboLogicPuzzles.Server;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class CatalogRefreshTests
 {

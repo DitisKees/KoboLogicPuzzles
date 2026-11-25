@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 public sealed class HashiCandidate
 {

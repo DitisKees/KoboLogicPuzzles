@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 internal static class HashiCli
 {

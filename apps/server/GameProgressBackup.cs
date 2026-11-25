@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed record GameProgressUpload([property: JsonRequired] int SchemaVersion, GameProgressUpdate[]? Boards);
 
@@ -13,7 +13,7 @@ public sealed record GameSavedProgress(string PuzzleId, int SchemaVersion, JsonE
 
 public sealed record GameSavedBoard(GamePuzzleDefinition Puzzle, GameSavedProgress Progress);
 
-public sealed class GameProgressBackup(PuzzleStore store, ProgressBackup nonogramBackup, TimeProvider time)
+public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library, TimeProvider time)
 {
     public async Task<ProgressReceipt> SaveAsync(GameProgressUpload upload, CancellationToken cancellationToken)
     {
@@ -51,7 +51,7 @@ public sealed class GameProgressBackup(PuzzleStore store, ProgressBackup nonogra
             }
         }
 
-        await nonogramBackup.ValidateAsync(nonograms, cancellationToken);
+        await NonogramProgressValidator.ValidateAsync(library, nonograms, cancellationToken);
         var backedUpAt = time.GetUtcNow();
         store.SaveMixedProgress(nonograms, hashes, backedUpAt, cancellationToken);
         return new ProgressReceipt(boards.Length, backedUpAt);

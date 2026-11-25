@@ -1,4 +1,4 @@
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class PuzzleIdTests
 {

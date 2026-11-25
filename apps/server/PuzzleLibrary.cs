@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed class PuzzleLibrary(PuzzleStore store, WebPbnClient webPbn, WebPbnOptions options, TimeProvider time)
 {
@@ -92,28 +92,4 @@ public sealed class PuzzleLibrary(PuzzleStore store, WebPbnClient webPbn, WebPbn
         return puzzle is null ? null : store.CachePuzzle(puzzle);
     }
 
-    public async Task<IReadOnlyList<PuzzleDefinition>> TopUpAsync(int targetCount, int[] cachedUnstartedIds,
-        CancellationToken cancellationToken)
-    {
-        var cached = cachedUnstartedIds.ToHashSet();
-        var needed = targetCount - cached.Count;
-        var puzzles = new List<PuzzleDefinition>();
-        if (needed <= 0)
-            return puzzles;
-
-        foreach (var id in store.ListUnstartedIds())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (cached.Contains(id))
-                continue;
-
-            var puzzle = await GetPuzzleAsync(id, cancellationToken);
-            if (puzzle is not null)
-                puzzles.Add(puzzle);
-            if (puzzles.Count == needed)
-                break;
-        }
-
-        return puzzles;
-    }
 }

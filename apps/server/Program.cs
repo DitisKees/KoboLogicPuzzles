@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
-using KoboNonogram.Server;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server;
+using KoboLogicPuzzles.Server.Hashi;
 
 var command = args.FirstOrDefault() is "refresh" or "hashi-generate" or "hashi-status" ? args[0] : null;
 var builder = WebApplication.CreateBuilder(command is null ? args : args[1..]);

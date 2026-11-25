@@ -1,7 +1,7 @@
 using System.Text.Json;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public class HashiTests
 {

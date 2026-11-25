@@ -27,10 +27,10 @@ The generator peaked at 2.2 MiB of resident memory. The process that validated a
 The C# port matched the reference results for 638 generated candidates, including 469 distinct layouts, and 1,884 small-board fixture cases. The comparison covered solution counts, assignments, hashes, and rating statistics. Nine seeded fixtures remain in the .NET suite, including all seven sizes. The original benchmark tools and reproduction instructions are preserved in the local `hashi-feasibility` branch at `920d58f`. [Seeded fixtures](../../../tests/server/HashiFixtures.json) · [.NET tests](../../../tests/server/HashiTests.cs)
 
 ```sh
-dotnet test KoboNonogram.slnx
-docker build --platform linux/amd64 -t kobononogram-hashi:local apps/server
+dotnet test KoboLogicPuzzles.slnx
+docker build --platform linux/amd64 -t kobologicpuzzles-hashi:local apps/server
 docker run --rm --network none --entrypoint /app/hashi/bridgegen \
-  kobononogram-hashi:local 50 10 10 2 00000067
+  kobologicpuzzles-hashi:local 50 10 10 2 00000067
 ```
 
 ## Background inventory
@@ -57,13 +57,112 @@ Inspect the live worker at `/api/v2/hashi/status`. The CLI reads persisted stock
 
 ```sh
 docker compose -f apps/server/compose.example.yaml exec server \
-  dotnet KoboNonogram.Server.dll hashi-status
+  dotnet KoboLogicPuzzles.Server.dll hashi-status
 docker compose -f apps/server/compose.example.yaml exec server \
-  dotnet KoboNonogram.Server.dll hashi-generate --size 50 --seed 00000067 --density 10 --diagnostic true
+  dotnet KoboLogicPuzzles.Server.dll hashi-generate --size 50 --seed 00000067 --density 10 --diagnostic true
 ```
 
 ## Database upgrade and rollback
 
-Keep `Storage__DatabasePath=/data/kobononogram.db` and mount the existing server volume at `/data`. The standard Compose deployment calls this volume `kobo-nonogram-data`. Schema 1 adds `hashi_puzzles` and `hashi_progress` in one transaction and preserves existing Nonogram tables, integer IDs, and refresh state. The first startup against a legacy database writes a consistent SQLite snapshot beside it as `kobononogram.db.before-hashi`, then commits the new schema. Subsequent starts reuse schema 1.
+The renamed server opens the existing `/data/kobononogram.db`. The Compose project changes to `kobo-logic-puzzles` and still defaults to the `kobo-nonogram-data` volume. Compose treats it as an existing external volume. Set `KOBOLOGICPUZZLES_VOLUME` to the actual current volume if it differs. The image override is now `KOBOLOGICPUZZLES_IMAGE`.
 
-Stop the old server and keep a separate backup of the volume and the old image reference before upgrading. Before normal use, check that v1 restore still returns your saved boards. If you need to restore the snapshot, stop the server, archive the upgraded database and its WAL and shared-memory files together, and install a copy of `kobononogram.db.before-hashi` at `/data/kobononogram.db`. Preserve the container user’s access to the file and restart the old image on the same volume.
+If the database predates Hashi, schema 1 adds `hashi_puzzles` and `hashi_progress` in one transaction and preserves existing Nonogram tables, integer IDs, and refresh state. The first startup against a legacy database writes a consistent snapshot beside it as `kobononogram.db.before-hashi` before committing the new schema. Subsequent starts reuse schema 1.
+
+### Publish and verify the renamed packages
+
+After the reviewed rename commit is ready, rename the existing repository to `DitisKees/KoboLogicPuzzles` in GitHub settings. Keep the existing issues, pull requests, tags, and releases. Update remotes and integrations to the new URL. Push the reviewed commit to `main` at the new URL. If it was already on `main` before the repository rename, dispatch both workflows from `main` in the renamed repository.
+
+```sh
+git remote set-url origin https://github.com/DitisKees/KoboLogicPuzzles.git
+gh issue view 1 --repo DitisKees/KoboLogicPuzzles
+gh workflow run server-image.yml --ref main --repo DitisKees/KoboLogicPuzzles
+gh workflow run kobo-plugin.yml --ref main --repo DitisKees/KoboLogicPuzzles
+```
+
+Check that both workflows succeeded on the intended commit. Verify the older releases and the new `kobo-v1.0.0` release are visible at the renamed URL. If publishing to an existing GHCR package, grant the renamed repository Actions access to that package before retrying. Keep its visibility appropriate for the home server's pull credentials. [GitHub Packages access control](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+
+```sh
+revision="$(git rev-parse HEAD)"
+export KOBOLOGICPUZZLES_IMAGE="ghcr.io/ditiskees/kobologicpuzzles:sha-$revision"
+docker pull "$KOBOLOGICPUZZLES_IMAGE"
+test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$KOBOLOGICPUZZLES_IMAGE")" = "$revision"
+gh release download kobo-v1.0.0 --repo DitisKees/KoboLogicPuzzles --pattern kobologicpuzzles.koplugin.zip
+digest="$(gh api repos/DitisKees/KoboLogicPuzzles/releases/tags/kobo-v1.0.0 \
+  --jq '.assets[] | select(.name == "kobologicpuzzles.koplugin.zip") | .digest')"
+printf '%s  %s\n' "${digest#sha256:}" kobologicpuzzles.koplugin.zip | sha256sum --strict --check -
+unzip -tq kobologicpuzzles.koplugin.zip
+```
+
+### Back up and replace the server
+
+Sync pending moves from the old plugin, then pause play during the cutover. Use the published image verified above. Set `OLD_KOBO_CONTAINER` to the currently deployed server container's name or ID. The examples use the standard `/data` mount and port 8080. Carry over any custom WebPBN, Hashi, port, or storage settings from your current configuration.
+
+```sh
+set -eu
+umask 077
+: "${OLD_KOBO_CONTAINER:?Set OLD_KOBO_CONTAINER to the current server container name or ID}"
+: "${KOBOLOGICPUZZLES_IMAGE:?Set KOBOLOGICPUZZLES_IMAGE to the verified image}"
+compose_file=apps/server/compose.example.yaml
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+backup_dir="${XDG_STATE_HOME:-$HOME/.local/state}/kobo-logic-puzzles/$stamp"
+mkdir -p "$backup_dir"
+
+old_container="$(docker inspect --format '{{.Id}}' "$OLD_KOBO_CONTAINER")"
+volume="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$old_container")"
+test -n "$volume"
+docker volume inspect "$volume" >/dev/null
+export KOBOLOGICPUZZLES_VOLUME="$volume"
+old_image="kobo-nonogram:before-cutover-$stamp"
+docker image tag "$(docker inspect --format '{{.Image}}' "$old_container")" "$old_image"
+printf '%s\n' "$old_image" "$old_container" "$volume" > "$backup_dir/rollback.txt"
+
+docker stop "$old_container"
+archive_data() {
+  docker run --rm --network none --user 0 --entrypoint tar \
+    --mount "type=volume,source=$volume,target=/data,readonly" \
+    "$old_image" -C /data -cf - .
+}
+archive_data > "$backup_dir/server-data.tar"
+tar -tf "$backup_dir/server-data.tar" ./kobononogram.db
+
+docker compose -f "$compose_file" up -d --no-deps --pull never server
+curl -fsS --retry 10 --retry-delay 1 --retry-all-errors --max-time 5 http://localhost:8080/api/v2/capabilities
+curl -fsS http://localhost:8080/api/v2/restore > "$backup_dir/v2-restore.json"
+```
+
+Confirm the expected saves for both games before syncing from the renamed plugin. Check `/api/v2/hashi/status` for generated stock. The first replenishment can take time. [Manual Kobo upgrade](../../kobo/README.md#upgrade-from-kobo-nonogram)
+
+### Roll back the server
+
+Keep the stopped old container through verification. Stop the renamed server and restart the old container on the same volume. A server that already used schema 1 can open the database directly. Verify the restore endpoint for the old server's API version.
+
+```sh
+docker compose -f "$compose_file" stop server
+docker start "$old_container"
+```
+
+If the old server cannot use the current database, stop it again and use the pre-upgrade archive from the same backup. The upgraded archive preserves later edits and generated puzzles. Run these commands with the variables and `archive_data` function from the cutover.
+
+```sh
+docker stop "$old_container"
+archive_data > "$backup_dir/server-upgraded.tar"
+tar -tf "$backup_dir/server-data.tar" ./kobononogram.db
+docker run --rm -i --network none --user 0 --entrypoint sh \
+  --mount "type=volume,source=$volume,target=/data" "$old_image" -ec '
+    cd /data
+    mkdir .rollback-cutover
+    for file in kobononogram.db kobononogram.db-wal kobononogram.db-shm kobononogram.db.before-hashi; do
+      if [ -e "$file" ]; then mv "$file" .rollback-cutover/; fi
+    done
+    tar -xpf -
+  ' < "$backup_dir/server-data.tar"
+docker start "$old_container"
+```
+
+Reinstall the previous KOReader plugin and confirm that its local library and the old server's restore endpoint contain the expected progress. [Kobo plugin rollback](../../kobo/README.md#upgrade-from-kobo-nonogram)
+
+### Rehearsal results
+
+On 2026-11-24, the upgrade and rollback ran against a private copy of the deployed database on one disposable Docker volume. The original, upgraded database, automatic snapshot, restarted database, and rolled-back database had identical rows for 840 catalog entries, 840 metadata entries, 14 cached definitions, four saved boards, and the catalog refresh state. SQLite integrity and foreign-key checks passed. The original image returned the same v1 restore response after rollback.
+
+On 2026-11-25, the renamed Compose service reused a disposable volume seeded with the upgraded database, including three generated Hashi definitions and one Hashi save. The preceding image, the renamed image, and the preceding image after rollback returned identical v2 restores. SQLite integrity checks passed and all database rows matched the pre-cutover copy.

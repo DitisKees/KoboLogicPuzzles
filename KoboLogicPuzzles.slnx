@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="apps/server/KoboLogicPuzzles.Server.csproj" />
+  <Project Path="tests/server/KoboLogicPuzzles.Server.Tests.csproj" />
+</Solution>

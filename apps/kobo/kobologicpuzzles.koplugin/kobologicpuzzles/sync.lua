@@ -1,4 +1,4 @@
-local Puzzle = require("kobononogram/puzzle")
+local Puzzle = require("kobologicpuzzles/puzzle")
 
 local Sync = {}
 

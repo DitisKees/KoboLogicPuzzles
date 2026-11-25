@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.Data.Sqlite;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore
 {

@@ -1,4 +1,4 @@
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed class CatalogRefreshWorker(
     PuzzleStore store, PuzzleLibrary library, TimeProvider time, ILogger<CatalogRefreshWorker> logger) : BackgroundService

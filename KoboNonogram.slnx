@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="apps/server/KoboNonogram.Server.csproj" />
-  <Project Path="tests/server/KoboNonogram.Server.Tests.csproj" />
-</Solution>

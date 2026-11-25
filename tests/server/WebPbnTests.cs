@@ -1,8 +1,8 @@
 using System.ComponentModel.DataAnnotations;
-using KoboNonogram.Server;
+using KoboLogicPuzzles.Server;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class WebPbnTests
 {

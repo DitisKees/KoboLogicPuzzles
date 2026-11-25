@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed record PuzzleMetadata(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Difficulty,
@@ -56,13 +56,7 @@ public sealed record PuzzleDefinition(
     }
 }
 
-public sealed record OfflineQueueRequest([property: JsonRequired] int TargetCount, int[]? CachedUnstartedPuzzleIds);
-
-public sealed record OfflineQueueResponse(IReadOnlyList<PuzzleDefinition> Puzzles);
-
 public sealed record ProgressUpdate(int PuzzleId, string Marks, bool Completed);
-
-public sealed record ProgressUpload(ProgressUpdate[]? Boards);
 
 public sealed record ProgressReceipt(int SavedCount, DateTimeOffset? BackedUpAt);
 

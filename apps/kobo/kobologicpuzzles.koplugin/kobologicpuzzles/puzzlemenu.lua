@@ -6,10 +6,10 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local Menu = require("ui/widget/menu")
-local Puzzle = require("kobononogram/puzzle")
+local Puzzle = require("kobologicpuzzles/puzzle")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
-local Thumbnail = require("kobononogram/thumbnail")
+local Thumbnail = require("kobologicpuzzles/thumbnail")
 local VerticalGroup = require("ui/widget/verticalgroup")
 
 local PuzzleMenu = Menu:extend{ modal = true, items_per_page = 10, single_line = true }

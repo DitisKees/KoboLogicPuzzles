@@ -1,7 +1,7 @@
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.AspNetCore.Mvc;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 internal static class GameApi
 {

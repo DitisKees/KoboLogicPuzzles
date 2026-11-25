@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 public sealed record GeneratedHashiCandidate(HashiCandidate Candidate, double GenerationMilliseconds, long PeakRssKiB);
 

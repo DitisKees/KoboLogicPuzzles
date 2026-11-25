@@ -1,5 +1,5 @@
 -- Run with KOReader's LuaJIT from its Linux runtime directory and a temporary KO_HOME.
-local pluginRoot = assert(arg[1], "Supply the path to kobononogram.koplugin.")
+local pluginRoot = assert(arg[1], "Supply the path to kobologicpuzzles.koplugin.")
 assert(os.getenv("KO_HOME"), "Set KO_HOME to a temporary directory.")
 require("setupkoenv")
 local home = require("datastorage"):getDataDir()
@@ -12,17 +12,17 @@ require("document/canvascontext"):init(device)
 require("ui/bidi").setup()
 package.path = pluginRoot .. "/?.lua;" .. package.path
 
-local Board = require("kobononogram/board")
-local API = require("kobononogram/api")
+local Board = require("kobologicpuzzles/board")
+local API = require("kobologicpuzzles/api")
 local Geom = require("ui/geometry")
-local Hashi = require("kobononogram/hashiboard")
-local Puzzle = require("kobononogram/puzzle")
-local Store = require("kobononogram/store")
-local Sync = require("kobononogram/sync")
+local Hashi = require("kobologicpuzzles/hashiboard")
+local Puzzle = require("kobologicpuzzles/puzzle")
+local Store = require("kobologicpuzzles/store")
+local Sync = require("kobologicpuzzles/sync")
 local UI = require("ui/uimanager")
-local Update = require("kobononogram/update")
-local UpdateArchive = require("kobononogram/updatearchive")
-local Viewport = require("kobononogram/viewport")
+local Update = require("kobologicpuzzles/update")
+local UpdateArchive = require("kobologicpuzzles/updatearchive")
+local Viewport = require("kobologicpuzzles/viewport")
 
 local function smallPuzzle(id)
     return { id = id, title = "Bricks & Steps", author = "Sample", width = 3, height = 2,
@@ -399,6 +399,78 @@ local function testClueLayout()
     assert(dense.gridY + dense.rows * dense.cell < dense.footerY - dense.status)
 end
 
+local function testLibraryMigration()
+    local lfs = require("libs/libkoreader-lfs")
+    local function read(path)
+        local file = assert(io.open(path, "rb"))
+        local contents = assert(file:read("*all"))
+        assert(file:close())
+        return contents
+    end
+    local function write(path, contents)
+        local file = assert(io.open(path, "wb"))
+        assert(file:write(contents))
+        assert(file:close())
+    end
+    local data = home .. "/manual-upgrade"
+    assert(lfs.mkdir(data))
+    local legacy = assert(Store.open(data .. "/kobononogram"))
+    local hashi = hashiSquare("e")
+    local server, timestamp = "http://example.test:8080", "2026-11-23T12:00:00Z"
+    assert(legacy:updateSettings({ server = server, target = 4, hashiTarget = 3, clueLimit = 2, lastGame = "hashi",
+        lastBackup = timestamp, restoredServer = server, restoredV2Server = server }))
+    assert(legacy:download(smallPuzzle(1)) and legacy:download(smallPuzzle(2)) and legacy:download(hashi))
+    local board = Board:new(smallPuzzle(1), "#x....")
+    local view = { row = 2, column = 1, zoom = 3 }
+    assert(legacy:saveGame(board, view, true) and legacy:saveCheckpoint(board))
+    local hashiBoard = Hashi:new(hashi, "1111")
+    assert(legacy:saveGame(hashiBoard, view, true))
+    write(legacy.root .. "/github-update-token.txt", "github_pat_placeholder\n")
+    write(legacy.root .. "/settings.json.tmp", "unused update file")
+
+    local target = data .. "/kobologicpuzzles"
+    local rename = os.rename
+    os.rename = function(from, to)
+        if to == target then return nil, "simulated promotion error" end
+        return rename(from, to)
+    end
+    local failed, err = Store.openLibrary(data)
+    os.rename = rename
+    assert(not failed and err:find("simulated promotion error", 1, true) and not lfs.attributes(target))
+    for entry in lfs.dir(data) do assert(not entry:find("migrate-", 1, true)) end
+
+    local store = assert(Store.openLibrary(data))
+    for _, name in ipairs({ "settings.json", "github-update-token.txt", "1.json", "2.json", hashi.id .. ".json" }) do
+        assert(read(legacy.root .. "/" .. name) == read(store.root .. "/" .. name))
+    end
+    assert(not lfs.attributes(store.root .. "/settings.json.tmp"))
+    assert(store.settings.lastBackup == timestamp and store.settings.restoredV2Server == server)
+    assert(store.records[1].dirty and store.records[1].checkpoint == "#x...." and store.records[1].zoom == 3)
+    assert(not store.records[2].marks and store.records[hashi.id].completed)
+    assert(store:updateSettings({ clueLimit = 4 }))
+    assert(assert(Store.openLibrary(data)).settings.clueLimit == 4)
+    assert(assert(Store.open(legacy.root)).settings.clueLimit == 2)
+
+    -- KOReader's actual discovery ignores moved-aside plugin folders during the manual install.
+    local plugins = data .. "/plugins"
+    assert(lfs.mkdir(plugins))
+    assert(lfs.mkdir(plugins .. "/kobononogram.koplugin.previous"))
+    assert(lfs.link(pluginRoot, plugins .. "/kobologicpuzzles.koplugin", true))
+    local extra = G_reader_settings:readSetting("extra_plugin_paths")
+    G_reader_settings:saveSetting("extra_plugin_paths", { plugins })
+    local found = {}
+    for _, plugin in ipairs(require("pluginloader"):_discover()) do
+        if plugin.path:sub(1, #plugins + 1) == plugins .. "/" then found[#found + 1] = plugin.name end
+    end
+    G_reader_settings:saveSetting("extra_plugin_paths", extra)
+    assert(#found == 1 and found[1] == "kobologicpuzzles")
+    local plugin = dofile(pluginRoot .. "/main.lua")
+    local menu = {}
+    plugin:addToMainMenu(menu)
+    assert(next(menu) == "kobologicpuzzles" and next(menu, "kobologicpuzzles") == nil)
+    assert(menu.kobologicpuzzles.text == "Kobo Logic Puzzles")
+end
+
 local function testPluginUpdate()
     local lfs = require("libs/libkoreader-lfs")
     local Archive = require("ffi/archiver")
@@ -415,7 +487,7 @@ local function testPluginUpdate()
         assert(file:write(contents))
         assert(file:close())
     end
-    local installed = home .. "/kobononogram.koplugin"
+    local installed = home .. "/kobologicpuzzles.koplugin"
     assert(lfs.mkdir(installed))
     write(installed .. "/main.lua", "return 'old'")
     local store = assert(Store.open(home .. "/update-data"))
@@ -430,27 +502,28 @@ local function testPluginUpdate()
     local function archive(extra)
         local writer = Archive.Writer:new()
         assert(writer:open(archivePath))
-        assert(writer:addFileFromMemory("kobononogram.koplugin/_meta.lua", 'return {\n    version = "0.2.0",\n}'))
-        assert(writer:addFileFromMemory("kobononogram.koplugin/main.lua", "return 'new'"))
-        assert(writer:addFileFromMemory("kobononogram.koplugin/ca-bundle.pem", "CA bundle fixture"))
-        assert(writer:addFileFromMemory("kobononogram.koplugin/kobononogram/extra.lua", "return true"))
+        assert(writer:addFileFromMemory("kobologicpuzzles.koplugin/_meta.lua", 'return {\n    version = "1.1.0",\n}'))
+        assert(writer:addFileFromMemory("kobologicpuzzles.koplugin/main.lua", "return 'new'"))
+        assert(writer:addFileFromMemory("kobologicpuzzles.koplugin/ca-bundle.pem", "CA bundle fixture"))
+        assert(writer:addFileFromMemory("kobologicpuzzles.koplugin/kobologicpuzzles/extra.lua", "return true"))
         if extra then assert(writer:addFileFromMemory(extra, "should not be written")) end
         writer:close()
         return read(archivePath)
     end
     local zip = archive()
-    local asset = { name = "kobononogram.koplugin.zip", state = "uploaded", id = 42, size = #zip,
+    local asset = { name = "kobologicpuzzles.koplugin.zip", state = "uploaded", id = 42, size = #zip,
         digest = "sha256:" .. require("ffi/sha2").sha256(zip) }
     local releases = JSON.encode({
-        { tag_name = "kobo-v0.10.0", prerelease = true, assets = { asset } },
+        { tag_name = "kobo-v1.10.0", prerelease = true, assets = { asset } },
         { tag_name = "server-v2.0.0", assets = { asset } },
-        { tag_name = "kobo-v0.1.9", assets = { asset } },
-        { tag_name = "kobo-v0.2.0", assets = { asset } },
+        { tag_name = "kobo-v0.2.3", assets = { { name = "kobononogram.koplugin.zip", state = "uploaded" } } },
+        { tag_name = "kobo-v1.1.0", assets = { asset } },
     })
     local realRequest = http.request
     local content = zip
     http.request = function(options)
         if options.url:find("api.github.com", 1, true) then
+            assert(options.url:find("https://api.github.com/repos/DitisKees/KoboLogicPuzzles/releases", 1, true) == 1)
             assert(options.headers.authorization == "Bearer github_pat_test")
             if options.url:match("/assets/42$") then
                 return 1, 302, { location = "https://release-assets.githubusercontent.com/path?signature=test" }
@@ -463,21 +536,22 @@ local function testPluginUpdate()
         end
         return 1, 200, {}
     end
-    local release = assert(Update.check(installed, store.root, "0.1.0"))
-    assert(release.version == "0.2.0" and Update.check(installed, store.root, "0.2.0") == false)
+    local release = assert(Update.check(installed, store.root, "1.0.0"))
+    assert(release.version == "1.1.0" and Update.check(installed, store.root, "1.1.0") == false)
     assert(Update.download(installed, store.root, release) == zip)
     content = string.rep("0", #zip)
     local badDownload, downloadError = Update.download(installed, store.root, release)
     assert(not badDownload and downloadError:find("checksum"))
     http.request = realRequest
 
-    assert(not UpdateArchive.install(installed, archive("kobononogram.koplugin/../unexpected"), "0.2.0"))
-    assert(not UpdateArchive.install(installed, zip, "0.3.0"))
+    assert(not UpdateArchive.install(installed, archive("kobologicpuzzles.koplugin/../unexpected"), "1.1.0"))
+    assert(not UpdateArchive.install(installed, archive("kobononogram.koplugin/extra.lua"), "1.1.0"))
+    assert(not UpdateArchive.install(installed, zip, "1.2.0"))
     assert(read(installed .. "/main.lua") == "return 'old'" and not lfs.attributes(installed .. ".previous"))
     assert(UpdateArchive.install(installed, zip, release.version))
     assert(read(installed .. "/main.lua") == "return 'new'")
     assert(read(installed .. ".previous/main.lua") == "return 'old'")
-    assert(read(installed .. "/kobononogram/extra.lua") == "return true")
+    assert(read(installed .. "/kobologicpuzzles/extra.lua") == "return true")
     local rename = os.rename
     os.rename = function(from, to)
         if to == installed and from:sub(-4) == "/new" then return nil, "simulated storage error" end
@@ -493,7 +567,7 @@ local function testPluginUpdate()
 end
 
 local function testSuspendResume()
-    local Game = require("kobononogram/game")
+    local Game = require("kobologicpuzzles/game")
     local Event = require("ui/event")
     local Screensaver = require("ui/screensaver")
     local ScreenSaverWidget = require("ui/widget/screensaverwidget")
@@ -598,7 +672,7 @@ end
 
 local function testMoveRedraw()
     local BB = require("ffi/blitbuffer")
-    local Game = require("kobononogram/game")
+    local Game = require("kobologicpuzzles/game")
     local store = assert(Store.open(home .. "/redraw"))
     local puzzle = smallPuzzle(1)
     assert(store:download(puzzle))
@@ -918,7 +992,7 @@ end
 
 local function testHashiUI()
     local BB = require("ffi/blitbuffer")
-    local Render = require("kobononogram/hashirender")
+    local Render = require("kobologicpuzzles/hashirender")
     local plugin = dofile(pluginRoot .. "/main.lua"):new{
         ui = { menu = { registerToMainMenu = function() end } },
         store = assert(Store.open(home .. "/hashi-ui")),
@@ -1070,6 +1144,7 @@ testSync()
 testHashiRules()
 testHashiSync()
 testApiTransport()
+testLibraryMigration()
 testPluginUpdate()
 testClueLayout()
 testSuspendResume()

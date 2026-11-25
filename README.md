@@ -1,16 +1,16 @@
-# Kobo Nonogram
+# Kobo Logic Puzzles
 
-Kobo Nonogram is a personal black-and-white nonogram game for the Kobo Aura H2O (N250). The first release should make large puzzles comfortable to play offline, add puzzles without a PC, and recover progress after a factory reset. Representative boards for testing are 40×40 and 80×80.
+Kobo Logic Puzzles plays Nonogram and Hashi offline in KOReader on the Kobo Aura H2O (N250). A home server provides the WebPBN Nonogram catalog, generates Hashi puzzles locally, and backs up progress for both games.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
 | [`apps/kobo/`](apps/kobo/README.md) | KOReader plugin, with [installation and play instructions](apps/kobo/README.md). |
-| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles WebPBN imports, the puzzle catalog, and progress in SQLite. |
+| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles WebPBN imports, Hashi generation, the catalog, and progress in SQLite. |
 | [`apps/server/Hashi/`](apps/server/Hashi/README.md) | Hashi generator, C# validation and rating, and feasibility results. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
-| [`KoboNonogram.slnx`](KoboNonogram.slnx) | Solution for the .NET projects. |
+| [`KoboLogicPuzzles.slnx`](KoboLogicPuzzles.slnx) | Solution for the .NET projects. |
 | [`tests/server/`](tests/server/) | Server unit tests and HTTP integration tests. |
 
 Future clients can live in `apps/web/` and `apps/android/`, with their own build tools and the same shared data contracts. A standalone Kobo client can live beside the KOReader plugin when needed.
@@ -18,13 +18,13 @@ Future clients can live in `apps/web/` and `apps/android/`, with their own build
 Build and test with the .NET 10 SDK.
 
 ```sh
-dotnet build KoboNonogram.slnx
-dotnet test KoboNonogram.slnx
+dotnet build KoboLogicPuzzles.slnx
+dotnet test KoboLogicPuzzles.slnx
 ```
 
 ## Running the home server
 
-Start the server to run the API and the catalog refresh together. The server defaults to `data/kobononogram.db`, relative to its working directory.
+Start the server to run the API and the catalog refresh together. The server defaults to `data/kobononogram.db`, relative to its working directory. It keeps the existing SQLite filename so upgrades can use the same database.
 
 ```sh
 dotnet run --project apps/server -- --urls http://localhost:8080
@@ -33,19 +33,27 @@ dotnet run --project apps/server -- --urls http://localhost:8080
 For a home LAN deployment, build the image and keep `/data` on a persistent volume.
 
 ```sh
-docker build -t kobo-nonogram apps/server
-docker run -d --name kobo-nonogram --restart unless-stopped \
-  -p 8080:8080 -v kobo-nonogram-data:/data kobo-nonogram
+docker build -t kobo-logic-puzzles apps/server
+docker run -d --name kobo-logic-puzzles --restart unless-stopped \
+  -p 8080:8080 -v kobo-nonogram-data:/data kobo-logic-puzzles
 ```
 
-On pushes to `main` that change the server or its [publishing workflow](.github/workflows/server-image.yml), GitHub Actions publishes a `linux/amd64` image at `ghcr.io/ditiskees/kobononogram`. Use `:latest` for the current build or `:sha-<full-commit>` for a specific revision.
+On pushes to `main` that change the server, its tests, or its workflow, GitHub Actions verifies and publishes a `linux/amd64` image at `ghcr.io/ditiskees/kobologicpuzzles`. Use `:latest` for the current build or `:sha-<full-commit>` for a specific revision. [Server image workflow](.github/workflows/server-image.yml)
+
+For a fresh Compose deployment, run `docker volume create kobo-nonogram-data` once, then `docker compose -f apps/server/compose.example.yaml up -d`. An upgrade uses the existing volume.
+
+## Upgrade from Kobo Nonogram
+
+The 1.0.0 release renames the repository, container image, and KOReader plugin. Install the server image and replace the old plugin folder manually in the same maintenance window. The server opens the existing volume and database. On first open, the new plugin copies your downloaded boards, progress, settings, and updater token to its new data directory. [Server cutover and rollback](apps/server/Hashi/README.md#database-upgrade-and-rollback) · [Kobo plugin cutover and rollback](apps/kobo/README.md#upgrade-from-kobo-nonogram)
+
+## WebPBN refresh
 
 The server refreshes WebPBN in the background on first startup and every seven days after a successful refresh. It records that time in SQLite so the schedule survives restarts. If the server was down when a refresh came due, it refreshes on startup. A failed refresh keeps the existing catalog and retries after one hour. The API stays available during refreshes.
 
 To refresh immediately, run the manual command against the server's database.
 
 ```sh
-docker exec kobo-nonogram dotnet KoboNonogram.Server.dll refresh
+docker exec kobo-logic-puzzles dotnet KoboLogicPuzzles.Server.dll refresh
 ```
 
 The local equivalent is `dotnet run --project apps/server -- refresh`. Set `CatalogRefresh__Enabled=false` to run in manual-only mode. If you installed a host cron entry for the earlier setup, remove it when switching to the built-in schedule.
@@ -92,7 +100,7 @@ Keep puzzle definitions and progress in persistent storage on the home server so
 
 Verify recovery by saving a partially solved puzzle with fills and crosses, syncing it, then restoring into clean app data. Reopen the restored board and continue playing offline.
 
-The Hashi storage upgrade uses the existing server volume and database path. [Database upgrade and rollback](apps/server/Hashi/README.md#database-upgrade-and-rollback)
+The server upgrade uses the existing volume and database path. [Database upgrade and rollback](apps/server/Hashi/README.md#database-upgrade-and-rollback)
 
 ## Future Android and web play
 
@@ -100,6 +108,6 @@ An Android app or web player can use the same puzzle IDs, catalog, and versioned
 
 ## License
 
-The original Kobo Nonogram code and documentation are available under the MIT License. [MIT License](LICENSE)
+The original Kobo Logic Puzzles code and documentation are available under the MIT License. [MIT License](LICENSE)
 
-The bundled Mozilla CA certificates are licensed under MPL 2.0. Downloaded WebPBN puzzles and solution images remain subject to their authors’ rights. [CA bundle license](apps/kobo/kobononogram.koplugin/LICENSE-MPL-2.0.txt) · [WebPBN export terms](https://webpbn.com/export.cgi)
+The bundled Mozilla CA certificates are licensed under MPL 2.0. Downloaded WebPBN puzzles and solution images remain subject to their authors’ rights. [CA bundle license](apps/kobo/kobologicpuzzles.koplugin/LICENSE-MPL-2.0.txt) · [WebPBN export terms](https://webpbn.com/export.cgi)

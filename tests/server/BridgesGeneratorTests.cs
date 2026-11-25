@@ -1,6 +1,6 @@
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class BridgesGeneratorTests
 {

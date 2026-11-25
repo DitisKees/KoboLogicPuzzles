@@ -1,20 +1,8 @@
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
-public sealed class ProgressBackup(PuzzleStore store, PuzzleLibrary library, TimeProvider time)
+internal static class NonogramProgressValidator
 {
-    public async Task<ProgressReceipt> SaveAsync(ProgressUpdate[] boards, CancellationToken cancellationToken)
-    {
-        await ValidateAsync(boards, cancellationToken);
-        if (boards.Length == 0)
-            return new ProgressReceipt(0, null);
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var backedUpAt = time.GetUtcNow();
-        store.SaveProgress(boards, backedUpAt);
-        return new ProgressReceipt(boards.Length, backedUpAt);
-    }
-
-    internal async Task ValidateAsync(IReadOnlyList<ProgressUpdate> boards, CancellationToken cancellationToken)
+    public static async Task ValidateAsync(PuzzleLibrary library, IReadOnlyList<ProgressUpdate> boards, CancellationToken cancellationToken)
     {
         var ids = new HashSet<int>();
         foreach (var board in boards)
@@ -36,6 +24,5 @@ public sealed class ProgressBackup(PuzzleStore store, PuzzleLibrary library, Tim
             if (board.Completed && !puzzle.MatchesClues(board.Marks))
                 throw new ArgumentException($"The filled cells for puzzle {board.PuzzleId} do not satisfy its clues.");
         }
-
     }
 }

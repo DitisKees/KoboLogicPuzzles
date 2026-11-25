@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public enum PuzzleGame { Nonogram, Hashi }
 

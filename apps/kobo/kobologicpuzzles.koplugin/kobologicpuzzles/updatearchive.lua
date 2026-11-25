@@ -5,7 +5,7 @@ local lfs = require("libs/libkoreader-lfs")
 local util = require("util")
 
 local UpdateArchive = {}
-local root = "kobononogram.koplugin"
+local root = "kobologicpuzzles.koplugin"
 
 local function writeFile(path, contents)
     local file, err = io.open(path, "wb")
@@ -19,7 +19,7 @@ local function writeFile(path, contents)
 end
 
 local function relativePath(path)
-    local relative = path:match("^kobononogram%.koplugin/(.+)$")
+    local relative = path:match("^kobologicpuzzles%.koplugin/(.+)$")
     if not relative or #relative > 200 or relative:find("//", 1, true) then return nil end
     for part in relative:gmatch("[^/]+") do
         if not part:match("^[%w_][%w_.-]*$") or part:sub(-1) == "." then return nil end
@@ -62,7 +62,7 @@ local function unpackPlugin(reader, target, version)
     end
     if reader.err or seen["main.lua"] ~= "main.lua" or seen["_meta.lua"] ~= "_meta.lua"
         or seen["ca-bundle.pem"] ~= "ca-bundle.pem" then
-        return nil, "The ZIP does not contain a complete Kobo Nonogram plugin."
+        return nil, "The ZIP does not contain a complete Kobo Logic Puzzles plugin."
     end
     for directory in pairs(dirs) do
         local ok, err = ffiutil.fsyncDirectory(directory)
@@ -93,7 +93,7 @@ local function replace(path, target, stage)
         ffiutil.fsyncDirectory(ffiutil.dirname(path))
         ok, err = os.rename(target, path)
         if not ok and not os.rename(backup, path) then
-            return nil, "Could not restore the old plugin. It is in kobononogram.koplugin.previous."
+            return nil, "Could not restore the old plugin. It is in kobologicpuzzles.koplugin.previous."
         end
     end
     if not ok and mode then os.rename(older, backup) end

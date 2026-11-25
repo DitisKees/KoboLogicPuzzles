@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 public sealed record HashiGenerationParameters(string Seed, int RequestedDensity, int Expansion, int UpstreamDifficulty)
 {

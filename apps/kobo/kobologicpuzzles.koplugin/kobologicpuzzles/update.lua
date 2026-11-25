@@ -5,8 +5,8 @@ local lfs = require("libs/libkoreader-lfs")
 local socketutil = require("socketutil")
 
 local Update = {}
-local api = "https://api.github.com/repos/DitisKees/KoboNonogram"
-local assetName = "kobononogram.koplugin.zip"
+local api = "https://api.github.com/repos/DitisKees/KoboLogicPuzzles"
+local assetName = "kobologicpuzzles.koplugin.zip"
 local maxBytes = 2 * 1024 * 1024
 
 local function versionParts(value)

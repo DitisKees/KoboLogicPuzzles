@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 internal sealed record HashiStockCount(int Size, HashiDifficulty? Difficulty, HashiSolvability Solvability, int Total, int Unstarted,
     int MeetsDensityFloor);

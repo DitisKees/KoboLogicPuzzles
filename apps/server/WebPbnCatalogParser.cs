@@ -2,7 +2,7 @@ using System.Globalization;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed record WebPbnPage(IReadOnlyList<PuzzleSummary> Puzzles, bool HasMore);
 

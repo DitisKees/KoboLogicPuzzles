@@ -1,6 +1,6 @@
 local BB = require("ffi/blitbuffer")
-local Hashi = require("kobononogram/hashiboard")
-local HashiRender = require("kobononogram/hashirender")
+local Hashi = require("kobologicpuzzles/hashiboard")
+local HashiRender = require("kobologicpuzzles/hashirender")
 local RenderImage = require("ui/renderimage")
 local Widget = require("ui/widget/widget")
 

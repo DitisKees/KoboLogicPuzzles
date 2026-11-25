@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 public sealed class HashiGenerationOptions : IValidatableObject
 {

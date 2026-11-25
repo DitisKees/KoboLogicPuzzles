@@ -1,7 +1,7 @@
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class HashiInventoryTests
 {

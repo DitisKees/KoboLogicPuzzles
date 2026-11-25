@@ -1,7 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public static class WebPbnPuzzleParser
 {

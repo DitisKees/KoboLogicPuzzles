@@ -1,8 +1,10 @@
 using System.Net;
-using KoboNonogram.Server;
+using System.Net.Http.Json;
+using KoboLogicPuzzles.Server;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class PuzzleLibraryTests
 {
@@ -128,6 +130,7 @@ public sealed class PuzzleLibraryTests
         database.SeedCatalog(Enumerable.Range(1, 7).Select(id => TestData.Summary(id)));
         database.Store.CachePuzzle(TestData.Puzzle(7));
         database.Store.CachePuzzle(TestData.Puzzle(6));
+        database.Store.CachePuzzle(TestData.Puzzle(5));
         database.Store.SaveProgress([
             new ProgressUpdate(7, "#x....", false), new ProgressUpdate(6, "#x#x##", true),
         ], DateTimeOffset.UtcNow);
@@ -143,14 +146,22 @@ public sealed class PuzzleLibraryTests
                 _ => TestData.Ok(TestData.Export(id)),
             };
         });
-        var library = new PuzzleLibrary(database.Store, source, TestData.Options, TimeProvider.System);
+        await using var app = ApiTests.CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+        async Task<GameOfflineQueueResponse> TopUp(params string[] cached)
+        {
+            using var reply = await http.PostAsJsonAsync("/api/v2/offline-queue",
+                new { Game = "nonogram", TargetCount = 3, CachedUnstartedPuzzleIds = cached });
+            reply.EnsureSuccessStatusCode();
+            return (await reply.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!;
+        }
 
-        var added = await library.TopUpAsync(3, [5, 5], CancellationToken.None);
-
-        Assert.Equal(new[] { 2, 1 }, added.Select(puzzle => puzzle.Id));
+        var added = await TopUp("nonogram-webpbn-5", "nonogram-webpbn-5");
+        Assert.Equal(new[] { "nonogram-webpbn-2", "nonogram-webpbn-1" }, added.Puzzles.Select(puzzle => puzzle.Id));
         Assert.Equal(new[] { 4, 3, 2, 1 }, exports);
-        Assert.Equal(2, (await library.GetPuzzleAsync(2, CancellationToken.None))?.Id);
-        Assert.Empty(await library.TopUpAsync(3, [5, 2, 1], CancellationToken.None));
+        Assert.Equal(2, database.Store.FindPuzzle(2)?.Id);
+        Assert.Empty((await TopUp("nonogram-webpbn-5", "nonogram-webpbn-2", "nonogram-webpbn-1")).Puzzles);
         Assert.Equal(4, exports.Count);
     }
 }

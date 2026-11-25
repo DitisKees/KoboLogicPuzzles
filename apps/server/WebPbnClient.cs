@@ -3,7 +3,7 @@ using System.Net;
 using AngleSharp.Html.Parser;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed class WebPbnClient(HttpClient http, WebPbnOptions options) : IDisposable
 {

@@ -1,5 +1,5 @@
-local Board = require("kobononogram/board")
-local Hashi = require("kobononogram/hashiboard")
+local Board = require("kobologicpuzzles/board")
+local Hashi = require("kobologicpuzzles/hashiboard")
 
 local Puzzle = {}
 Puzzle.games = { "nonogram", "hashi" }
@@ -22,6 +22,12 @@ end
 function Puzzle.isId(id)
     if type(id) == "number" then return id >= 1 and id <= 2147483647 and id == math.floor(id) end
     return type(id) == "string" and Puzzle.localId(id) == id
+end
+
+function Puzzle.fileId(name)
+    local key = name:match("^([a-z0-9-]+)%.json$")
+    local id = key and (tonumber(key:match("^%d+$")) or Puzzle.localId(key))
+    if Puzzle.isId(id) and tostring(id) == key then return id end
 end
 
 function Puzzle.wireId(id)

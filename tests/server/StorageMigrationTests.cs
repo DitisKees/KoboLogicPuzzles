@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class StorageMigrationTests
 {

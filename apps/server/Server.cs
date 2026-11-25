@@ -1,8 +1,8 @@
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Options;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public static class Server
 {
@@ -24,7 +24,6 @@ public static class Server
         services.AddSingleton<IPuzzleProvider, WebPbnPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, LocalHashiPuzzleProvider>();
         services.AddSingleton<PuzzleProviders>();
-        services.AddSingleton<ProgressBackup>();
         services.AddSingleton<GameCatalog>();
         services.AddSingleton<GameProgressBackup>();
         if (builder.Configuration.GetValue("CatalogRefresh:Enabled", true))
@@ -51,58 +50,6 @@ public static class Server
                 _ => StatusCodes.Status500InternalServerError,
             },
         });
-
-        var api = app.MapGroup("/api/v1");
-        api.MapGet("/puzzles", (PuzzleStore store, int? beforeId, int limit = 50) =>
-        {
-            if (beforeId is <= 0 || limit is < 1 or > 100)
-                return BadRequest("Use a positive beforeId and a limit between 1 and 100.");
-
-            return Results.Ok(store.ListCatalog(beforeId, limit));
-        });
-
-        api.MapGet("/puzzles/{id:int:min(1)}", async (int id, bool? includeSolution, PuzzleLibrary library,
-            CancellationToken cancellationToken) =>
-        {
-            var puzzle = await library.GetPuzzleAsync(id, cancellationToken, includeSolution == true);
-            return puzzle is null ? Results.NotFound() : Results.Ok(puzzle);
-        });
-
-        api.MapGet("/puzzles/metadata", (int[] id, PuzzleStore store) =>
-        {
-            if (id.Length > 100 || id.Any(value => value <= 0))
-                return BadRequest("Supply at most 100 positive puzzle IDs.");
-
-            return Results.Ok(store.ListMetadata(id));
-        });
-
-        api.MapPost("/offline-queue", async (OfflineQueueRequest request, PuzzleLibrary library,
-            CancellationToken cancellationToken) =>
-        {
-            var cached = request.CachedUnstartedPuzzleIds ?? [];
-            if (request.TargetCount is < 0 or > 100 || cached.Length > 100 || cached.Any(id => id <= 0))
-                return BadRequest("Use a targetCount between 0 and 100 and at most 100 positive cached puzzle IDs.");
-
-            var puzzles = await library.TopUpAsync(request.TargetCount, cached, cancellationToken);
-            return Results.Ok(new OfflineQueueResponse(puzzles));
-        });
-
-        api.MapPost("/progress", async (ProgressUpload upload, ProgressBackup backup, CancellationToken cancellationToken) =>
-        {
-            if (upload.Boards is null || upload.Boards.Length > 100)
-                return BadRequest("Supply a boards array with at most 100 changed boards.");
-
-            try
-            {
-                return Results.Ok(await backup.SaveAsync(upload.Boards, cancellationToken));
-            }
-            catch (ArgumentException exception)
-            {
-                return BadRequest(exception.Message);
-            }
-        });
-
-        api.MapGet("/restore", (PuzzleStore store) => store.RestoreProgress());
 
         GameApi.MapEndpoints(app);
     }

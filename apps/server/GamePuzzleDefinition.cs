@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server.Hashi;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "game")]
 [JsonDerivedType(typeof(NonogramPuzzleDefinition), "nonogram")]

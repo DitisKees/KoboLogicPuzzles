@@ -8,7 +8,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local RenderText = require("ui/rendertext")
 local UIManager = require("ui/uimanager")
-local Viewport = require("kobononogram/viewport")
+local Viewport = require("kobologicpuzzles/viewport")
 local Widget = require("ui/widget/widget")
 
 local screen = Device.screen

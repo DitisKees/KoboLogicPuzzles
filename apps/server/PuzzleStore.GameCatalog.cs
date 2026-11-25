@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace KoboNonogram.Server;
+namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore
 {

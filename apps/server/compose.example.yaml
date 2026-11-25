@@ -1,10 +1,11 @@
 # For a private GHCR image, run docker login ghcr.io -u YOUR_GITHUB_USERNAME with a classic read:packages token first.
+# For a fresh installation, create the volume once with docker volume create kobo-nonogram-data.
 # From the repository root, run docker compose -f apps/server/compose.example.yaml up -d.
-name: kobo-nonogram
+name: kobo-logic-puzzles
 
 services:
   server:
-    image: ${KOBONONOGRAM_IMAGE:-ghcr.io/ditiskees/kobononogram:latest}
+    image: ${KOBOLOGICPUZZLES_IMAGE:-ghcr.io/ditiskees/kobologicpuzzles:latest}
     restart: unless-stopped
     environment:
       ASPNETCORE_HTTP_PORTS: "8080"
@@ -34,4 +35,6 @@ services:
 
 volumes:
   data:
-    name: kobo-nonogram-data
+    # Keep the historical default so the renamed project reuses the existing data.
+    name: ${KOBOLOGICPUZZLES_VOLUME:-kobo-nonogram-data}
+    external: true

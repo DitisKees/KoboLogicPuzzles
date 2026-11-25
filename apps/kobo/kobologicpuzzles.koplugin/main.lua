@@ -1,26 +1,26 @@
-local API = require("kobononogram/api")
-local Board = require("kobononogram/board")
+local API = require("kobologicpuzzles/api")
+local Board = require("kobologicpuzzles/board")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
-local Game = require("kobononogram/game")
-local HashiGame = require("kobononogram/hashigame")
+local Game = require("kobologicpuzzles/game")
+local HashiGame = require("kobologicpuzzles/hashigame")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local NetworkMgr = require("ui/network/manager")
-local Puzzle = require("kobononogram/puzzle")
-local PuzzleMenu = require("kobononogram/puzzlemenu")
-local Store = require("kobononogram/store")
-local Sync = require("kobononogram/sync")
+local Puzzle = require("kobologicpuzzles/puzzle")
+local PuzzleMenu = require("kobologicpuzzles/puzzlemenu")
+local Store = require("kobologicpuzzles/store")
+local Sync = require("kobologicpuzzles/sync")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
-local Update = require("kobononogram/update")
-local UpdateArchive = require("kobononogram/updatearchive")
-local Viewport = require("kobononogram/viewport")
+local Update = require("kobologicpuzzles/update")
+local UpdateArchive = require("kobologicpuzzles/updatearchive")
+local Viewport = require("kobologicpuzzles/viewport")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
-local Nonogram = WidgetContainer:extend{ name = "kobononogram", is_doc_only = false }
+local LogicPuzzles = WidgetContainer:extend{ name = "kobologicpuzzles", is_doc_only = false }
 
 local function notice(text)
     UIManager:show(InfoMessage:new{ text = text })
@@ -34,19 +34,19 @@ local function backupLabel(timestamp)
     return "No progress backup yet"
 end
 
-function Nonogram:init()
+function LogicPuzzles:init()
     self.ui.menu:registerToMainMenu(self)
 end
 
-function Nonogram:addToMainMenu(menu_items)
-    menu_items.kobononogram = {
-        text = "Kobo Nonogram",
+function LogicPuzzles:addToMainMenu(menu_items)
+    menu_items.kobologicpuzzles = {
+        text = "Kobo Logic Puzzles",
         sorting_hint = "tools",
         callback = function() self:showLibrary() end,
     }
 end
 
-function Nonogram:libraryItems()
+function LogicPuzzles:libraryItems()
     local game = self.store.settings.lastGame
     local items = {
         { text = "Game  ·  " .. Puzzle.gameNames[game], callback = function() self:chooseGame() end },
@@ -74,13 +74,13 @@ function Nonogram:libraryItems()
     return items
 end
 
-function Nonogram:libraryTitle()
+function LogicPuzzles:libraryTitle()
     return Puzzle.gameNames[self.store.settings.lastGame] .. " library"
 end
 
-function Nonogram:showLibrary()
+function LogicPuzzles:showLibrary()
     if not self.store then
-        local store, err = Store.open(DataStorage:getDataDir() .. "/kobononogram")
+        local store, err = Store.openLibrary(DataStorage:getDataDir())
         if not store then return notice("Could not open the local puzzle library.\n" .. tostring(err)) end
         self.store = store
     end
@@ -101,13 +101,13 @@ function Nonogram:showLibrary()
     end
 end
 
-function Nonogram:updateLibrary()
+function LogicPuzzles:updateLibrary()
     if self.library then
         self.library:switchItemTable(self:libraryTitle(), self:libraryItems(), nil, nil, backupLabel(self.store.settings.lastBackup))
     end
 end
 
-function Nonogram:showGame(id)
+function LogicPuzzles:showGame(id)
     local record = self.store.records[id]
     if not record or self.game then return end
     if self.catalog then
@@ -151,7 +151,7 @@ local function input(title, value, hint, save, numeric)
     dialog:onShowKeyboard()
 end
 
-function Nonogram:editServer()
+function LogicPuzzles:editServer()
     input("Home server URL", self.store.settings.server, "http://192.168.1.10:8080", function(value)
         local address = API.normalize(value)
         if not address then return nil, "Enter the home server's HTTP address, including http://." end
@@ -181,7 +181,7 @@ local function choose(title, choices, apply)
     UIManager:show(dialog)
 end
 
-function Nonogram:chooseGame()
+function LogicPuzzles:chooseGame()
     local function show(games, checked)
         local choices = {{ "Nonogram", "nonogram" }}
         local hasHashi = self.store:hasHashi() or (games and games.hashi)
@@ -200,7 +200,7 @@ function Nonogram:chooseGame()
     show(self.games)
 end
 
-function Nonogram:filterSettings(game, onChange)
+function LogicPuzzles:filterSettings(game, onChange)
     local filters = self.store.settings.filters[game]
     local function save(patch)
         for key, value in pairs(filters) do
@@ -272,7 +272,7 @@ function Nonogram:filterSettings(game, onChange)
     end)
 end
 
-function Nonogram:settings()
+function LogicPuzzles:settings()
     local dialog
     local game = self.store.settings.lastGame
     local targetKey = game == "hashi" and "hashiTarget" or "target"
@@ -331,7 +331,7 @@ function Nonogram:settings()
     UIManager:show(dialog)
 end
 
-function Nonogram:updateRequest(message, task, onResult)
+function LogicPuzzles:updateRequest(message, task, onResult)
     if self.busy then return end
     NetworkMgr:runWhenConnected(function()
         if self.busy then return end
@@ -348,35 +348,35 @@ function Nonogram:updateRequest(message, task, onResult)
     end)
 end
 
-function Nonogram:checkPluginUpdate()
+function LogicPuzzles:checkPluginUpdate()
     if self.updateInstalled then return UIManager:askForRestart("Restart KOReader to load the new plugin.") end
     if not self.path then return notice("Could not determine the installed plugin directory.") end
-    self:updateRequest("Checking for a Kobo Nonogram update…", function()
+    self:updateRequest("Checking for a Kobo Logic Puzzles update…", function()
         return Update.check(self.path, self.store.root, self.version)
     end, function(release, err)
-        if release == false then return notice("Kobo Nonogram is up to date (" .. self.version .. ").") end
+        if release == false then return notice("Kobo Logic Puzzles is up to date (" .. self.version .. ").") end
         if not release then return notice(err or "Could not check for an update.") end
         UIManager:show(ConfirmBox:new{
-            text = string.format("Update Kobo Nonogram from %s to %s?", self.version, release.version),
+            text = string.format("Update Kobo Logic Puzzles from %s to %s?", self.version, release.version),
             ok_text = "Install update",
             ok_callback = function() self:installPluginUpdate(release) end,
         })
     end)
 end
 
-function Nonogram:installPluginUpdate(release)
-    self:updateRequest("Downloading the Kobo Nonogram update…", function()
+function LogicPuzzles:installPluginUpdate(release)
+    self:updateRequest("Downloading the Kobo Logic Puzzles update…", function()
         return Update.download(self.path, self.store.root, release)
     end, function(zip, err)
         if not zip then return notice(err or "Could not download the update ZIP.") end
         local ok, installError = UpdateArchive.install(self.path, zip, release.version)
         if not ok then return notice("Could not install the update.\n" .. tostring(installError)) end
         self.updateInstalled = true
-        UIManager:askForRestart("Kobo Nonogram " .. release.version .. " was installed. Restart KOReader now?")
+        UIManager:askForRestart("Kobo Logic Puzzles " .. release.version .. " was installed. Restart KOReader now?")
     end)
 end
 
-function Nonogram:online(operation)
+function LogicPuzzles:online(operation)
     if self.busy then return end
     if self.store.settings.server == "" then return self:editServer() end
     NetworkMgr:runWhenConnected(function()
@@ -395,14 +395,14 @@ function Nonogram:online(operation)
             end, debug.traceback)
             self.busy = false
             if not ok then
-                logger.warn("Kobo Nonogram network operation failed", err)
+                logger.warn("Kobo Logic Puzzles network operation failed", err)
                 notice("The operation could not finish. Try again from the library.")
             end
         end)
     end)
 end
 
-function Nonogram:fetchSolution(game)
+function LogicPuzzles:fetchSolution(game)
     self:online(function(request)
         local id = game.board.puzzle.id
         local wire, err = request("GET", "/puzzles/" .. Puzzle.wireId(id) .. "?includeSolution=true",
@@ -413,13 +413,13 @@ function Nonogram:fetchSolution(game)
             return notice("No known solution is available for this puzzle.")
         end
         local ok, saveError = self.store:saveSolution(id, puzzle.solution)
-        if not ok then logger.warn("Kobo Nonogram: could not cache the puzzle solution", saveError) end
+        if not ok then logger.warn("Kobo Logic Puzzles: could not cache the puzzle solution", saveError) end
         game.board.solution = puzzle.solution
         if self.game == game then game:checkSolution() end
     end)
 end
 
-function Nonogram:sync()
+function LogicPuzzles:sync()
     self:online(function(request, games)
         local result, err = Sync.run(self.store, request, games)
         if not err then
@@ -440,7 +440,7 @@ function Nonogram:sync()
     end)
 end
 
-function Nonogram:browse(beforeId)
+function LogicPuzzles:browse(beforeId)
     local game = self.store.settings.lastGame
     self:online(function(request, games)
         if not games[game] then return notice("The home server does not currently offer " .. Puzzle.gameNames[game] .. ".") end
@@ -492,7 +492,7 @@ function Nonogram:browse(beforeId)
     end)
 end
 
-function Nonogram:downloadAndPlay(id)
+function LogicPuzzles:downloadAndPlay(id)
     if self.store.records[id] then return self:showGame(id) end
     self:online(function(request)
         local path = "/puzzles/" .. Puzzle.wireId(id)
@@ -509,4 +509,4 @@ function Nonogram:downloadAndPlay(id)
     end)
 end
 
-return Nonogram
+return LogicPuzzles

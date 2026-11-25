@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Net;
-using KoboNonogram.Server;
-using KoboNonogram.Server.Hashi;
+using KoboLogicPuzzles.Server;
+using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.Data.Sqlite;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 internal static class TestData
 {
@@ -83,7 +83,7 @@ internal static class TestData
 
 internal sealed class TestDatabase : IDisposable
 {
-    private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("kobononogram-test-");
+    private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("kobologicpuzzles-test-");
 
     public string Path => System.IO.Path.Combine(directory.FullName, "test.db");
     public PuzzleStore Store { get; }

@@ -16,7 +16,7 @@ RUN git init -q source \
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY KoboNonogram.Server.csproj ./
+COPY KoboLogicPuzzles.Server.csproj ./
 RUN dotnet restore
 COPY . ./
 RUN dotnet publish -c Release --no-restore -o /out
@@ -31,4 +31,4 @@ ENV HashiGeneration__Enabled=true
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 USER $APP_UID
-ENTRYPOINT ["dotnet", "KoboNonogram.Server.dll"]
+ENTRYPOINT ["dotnet", "KoboLogicPuzzles.Server.dll"]

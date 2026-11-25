@@ -1,4 +1,4 @@
-namespace KoboNonogram.Server.Hashi;
+namespace KoboLogicPuzzles.Server.Hashi;
 
 internal readonly struct HashiDeadline
 {

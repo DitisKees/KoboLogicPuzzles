@@ -1,5 +1,6 @@
-local Puzzle = require("kobononogram/puzzle")
-local Viewport = require("kobononogram/viewport")
+local Migration = require("kobologicpuzzles/migration")
+local Puzzle = require("kobologicpuzzles/puzzle")
+local Viewport = require("kobologicpuzzles/viewport")
 local JSON = require("json")
 local ffiutil = require("ffi/util")
 local lfs = require("libs/libkoreader-lfs")
@@ -68,9 +69,8 @@ function Store.open(root)
     end
     local self = setmetatable({ root = root, records = {}, settings = settings }, Store)
     for name in lfs.dir(root) do
-        local key = name:match("^([a-z0-9-]+)%.json$")
-        local id = key and (tonumber(key:match("^%d+$")) or Puzzle.localId(key))
-        if Puzzle.isId(id) and tostring(id) == key then
+        local id = Puzzle.fileId(name)
+        if id then
             local record = read(root .. "/" .. name)
             local rules = Puzzle.rules(id)
             if record and Puzzle.valid(record.puzzle) and record.puzzle.id == id
@@ -79,7 +79,7 @@ function Store.open(root)
                 if record.checkpoint and not rules.validMarks(record.puzzle, record.checkpoint) then record.checkpoint = nil end
                 self.records[id] = record
             else
-                logger.warn("Kobo Nonogram: cannot load local puzzle", id)
+                logger.warn("Kobo Logic Puzzles: cannot load local puzzle", id)
                 self.skipped = (self.skipped or 0) + 1
             end
         end
@@ -190,6 +190,12 @@ function Store:list(game)
         return a.puzzle.id > b.puzzle.id
     end)
     return records
+end
+
+function Store.openLibrary(dataDir)
+    local root, err = Migration.prepare(dataDir)
+    if not root then return nil, "Could not migrate Kobo Nonogram data.\n" .. tostring(err) end
+    return Store.open(root)
 end
 
 function Store:target(game) return game == "hashi" and self.settings.hashiTarget or self.settings.target end

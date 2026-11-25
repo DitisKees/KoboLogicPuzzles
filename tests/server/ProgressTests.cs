@@ -1,8 +1,9 @@
 using System.Net;
-using KoboNonogram.Server;
+using System.Text.Json;
+using KoboLogicPuzzles.Server;
 using Microsoft.Data.Sqlite;
 
-namespace KoboNonogram.Server.Tests;
+namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class ProgressTests
 {
@@ -16,9 +17,9 @@ public sealed class ProgressTests
         var backup = CreateBackup(database.Store, source, new FixedClock(timestamp));
 
         Assert.Equal(new ProgressReceipt(1, timestamp),
-            await backup.SaveAsync([new ProgressUpdate(12, "#x....", false)], CancellationToken.None));
-        await backup.SaveAsync([new ProgressUpdate(12, "#x#x##", true)], CancellationToken.None);
-        Assert.Equal(new ProgressReceipt(0, null), await backup.SaveAsync([], CancellationToken.None));
+            await backup.SaveAsync(Upload(Board(12, "#x....", false)), CancellationToken.None));
+        await backup.SaveAsync(Upload(Board(12, "#x#x##", true)), CancellationToken.None);
+        Assert.Equal(new ProgressReceipt(0, null), await backup.SaveAsync(Upload(), CancellationToken.None));
 
         SqliteConnection.ClearPool(new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -46,7 +47,7 @@ public sealed class ProgressTests
         var backup = CreateBackup(database.Store, source, TimeProvider.System);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            backup.SaveAsync([new ProgressUpdate(12, marks, completed)], CancellationToken.None));
+            backup.SaveAsync(Upload(Board(12, marks, completed)), CancellationToken.None));
         Assert.Empty(database.Store.RestoreProgress());
     }
 
@@ -57,16 +58,21 @@ public sealed class ProgressTests
         database.Store.CachePuzzle(TestData.Puzzle(12));
         using var source = TestData.Source(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         var backup = CreateBackup(database.Store, source, TimeProvider.System);
-        var valid = new ProgressUpdate(12, "#x....", false);
+        var valid = Board(12, "#x....", false);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => backup.SaveAsync([valid, valid], CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => backup.SaveAsync(Upload(valid, valid), CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            backup.SaveAsync([valid, new ProgressUpdate(99, "#x....", false)], CancellationToken.None));
+            backup.SaveAsync(Upload(valid, Board(99, "#x....", false)), CancellationToken.None));
         Assert.Empty(database.Store.RestoreProgress());
     }
 
-    private static ProgressBackup CreateBackup(PuzzleStore store, WebPbnClient source, TimeProvider time) =>
+    private static GameProgressBackup CreateBackup(PuzzleStore store, WebPbnClient source, TimeProvider time) =>
         new(store, new PuzzleLibrary(store, source, TestData.Options, time), time);
+
+    private static GameProgressUpdate Board(int id, string marks, bool completed) =>
+        new($"nonogram-webpbn-{id}", JsonSerializer.SerializeToElement(marks), completed);
+
+    private static GameProgressUpload Upload(params GameProgressUpdate[] boards) => new(1, boards);
 
     [Fact]
     public void DatabaseRollsBackBatchOnWriteFailureAndRetainsOriginalDefinition()
