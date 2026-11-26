@@ -61,7 +61,10 @@ public sealed class SlitherlinkTests
         Assert.Null(publicDefinition.Solution);
         var response = await http.PostAsJsonAsync("/api/v2/offline-queue", new
         {
-            Game = "slitherlink", TargetCount = 2, SourceFilter = "test-library", Tiling = "square",
+            Game = "slitherlink",
+            TargetCount = 2,
+            SourceFilter = "test-library",
+            Tiling = "square",
             CachedUnstartedPuzzleIds = new[] { first.Puzzles.Concat(next.Puzzles).Single(puzzle => puzzle.Id != entry.Id).Id },
         });
         response.EnsureSuccessStatusCode();
@@ -73,12 +76,14 @@ public sealed class SlitherlinkTests
 
         var rejected = await http.PostAsJsonAsync("/api/v2/progress", new
         {
-            SchemaVersion = 1, Boards = new[] { new { PuzzleId = playable.Id, Marks = ".......", Completed = true } },
+            SchemaVersion = 1,
+            Boards = new[] { new { PuzzleId = playable.Id, Marks = ".......", Completed = true } },
         });
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
         var accepted = await http.PostAsJsonAsync("/api/v2/progress", new
         {
-            SchemaVersion = 1, Boards = new[] { new { PuzzleId = playable.Id, Marks = playable.Solution, Completed = true } },
+            SchemaVersion = 1,
+            Boards = new[] { new { PuzzleId = playable.Id, Marks = playable.Solution, Completed = true } },
         });
         accepted.EnsureSuccessStatusCode();
         var restored = Assert.Single((await http.GetFromJsonAsync<GameSavedBoard[]>("/api/v2/restore"))!);
@@ -118,7 +123,7 @@ public sealed class SlitherlinkTests
         Assert.Equal(18, buckets.Select(bucket => bucket.Tiling).Distinct().Count());
         Assert.Equal(4, buckets.Select(bucket => bucket.Difficulty).Distinct().Count());
         Assert.All(buckets, bucket => Assert.True(SlitherlinkOptions.ValidDimensions(bucket.Size, bucket.Size, bucket.Tiling)));
-        Assert.InRange(options.TimeoutSeconds, 1, 1799);
+        Assert.InRange(options.TimeoutSeconds, 1, 3590);
         Assert.True(options.TargetPerCombination > 1);
     }
 }

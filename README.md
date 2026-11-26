@@ -99,7 +99,7 @@ Each source refreshes independently at startup and seven days after its last suc
 
 ## Slitherlink catalog
 
-The server replenishes a separate queue of unique Loopy puzzles for each configured size, tiling, and difficulty. Structured PuzzleKit and Mindgames collections and JSON packs can be imported locally. The Kobo catalog and offline queue can filter by source, tiling, dimensions, or difficulty. [Generation and import instructions](apps/server/Slitherlink/README.md)
+The server replenishes a separate queue of unique Loopy puzzles for each configured size, tiling, and difficulty. It imports PuzzleKit, Mindgames, Janko, GrandGames Wall of China, and KrazyDad Variety Slitherlink at startup and checks for updates weekly. You can import other structured collections and JSON packs locally. The Kobo catalog and offline queue can filter by source, tiling, dimensions, or difficulty. [Generation and import instructions](apps/server/Slitherlink/README.md)
 
 Run `dotnet run --project apps/server -- refresh-fill-a-pix` to refresh manually, or pass `refresh-fill-a-pix` to the server DLL in Docker. `FillAPix__RefreshEnabled` controls the background import and defaults to the value of `CatalogRefresh__Enabled`. See the [API contract](contracts/README.md) for definitions, downloads, and progress.
 

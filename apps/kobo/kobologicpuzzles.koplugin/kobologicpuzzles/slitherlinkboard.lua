@@ -5,6 +5,7 @@ Slitherlink.tilings = {
     "square", "triangular", "honeycomb", "snub-square", "cairo", "great-hexagonal", "octagonal",
     "kites", "floret", "dodecagonal", "great-dodecagonal", "penrose-kite-dart", "penrose-rhombs",
     "great-great-dodecagonal", "kagome", "compass-dodecagonal", "hats", "spectres",
+    "altair", "snowflake", "laves", "rhombille", "septistar",
 }
 Slitherlink.tilingNames = {
     square = "Squares", triangular = "Triangles", honeycomb = "Honeycomb", ["snub-square"] = "Snub-Square",
@@ -13,6 +14,7 @@ Slitherlink.tilingNames = {
     ["penrose-kite-dart"] = "Penrose kites and darts", ["penrose-rhombs"] = "Penrose rhombs",
     ["great-great-dodecagonal"] = "Great-Great-Dodecagonal", kagome = "Kagome (triangles and hexagons)",
     ["compass-dodecagonal"] = "Compass-Dodecagonal", hats = "Hats", spectres = "Spectres",
+    altair = "Altair", snowflake = "Snowflake", laves = "Laves", rhombille = "Rhombille", septistar = "Septistar",
 }
 Slitherlink.difficulties = { "easy", "normal", "tricky", "hard" }
 Slitherlink.difficultyNames = { easy = "Easy", normal = "Normal", tricky = "Tricky", hard = "Hard" }

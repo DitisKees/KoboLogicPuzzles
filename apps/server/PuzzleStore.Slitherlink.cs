@@ -5,8 +5,36 @@ using Microsoft.Data.Sqlite;
 
 namespace KoboLogicPuzzles.Server;
 
+internal sealed record SlitherlinkCollectionRefreshState(DateTimeOffset CompletedAt, string? Version);
+
 public sealed partial class PuzzleStore
 {
+    internal SlitherlinkCollectionRefreshState? GetSlitherlinkCollectionRefreshState(string resource)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT completed_at, version FROM slitherlink_collection_refresh WHERE resource = $resource";
+        command.Parameters.AddWithValue("$resource", resource);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? new(DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(0)),
+            reader.IsDBNull(1) ? null : reader.GetString(1)) : null;
+    }
+
+    internal void SaveSlitherlinkCollectionRefreshState(string resource, DateTimeOffset completedAt, string? version)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO slitherlink_collection_refresh (resource, completed_at, version)
+            VALUES ($resource, $completedAt, $version)
+            ON CONFLICT(resource) DO UPDATE SET completed_at = excluded.completed_at, version = excluded.version
+            """;
+        command.Parameters.AddWithValue("$resource", resource);
+        command.Parameters.AddWithValue("$completedAt", completedAt.ToUnixTimeSeconds());
+        command.Parameters.AddWithValue("$version", (object?)version ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
     internal bool SaveSlitherlink(SlitherlinkDefinition puzzle)
     {
         using var connection = Open();

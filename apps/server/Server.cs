@@ -41,6 +41,18 @@ public static class Server
             services.AddHostedService<CatalogRefreshWorker>();
         if (builder.Configuration.GetValue("FillAPix:RefreshEnabled", builder.Configuration.GetValue("CatalogRefresh:Enabled", true)))
             services.AddHostedService<FillAPixRefreshWorker>();
+        if (builder.Configuration.GetValue("SlitherlinkCollections:RefreshEnabled", builder.Configuration.GetValue("CatalogRefresh:Enabled", true)))
+            services.AddHostedService<SlitherlinkCollectionRefreshWorker>();
+        services.AddHttpClient<SlitherlinkCollectionRefresh>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(45);
+            http.MaxResponseContentBufferSize = 32 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            UseCookies = false,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        });
         services.AddHttpClient("fill-a-pix", http =>
         {
             http.Timeout = TimeSpan.FromSeconds(20);

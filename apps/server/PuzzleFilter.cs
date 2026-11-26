@@ -66,7 +66,7 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
         {
             if (solvability is not null || solvabilityFilter is not null ||
                 !TryChoices(difficulty, difficultyFilter, SlitherlinkOptions.Levels.Contains, out var levels) ||
-                !TryChoices(tiling, tilingFilter, SlitherlinkOptions.Tilings.Contains, out var tilings) ||
+                !TryChoices(tiling, tilingFilter, SlitherlinkMetadata.ValidTiling, out var tilings) ||
                 !TryChoices(source, sourceFilter, SlitherlinkOptions.ValidSource, out var sources))
                 return null;
             return new PuzzleFilter(kind, widths, heights, null, null)

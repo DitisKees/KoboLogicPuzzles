@@ -16,7 +16,7 @@ public sealed class SlitherlinkOptions : IValidatableObject
     ];
 
     internal static readonly string[] Levels = ["easy", "normal", "tricky", "hard"];
-    internal const int MaximumSeconds = 1790;
+    internal const int MaximumSeconds = 3590;
 
     internal static bool ValidSource(string source) => source.Length is >= 1 and <= 40 &&
         source[0] is >= 'a' and <= 'z' &&

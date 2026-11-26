@@ -10,7 +10,12 @@ public sealed record LoopFace(int X, int Y, int[] Edges,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? Clue);
 
 public sealed record SlitherlinkMetadata(string Tiling, string Source, string SourceName, int FaceCount,
-    string? Difficulty = null, string? SourceUrl = null, string? License = null, string? Seed = null);
+    string? Difficulty = null, string? SourceUrl = null, string? License = null, string? Seed = null)
+{
+    private static readonly string[] ImportedTilings = ["altair", "snowflake", "laves", "rhombille", "septistar"];
+
+    internal static bool ValidTiling(string value) => SlitherlinkOptions.Tilings.Contains(value) || ImportedTilings.Contains(value);
+}
 
 public sealed record SlitherlinkDefinition(string Id, int Width, int Height, string Title, string? Author,
     LoopVertex[] Vertices, LoopEdge[] Edges, LoopFace[] Faces, SlitherlinkMetadata Metadata,

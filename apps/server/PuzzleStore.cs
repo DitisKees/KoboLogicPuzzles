@@ -6,7 +6,7 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 3;
+    private const int SchemaVersion = 4;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -133,7 +133,9 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
-        command.CommandText = $"""
+        if (version < 3)
+        {
+            command.CommandText = """
             CREATE TABLE slitherlink_puzzles (
                 id TEXT NOT NULL PRIMARY KEY,
                 width INTEGER NOT NULL CHECK (width > 0),
@@ -153,6 +155,16 @@ public sealed partial class PuzzleStore(string databasePath)
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
                 backed_up_at TEXT NOT NULL
+            );
+            """;
+            command.ExecuteNonQuery();
+        }
+
+        command.CommandText = $"""
+            CREATE TABLE slitherlink_collection_refresh (
+                resource TEXT NOT NULL PRIMARY KEY,
+                completed_at INTEGER NOT NULL,
+                version TEXT
             );
             PRAGMA user_version = {SchemaVersion};
             """;

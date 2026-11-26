@@ -129,11 +129,42 @@ internal sealed partial class SlitherlinkImporter(PuzzleStore store, LoopyGenera
             (board, width, height, tiling) = await generator.DecodeAsync(entry.GameId!, token);
         }
 
-        var definition = board.ToDefinition(width, height,
-            new(tiling, source, name, 0, entry.Difficulty, entry.SourceUrl, entry.License), entry.Title, entry.Author);
+        return await VerifyBoardAsync(board, width, height,
+            new(tiling, source, name, 0, entry.Difficulty, entry.SourceUrl, entry.License), entry.Title, entry.Author, entry.Clues, token);
+    }
+
+    internal Task ImportSquareAsync(int?[][] clues, SlitherlinkMetadata metadata, string? title, string? author, CancellationToken token) =>
+        ImportBoardAsync(NativeLoopBoard.Square(clues), clues[0].Length, clues.Length, metadata, title, author, token, clues);
+
+    internal async Task ImportBoardAsync(NativeLoopBoard board, int width, int height, SlitherlinkMetadata metadata,
+        string? title, string? author, CancellationToken token, int?[][]? squareClues = null)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(options.ImportTimeoutSeconds));
+        try
+        {
+            var puzzle = await VerifyBoardAsync(board, width, height, metadata, title, author, squareClues, deadline.Token);
+            if (puzzle is not null)
+                store.SaveSlitherlink(puzzle);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            logger.LogWarning("Skipping Slitherlink puzzle at {Url}: uniqueness check timed out.", metadata.SourceUrl);
+        }
+        catch (InvalidDataException exception)
+        {
+            logger.LogWarning("Skipping Slitherlink puzzle at {Url}: {Reason}", metadata.SourceUrl, exception.Message);
+        }
+    }
+
+    private async Task<SlitherlinkDefinition?> VerifyBoardAsync(NativeLoopBoard board, int width, int height,
+        SlitherlinkMetadata metadata, string? title, string? author, int?[][]? squareClues, CancellationToken token)
+    {
+        var definition = board.ToDefinition(width, height, metadata, title, author);
         if (store.FindSlitherlink(definition.Id) is not null)
             return null;
-        if (entry.Clues is { } cells && SlitherlinkOptions.ValidDimensions(width, height, tiling) && generator.IsAvailable)
+        if (squareClues is { } cells && cells.All(row => row.All(clue => clue is null or <= 3)) &&
+            SlitherlinkOptions.ValidDimensions(width, height, metadata.Tiling) && generator.IsAvailable)
         {
             var description = new string(cells.SelectMany(row => row).Select(clue => clue is { } n ? (char)('0' + n) : 'a').ToArray());
             var (native, _, _, _) = await generator.DecodeAsync(FormattableString.Invariant($"{width}x{height}t0:{description}"), token);

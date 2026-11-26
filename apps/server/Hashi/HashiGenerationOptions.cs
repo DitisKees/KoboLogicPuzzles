@@ -39,7 +39,7 @@ public sealed class HashiGenerationOptions : IValidatableObject
     [Range(1, 10000)] public int MaxUnstartedPerSize { get; init; } = 1000;
     [Range(1, 10)] public int AttemptsPerSize { get; init; } = 10;
     [Range(1, 86400)] public int PollIntervalSeconds { get; init; } = 600;
-    [Range(1, 3600)] public int StageTimeoutSeconds { get; init; } = 180;
+    [Range(1, 3600)] public int StageTimeoutSeconds { get; init; } = 360;
 
     internal IReadOnlyList<int> SelectedSizes => Sizes ?? DefaultSizes;
     internal IReadOnlyList<int> SelectedDensities => Densities ?? DefaultDensities;

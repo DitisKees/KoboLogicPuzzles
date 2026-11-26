@@ -31,7 +31,15 @@ docker compose -f apps/server/compose.example.yaml exec server \
 
 ## Structured collections
 
-Pass a file or directory to `slitherlink-import --file PATH`. The importer supports these formats.
+The server imports five collections on first startup and checks each source every seven days. Each refresh runs independently of Loopy generation. Verified puzzles appear as they are saved, and SQLite tracks completed imports so an interrupted run can pick up where it stopped. Failed refreshes retry after an hour. Set `SlitherlinkCollections__RefreshEnabled` to `false` to disable automatic Slitherlink imports. By default it follows `CatalogRefresh__Enabled`.
+
+The automatic sources are PuzzleKit, Mindgames, and these web catalogs.
+
+- **Janko** provides classic boards as structured text in the puzzle pages. The importer retains the author and the per-puzzle license where present. [Janko Slitherlink catalog](https://www.janko.at/Raetsel/Slitherlink/index.htm)
+- **GrandGames Wall of China** provides classic boards through its public catalog and player data. The importer keeps the original puzzle link. [Wall of China catalog](https://en.grandgames.net/chinawall)
+- **KrazyDad Variety Slitherlink** provides clues and geometry through its web player. It adds imported tilings such as Altair, Snowflake, Laves, Rhombille, and Septistar. The nominal dimensions reflect the mesh’s aspect ratio and size. Use the cell count for the exact number of faces. The publisher offers the puzzles for personal or school use. [KrazyDad Variety Slitherlink](https://krazydad.com/slitherlink/variety.php)
+
+Pass a file or directory to `slitherlink-import --file PATH` for a manual import. The importer supports these formats.
 
 - **PuzzleKit** Slitherlink JSON shards contain a `data` object with a rectangular clue grid in each entry's `problem` field. Available source URLs, author credits, and license fields travel with the puzzle. Entries without a known origin appear as **PuzzleKit**. [Downloadable dataset shards](https://github.com/SmilingWayne/puzzlekit-dataset/tree/main/assets/data/Slitherlink)
 - **Mindgames** Slitherlink ZIP or its individual square-board text files. The importer reads the square-size `puz-NNxNN.txt` and `puz-NNxNN-Nk.txt` entries and uses the collection's difficulty labels. The same import path verifies solutions from the clues. [Mindgames SlitherLink archive](https://ulhaque.co.uk/common/exe/slitherlink20k.zip)
@@ -53,7 +61,7 @@ Pass a file or directory to `slitherlink-import --file PATH`. The importer suppo
 Use `--source SOURCE --source-name NAME` to assign a known collection label to the whole import. Choose files you have permission to use, and retain author and license metadata where available. The CLI reports how many boards were stored, already present, or rejected. A malformed, unsolvable, ambiguous, or timed-out board leaves the rest of the file importable. Reimporting a source preserves existing IDs and progress.
 
 ```sh
-docker compose -f apps/server/compose.example.yaml cp Slitherlink_dataset_000.json server:/data/
+docker compose -f apps/server/compose.example.yaml cp slitherlink-pack.json server:/data/
 docker compose -f apps/server/compose.example.yaml exec server \
-  dotnet KoboLogicPuzzles.Server.dll slitherlink-import --file /data/Slitherlink_dataset_000.json
+  dotnet KoboLogicPuzzles.Server.dll slitherlink-import --file /data/slitherlink-pack.json
 ```

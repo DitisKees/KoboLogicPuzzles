@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server.Tests;
 
@@ -11,7 +12,7 @@ public sealed class StorageInitializationTests
 
         await Task.WhenAll(Task.Run(database.Store.Initialize), Task.Run(new PuzzleStore(database.Path).Initialize));
 
-        Assert.Equal(3L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Empty(database.Store.RestoreProgress());
         Assert.Empty(database.Store.RestoreHashiProgress());
     }
@@ -27,12 +28,13 @@ public sealed class StorageInitializationTests
             DROP TABLE fill_a_pix_refresh;
             DROP TABLE slitherlink_progress;
             DROP TABLE slitherlink_puzzles;
+            DROP TABLE slitherlink_collection_refresh;
             PRAGMA user_version = 1;
             """);
 
         database.Store.Initialize();
 
-        Assert.Equal(3L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(12, database.Store.FindPuzzle(12)!.Id);
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.FillAPix));
     }
@@ -45,13 +47,30 @@ public sealed class StorageInitializationTests
             UPDATE fill_a_pix_refresh SET revision = 7 WHERE source = 'grandgames';
             DROP TABLE slitherlink_progress;
             DROP TABLE slitherlink_puzzles;
+            DROP TABLE slitherlink_collection_refresh;
             PRAGMA user_version = 2;
             """);
         database.Store.Initialize();
 
-        Assert.Equal(3L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(7L, Execute(database.Path, "SELECT revision FROM fill_a_pix_refresh WHERE source = 'grandgames'"));
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.Slitherlink));
+    }
+
+    [Fact]
+    public void SchemaThreeMigrationKeepsSlitherlinkPuzzles()
+    {
+        using var database = new TestDatabase();
+        var puzzle = NativeLoopBoard.Square([[4]]).ToDefinition(1, 1, new("square", "example", "Example", 0))
+            with { Solution = "####" };
+        Assert.True(database.Store.SaveSlitherlink(puzzle));
+        Execute(database.Path, "DROP TABLE slitherlink_collection_refresh; PRAGMA user_version = 3;");
+
+        database.Store.Initialize();
+
+        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal("####", database.Store.FindSlitherlink(puzzle.Id)!.Solution);
+        Assert.Null(database.Store.GetSlitherlinkCollectionRefreshState(SlitherlinkCollectionRefresh.PuzzleKit));
     }
 
     [Fact]
