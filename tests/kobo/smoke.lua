@@ -15,6 +15,7 @@ package.path = pluginRoot .. "/?.lua;" .. package.path
 local Board = require("kobologicpuzzles/board")
 local FillAPix = require("kobologicpuzzles/fillapixboard")
 local API = require("kobologicpuzzles/api")
+local Event = require("ui/event")
 local Geom = require("ui/geometry")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local Puzzle = require("kobologicpuzzles/puzzle")
@@ -854,20 +855,102 @@ local function testMoveRedraw()
     assert(not game.buffers and canvas:getAllocated() == 0)
 end
 
+local function homeButton(plugin, id)
+    for _, row in ipairs(plugin.home.layout) do
+        for _, button in ipairs(row) do
+            if button.id == id then return button end
+        end
+    end
+end
+
+local function tapWidget(parent, widget)
+    UI:forceRePaint()
+    local dimen = widget.dimen
+    assert(parent:handleEvent(Event:new("Gesture", { ges = "tap", pos = Geom:new{
+        x = dimen.x + math.floor(dimen.w / 2), y = dimen.y + math.floor(dimen.h / 2),
+    } })))
+end
+
+local function testHomeUI()
+    local root = home .. "/home-ui"
+    local store = assert(Store.open(root))
+    local nonogram = smallPuzzle(1)
+    local fill = assert(Puzzle.fromWire(wireFillAPix(1)))
+    local hashi = hashiSquare("c")
+    assert(store:restore(nonogram, { marks = "#.....", completed = false }))
+    assert(store:restore(fill, { marks = "#.....", completed = false }))
+    assert(store:updateSettings({ target = 0, hashiTarget = 1, fillAPixTarget = 0 }))
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } },
+        store = store,
+    }
+    plugin:showHome()
+    assert(plugin.home.resume.puzzle.id == nonogram.id)
+    tapWidget(plugin.home, homeButton(plugin, "fill-a-pix"))
+    plugin.library.item_table[3].callback()
+    assert(plugin.game.board:marks() == "#.....")
+    local library = plugin.library
+    plugin.game:onClose()
+    assert(plugin.library == library and UI:getTopmostVisibleWidget() == library)
+    tapWidget(library, library.title_bar.left_button)
+    assert(not plugin.library and plugin.home.resume.puzzle.id == fill.id)
+    plugin.home:onClose()
+
+    plugin.store = assert(Store.open(root))
+    assert(plugin.store:updateSettings({ lastGame = "nonogram" }))
+    plugin:showHome()
+    plugin.online = function(_, operation)
+        operation(function(method, path, payload)
+            if method == "GET" and path == "/restore" then return {} end
+            if method == "GET" and path:match("^/puzzles/metadata%?") then return {} end
+            assert(method == "POST" and path == "/offline-queue" and payload.game == "hashi")
+            return { puzzles = { hashi }, remaining = 0 }
+        end, { nonogram = true, hashi = true, ["fill-a-pix"] = true })
+    end
+    tapWidget(plugin.home, homeButton(plugin, "sync"))
+    assert(UI:getTopmostVisibleWidget().text == "0 backed up · 0 restored · 1 downloaded")
+    UI:close(UI:getTopmostVisibleWidget())
+    assert(plugin.home.counts.hashi == 1 and plugin.home.resume.puzzle.id == fill.id)
+    UI:forceRePaint()
+    local nonogramButton, hashiButton = homeButton(plugin, "nonogram"), homeButton(plugin, "hashi")
+    assert(nonogramButton.dimen.x == hashiButton.dimen.x and nonogramButton.dimen.y < hashiButton.dimen.y)
+    local screen = device.screen
+    screen.bb:writePNG(home .. "/home-portrait.png")
+
+    local rotation = screen:getRotationMode()
+    screen:setRotationMode(screen.DEVICE_ROTATED_CLOCKWISE)
+    plugin.home:handleEvent(Event:new("ScreenResize", screen:getSize()))
+    UI:forceRePaint()
+    nonogramButton, hashiButton = homeButton(plugin, "nonogram"), homeButton(plugin, "hashi")
+    assert(nonogramButton.dimen.x < hashiButton.dimen.x and nonogramButton.dimen.y == hashiButton.dimen.y)
+    screen.bb:writePNG(home .. "/home-landscape.png")
+
+    plugin.online = function() error("Continue attempted a network request") end
+    tapWidget(plugin.home, homeButton(plugin, "continue"))
+    assert(plugin.game.board.puzzle.id == fill.id and plugin.library.title == "Fill-a-Pix library")
+    plugin.game:onClose()
+    assert(plugin.store:saveGame(FillAPix:new(fill, "#..#.#"), { row = 1, column = 1, zoom = 0 }, true))
+    assert(plugin.store.records[fill.id].completed)
+    plugin.library:onClose()
+    assert(plugin.home.resume.puzzle.id == nonogram.id)
+    plugin.home:onClose()
+    screen:setRotationMode(rotation)
+end
+
 local function testGameUI()
     local plugin = dofile(pluginRoot .. "/main.lua"):new{
         ui = { menu = { registerToMainMenu = function() end } },
     }
-    plugin:showLibrary()
-    assert(plugin.library and plugin.store)
-    local menu = plugin.library
-    menu:onMenuSelect(menu.item_table[4])
+    local tools = {}
+    plugin:addToMainMenu(tools)
+    tools.kobologicpuzzles.callback()
+    assert(plugin.home and plugin.store and not plugin.library)
+    tapWidget(plugin.home, homeButton(plugin, "settings"))
     local settings = UI:getTopmostVisibleWidget()
-    assert(settings.title == "Nonogram settings")
+    assert(settings.title == "Settings")
     local function enterValue(title, value)
         local input
         for widget in UI:topdown_widgets_iter() do
-            assert(widget ~= menu, title .. " dialog is behind the library")
             if widget.title == title then
                 input = widget
                 break
@@ -879,17 +962,22 @@ local function testGameUI()
     end
     settings.buttons[1][1].callback()
     enterValue("Home server URL", "http://example.test:8080")
-    assert(plugin.store.settings.server == "http://example.test:8080" and UI:getTopmostVisibleWidget() == menu)
+    assert(plugin.store.settings.server == "http://example.test:8080" and UI:getTopmostVisibleWidget() == plugin.home)
     assert(plugin.store.settings.clueLimit == Viewport.defaultClueLimit)
-    menu:onMenuSelect(menu.item_table[4])
-    UI:getTopmostVisibleWidget().buttons[4][1].callback()
-    enterValue("Clues shown per row or column", "2")
-    assert(assert(Store.open(plugin.store.root)).settings.clueLimit == 2)
     local checked
     plugin.checkPluginUpdate = function() checked = true end
-    menu:onMenuSelect(menu.item_table[4])
-    UI:getTopmostVisibleWidget().buttons[5][1].callback()
-    assert(checked and UI:getTopmostVisibleWidget() == menu)
+    homeButton(plugin, "settings").callback()
+    UI:getTopmostVisibleWidget().buttons[2][1].callback()
+    assert(checked and UI:getTopmostVisibleWidget() == plugin.home)
+    tapWidget(plugin.home, homeButton(plugin, "nonogram"))
+    local menu = assert(plugin.library)
+    assert(menu.title == "Nonogram library")
+    menu:onMenuSelect(menu.item_table[2])
+    settings = UI:getTopmostVisibleWidget()
+    assert(settings.title == "Nonogram settings")
+    settings.buttons[3][1].callback()
+    enterValue("Clues shown per row or column", "2")
+    assert(assert(Store.open(plugin.store.root)).settings.clueLimit == 2)
 
     assert(plugin.store:download(smallPuzzle(1)))
     plugin:showGame(1)
@@ -933,16 +1021,16 @@ local function testGameUI()
     plugin:updateLibrary()
     UI:forceRePaint()
     local items = plugin.library.item_table
-    assert(items[5].mandatory == "3×2  16%" and plugin.library.item_group[5].thumbnail.preview)
-    assert(items[6].mandatory == "3×2  0%" and not plugin.library.item_group[6].thumbnail)
-    assert(items[7].mandatory == "3×2  83%  Solved" and plugin.library.item_group[7].thumbnail.preview)
+    assert(items[3].mandatory == "3×2  16%" and plugin.library.item_group[3].thumbnail.preview)
+    assert(items[4].mandatory == "3×2  0%" and not plugin.library.item_group[4].thumbnail)
+    assert(items[5].mandatory == "3×2  83%  Solved" and plugin.library.item_group[5].thumbnail.preview)
     local metadata = { difficulty = 3.75, quality = 4.25, solvability = 3 }
     local details = "Difficulty 3.75/5 · Quality 4.25/5 · Moderate lookahead"
-    assert(items[5].details:find("Solvability unknown", 1, true))
+    assert(items[3].details:find("Solvability unknown", 1, true))
     assert(plugin.store:saveMetadata(1, metadata))
     plugin:updateLibrary()
-    assert(plugin.library.item_table[5].details == details)
-    local libraryRow = plugin.library.item_group[5]
+    assert(plugin.library.item_table[3].details == details)
+    local libraryRow = plugin.library.item_group[3]
     local libraryLines = libraryRow._underline_container[1][1][3]
     assert(libraryLines[2].text == details and not libraryLines[2]:isTruncated())
     assert(libraryLines:getSize().h <= libraryRow.dimen.h)
@@ -965,7 +1053,8 @@ local function testGameUI()
     assert(catalogLines[2].text == details and not catalogLines[2]:isTruncated())
     assert(catalogLines:getSize().h <= catalogRow.dimen.h)
     device.screen.bb:writePNG(home .. "/catalog.png")
-    plugin.catalog:onClose()
+    tapWidget(plugin.catalog, plugin.catalog.title_bar.left_button)
+    assert(not plugin.catalog and UI:getTopmostVisibleWidget() == menu)
     plugin.online = nil
     for _, size in ipairs({ 40, 80 }) do
         assert(plugin.store:download(squarePuzzle(size)))
@@ -1108,9 +1197,11 @@ local function testGameUI()
     assert(plugin.game.zoom == Viewport.minZoom)
     plugin.game:onClose()
     UI:forceRePaint()
-    assert(plugin.library.item_table[5].mandatory == "80×80  <1%")
+    assert(plugin.library.item_table[3].mandatory == "80×80  <1%")
     device.screen.bb:writePNG(home .. "/library.png")
     plugin.library:onClose()
+    assert(UI:getTopmostVisibleWidget() == plugin.home)
+    plugin.home:onClose()
 end
 
 local function testHashiUI()
@@ -1129,12 +1220,11 @@ local function testHashiUI()
     end
     local large = hashiFixture(50, "f", points, function(a, b) return a.y == b.y or a.x == 0 end)
     assert(plugin.store:download(small) and plugin.store:download(smallPuzzle(1)))
-    plugin:showLibrary()
-    plugin:chooseGame()
-    UI:getTopmostVisibleWidget().buttons[1][2].callback()
-    assert(plugin.store.settings.lastGame == "hashi" and plugin.library.item_table[5].text == Puzzle.title(small))
-    assert(#plugin.library.item_table == 5 and plugin.library.item_table[5].details == "Hard · Advanced logic")
-    assert(plugin.library.item_table[5].mandatory == "20×20  Not started")
+    plugin:showHome()
+    tapWidget(plugin.home, homeButton(plugin, "hashi"))
+    assert(plugin.store.settings.lastGame == "hashi" and plugin.library.item_table[3].text == Puzzle.title(small))
+    assert(#plugin.library.item_table == 3 and plugin.library.item_table[3].details == "Hard · Advanced logic")
+    assert(plugin.library.item_table[3].mandatory == "20×20  Not started")
     plugin:filterSettings("hashi")
     UI:getTopmostVisibleWidget().buttons[1][1].callback()
     saveFilterInput("Grid size", "40-50")
@@ -1308,7 +1398,7 @@ local function testHashiUI()
     assert(plugin.game.board:marks() == marks and plugin.store.records[large.id].checkpoint == marks)
     plugin.game:onClose()
     UI:forceRePaint()
-    assert(plugin.library.item_group[5].thumbnail.preview)
+    assert(plugin.library.item_group[3].thumbnail.preview)
     plugin:showGame(small.id)
     game = assert(plugin.game)
     local function verifyLibraryProgress(expected)
@@ -1341,6 +1431,7 @@ local function testHashiUI()
     device.screen.bb:writePNG(home .. "/hashi-20-solved.png")
     game:onClose()
     plugin.library:onClose()
+    plugin.home:onClose()
 end
 
 local function testFillAPixUI()
@@ -1351,9 +1442,10 @@ local function testFillAPixUI()
     }
     assert(plugin.store:updateSettings({ server = "http://example.test:8080" }))
     local large, small = wireFillAPix(1, 118, 100), wireFillAPix(2)
-    plugin.online = function(self, operation)
+    local onlineCalls = 0
+    plugin.online = function(_, operation)
+        onlineCalls = onlineCalls + 1
         local games = { nonogram = true, ["fill-a-pix"] = true, advancedFilters = true }
-        self.games = games
         operation(function(method, path)
             assert(method == "GET")
             if path == "/restore" then return {} end
@@ -1362,16 +1454,13 @@ local function testFillAPixUI()
             return large
         end, games)
     end
-    plugin:showLibrary()
-    plugin:chooseGame()
-    local picker = UI:getTopmostVisibleWidget()
-    assert(picker.buttons[1][2].text == "Check server for games")
-    picker.buttons[1][2].callback()
-    UI:getTopmostVisibleWidget().buttons[1][2].callback()
-    assert(plugin.store.settings.lastGame == "fill-a-pix")
-    plugin:settings()
+    plugin:showHome()
+    tapWidget(plugin.home, homeButton(plugin, "fill-a-pix"))
+    assert(plugin.store.settings.lastGame == "fill-a-pix" and onlineCalls == 0)
+    assert(plugin.library.item_table[3].select_enabled == false)
+    plugin.library.item_table[2].callback()
     local settings = UI:getTopmostVisibleWidget()
-    assert(settings.buttons[2][1].text:find("(5)", 1, true))
+    assert(settings.buttons[1][1].text:find("(5)", 1, true))
     UI:close(settings)
     plugin:filterSettings("fill-a-pix")
     UI:getTopmostVisibleWidget().buttons[1][1].callback()
@@ -1448,6 +1537,7 @@ local function testFillAPixUI()
     local last = #plugin.library.item_table
     assert(plugin.library.item_table[last].mandatory == "3×2  Solved" and plugin.library.item_group[last].thumbnail.preview)
     plugin.library:onClose()
+    plugin.home:onClose()
 end
 
 testBoard()
@@ -1465,4 +1555,5 @@ testMoveRedraw()
 testGameUI()
 testHashiUI()
 testFillAPixUI()
+testHomeUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

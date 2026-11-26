@@ -6,6 +6,7 @@ local DataStorage = require("datastorage")
 local FillAPixGame = require("kobologicpuzzles/fillapixgame")
 local Game = require("kobologicpuzzles/game")
 local HashiGame = require("kobologicpuzzles/hashigame")
+local Home = require("kobologicpuzzles/home")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local NetworkMgr = require("ui/network/manager")
@@ -44,17 +45,67 @@ function LogicPuzzles:addToMainMenu(menu_items)
     menu_items.kobologicpuzzles = {
         text = "Kobo Logic Puzzles",
         sorting_hint = "tools",
-        callback = function() self:showLibrary() end,
+        callback = function() self:showHome() end,
     }
 end
 
-function LogicPuzzles:libraryItems()
-    local game = self.store.settings.lastGame
+function LogicPuzzles:homeStatus()
+    local counts = {}
+    for id in pairs(self.store.records) do
+        local game = Puzzle.game(id)
+        counts[game] = (counts[game] or 0) + 1
+    end
+    local resume = self.store.records[self.store.settings.lastPlayedId]
+    if not resume or not resume.marks or resume.completed then
+        resume = nil
+        for _, record in ipairs(self.store:list()) do
+            if not record.marks or record.completed then break end
+            resume = resume or record
+            if Puzzle.game(record.puzzle.id) == self.store.settings.lastGame then
+                resume = record
+                break
+            end
+        end
+    end
+    return counts, resume
+end
+
+function LogicPuzzles:showHome()
+    if self.home then return end
+    if not self.store then
+        local store, err = Store.open(DataStorage:getDataDir() .. "/kobologicpuzzles")
+        if not store then return notice("Could not open the local puzzle library.\n" .. tostring(err)) end
+        self.store = store
+    end
+    local counts, resume = self:homeStatus()
+    self.home = Home:new{
+        counts = counts, resume = resume, backup = backupLabel(self.store.settings.lastBackup),
+        openGame = function(game) self:showLibrary(game) end,
+        continueGame = function(id) self:showGame(id) end,
+        sync = function() self:sync() end,
+        settings = function() self:settings() end,
+        onExit = function() self.home = nil end,
+    }
+    UIManager:show(self.home)
+    if self.store.skipped then
+        notice(string.format("%d local puzzle files could not be read.", self.store.skipped))
+        self.store.skipped = nil
+    end
+end
+
+function LogicPuzzles:updateHome()
+    if not self.home then return end
+    self.home.counts, self.home.resume = self:homeStatus()
+    self.home.backup = backupLabel(self.store.settings.lastBackup)
+    self.home:rebuild(true)
+    UIManager:setDirty(self.home, "ui")
+end
+
+function LogicPuzzles:libraryItems(game)
+    game = game or self.store.settings.lastGame
     local items = {
-        { text = "Game  ·  " .. Puzzle.gameNames[game], callback = function() self:chooseGame() end },
-        { text = "Sync now", callback = function() self:sync() end },
         { text = "Browse server catalog", callback = function() self:browse() end },
-        { text = "Settings", callback = function() self:settings() end },
+        { text = "Game settings", callback = function() self:gameSettings(game) end },
     }
     for _, record in ipairs(self.store:list(game)) do
         local puzzle = record.puzzle
@@ -78,55 +129,47 @@ function LogicPuzzles:libraryItems()
             callback = function() self:showGame(puzzle.id) end,
         }
     end
-    if #items == 4 then items[#items + 1] = { text = "Sync to download puzzles for offline play", select_enabled = false } end
+    if #items == 2 then items[#items + 1] = { text = "No offline puzzles yet", select_enabled = false } end
     return items
 end
 
-function LogicPuzzles:libraryTitle()
-    return Puzzle.gameNames[self.store.settings.lastGame] .. " library"
-end
-
-function LogicPuzzles:showLibrary()
-    if not self.store then
-        local store, err = Store.open(DataStorage:getDataDir() .. "/kobologicpuzzles")
-        if not store then return notice("Could not open the local puzzle library.\n" .. tostring(err)) end
-        self.store = store
+function LogicPuzzles:showLibrary(game)
+    self:showHome()
+    if not self.home then return end
+    game = game or self.store.settings.lastGame
+    if self.library then return self.store.settings.lastGame == game end
+    local ok, err = self.store:updateSettings({ lastGame = game })
+    if not ok then
+        notice(tostring(err))
+        return
     end
-    if self.library then return end
     local library = PuzzleMenu:new{
-        title = self:libraryTitle(),
-        subtitle = backupLabel(self.store.settings.lastBackup),
-        item_table = self:libraryItems(),
+        title = Puzzle.gameNames[game] .. " library",
+        item_table = self:libraryItems(game),
         is_borderless = true,
         is_popout = false,
-        close_callback = function() self.library = nil end,
+        close_callback = function()
+            self.library = nil
+            self:updateHome()
+        end,
     }
     self.library = library
     UIManager:show(library)
-    if self.store.skipped then
-        notice(string.format("%d local puzzle files could not be read.", self.store.skipped))
-        self.store.skipped = nil
-    end
+    return true
 end
 
 function LogicPuzzles:updateLibrary()
     if self.library then
-        self.library:switchItemTable(self:libraryTitle(), self:libraryItems(), nil, nil, backupLabel(self.store.settings.lastBackup))
+        self.library:switchItemTable(nil, self:libraryItems(), self.library:getFirstVisibleItemIndex())
     end
 end
 
 function LogicPuzzles:showGame(id)
     local record = self.store.records[id]
     if not record or self.game then return end
-    if self.catalog then
-        UIManager:close(self.catalog)
-        self.catalog = nil
-    end
-    if self.library then
-        UIManager:close(self.library)
-        self.library = nil
-    end
     local game = Puzzle.game(id)
+    if not self:showLibrary(game) then return end
+    if self.catalog then self.catalog:onClose() end
     local widget = gameWidgets[game]
     local rules = Puzzle.rules(id)
     self.game = widget:new{
@@ -136,9 +179,11 @@ function LogicPuzzles:showGame(id)
         fetchSolution = game == "nonogram" and function(active) self:fetchSolution(active) end or nil,
         onExit = function()
             self.game = nil
-            self:showLibrary()
+            self:updateLibrary()
         end,
     }
+    local ok, err = self.store:updateSettings({ lastPlayedId = id })
+    if not ok then logger.warn("Kobo Logic Puzzles: could not remember the last puzzle", err) end
     UIManager:show(self.game, "full")
 end
 
@@ -166,10 +211,7 @@ function LogicPuzzles:editServer()
         if address == self.store.settings.server then return true end
         local ok, err = self.store:updateSettings({ server = address, restoredV2Server = false,
             restoredV2Games = false, lastBackup = false })
-        if ok then
-            self.games = nil
-            self:updateLibrary()
-        end
+        if ok then self:updateHome() end
         return ok, err
     end)
 end
@@ -188,24 +230,6 @@ local function choose(title, choices, apply)
     buttons[#buttons + 1] = {{ text = "Close", callback = function() UIManager:close(dialog) end }}
     dialog = ButtonDialog:new{ title = title, modal = true, buttons = buttons }
     UIManager:show(dialog)
-end
-
-function LogicPuzzles:chooseGame()
-    local function show(games, checked)
-        local choices = {}
-        for _, game in ipairs(Puzzle.games) do
-            if game == "nonogram" or (games and games[game]) or self.store:hasGame(game) then
-                choices[#choices + 1] = { Puzzle.gameNames[game], game }
-            end
-        end
-        if not checked and #choices < #Puzzle.games then choices[#choices + 1] = { "Check server for games", "check" } end
-        choose("Choose a game", choices, function(game)
-            if game == "check" then return self:online(function(_, available) show(available, true) end) end
-            local ok, err = self.store:updateSettings({ lastGame = game })
-            if ok then self:updateLibrary() else notice(err) end
-        end)
-    end
-    show(self.games)
 end
 
 local function filterOptions(game, key)
@@ -303,7 +327,26 @@ end
 
 function LogicPuzzles:settings()
     local dialog
-    local game = self.store.settings.lastGame
+    dialog = ButtonDialog:new{
+        title = "Settings",
+        modal = true,
+        buttons = {
+            {{ text = "Home server URL", callback = function()
+                UIManager:close(dialog)
+                self:editServer()
+            end }},
+            {{ text = "Update plugin", callback = function()
+                UIManager:close(dialog)
+                self:checkPluginUpdate()
+            end }},
+            {{ text = "Close", callback = function() UIManager:close(dialog) end }},
+        },
+    }
+    UIManager:show(dialog)
+end
+
+function LogicPuzzles:gameSettings(game)
+    local dialog
     local targetKey = Store.targetKeys[game]
     local boardSetting
     if game == "hashi" then
@@ -311,7 +354,7 @@ function LogicPuzzles:settings()
         boardSetting = { text = "Candidate bridges  ·  " .. (guides and "On" or "Off"), callback = function()
             UIManager:close(dialog)
             local ok, err = self.store:updateSettings({ hashiGuides = not guides })
-            if not ok then notice(err) else self:settings() end
+            if not ok then notice(err) else self:gameSettings(game) end
         end }
     elseif game == "nonogram" then
         boardSetting = { text = "Clues to show  (" .. self.store.settings.clueLimit .. ")", callback = function()
@@ -328,10 +371,6 @@ function LogicPuzzles:settings()
         end }
     end
     local buttons = {
-        {{ text = "Home server URL", callback = function()
-            UIManager:close(dialog)
-            self:editServer()
-        end }},
         {{ text = "Offline queue size  (" .. self.store:target(game) .. ")", callback = function()
             UIManager:close(dialog)
             input("Unstarted puzzles to keep offline", self.store:target(game), "0–100", function(value)
@@ -346,13 +385,9 @@ function LogicPuzzles:settings()
             UIManager:close(dialog)
             self:filterSettings(game)
         end }},
-        {{ text = "Update plugin", callback = function()
-            UIManager:close(dialog)
-            self:checkPluginUpdate()
-        end }},
         {{ text = "Close", callback = function() UIManager:close(dialog) end }},
     }
-    if boardSetting then table.insert(buttons, 4, { boardSetting }) end
+    if boardSetting then table.insert(buttons, 3, { boardSetting }) end
     dialog = ButtonDialog:new{
         title = Puzzle.gameNames[game] .. " settings",
         modal = true,
@@ -420,13 +455,12 @@ function LogicPuzzles:online(operation)
                 end
                 local games, capabilityError = API.capabilities(request)
                 if not games then return notice(capabilityError) end
-                self.games = games
                 operation(request, games)
             end, debug.traceback)
             self.busy = false
             if not ok then
                 logger.warn("Kobo Logic Puzzles network operation failed", err)
-                notice("The operation could not finish. Try again from the library.")
+                notice("The operation could not finish. Please try again.")
             end
         end)
     end)
@@ -457,6 +491,7 @@ function LogicPuzzles:sync()
             err = metadataError
         end
         self:updateLibrary()
+        self:updateHome()
         local summary = string.format("%d backed up · %d restored · %d downloaded",
             result.backedUp, result.restored, result.added)
         for _, game in ipairs(Puzzle.games) do

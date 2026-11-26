@@ -5,6 +5,12 @@ local Hashi = require("kobologicpuzzles/hashiboard")
 local Puzzle = {}
 Puzzle.games = { "nonogram", "hashi", "fill-a-pix" }
 Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix" }
+Puzzle.families = {
+    { title = "Cell shading", games = { "nonogram", "fill-a-pix" } },
+    { title = "Line drawing", games = { "hashi" } },
+    { title = "Region partitioning", games = {} },
+    { title = "Object placement", games = {} },
+}
 Puzzle.fillAPixSources = { janko = "Janko", grandgames = "GrandGames", fillapixnet = "Fill-a-Pix.net" }
 local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix }
 Puzzle.difficulties = { "easy", "medium", "hard", "expert" }

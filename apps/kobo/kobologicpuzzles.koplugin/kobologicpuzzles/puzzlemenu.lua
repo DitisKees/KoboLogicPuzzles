@@ -1,4 +1,5 @@
 local Blitbuffer = require("ffi/blitbuffer")
+local BD = require("ui/bidi")
 local Device = require("device")
 local Font = require("ui/font")
 local Geom = require("ui/geometry")
@@ -10,9 +11,23 @@ local Puzzle = require("kobologicpuzzles/puzzle")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local Thumbnail = require("kobologicpuzzles/thumbnail")
+local TitleBar = require("ui/widget/titlebar")
 local VerticalGroup = require("ui/widget/verticalgroup")
 
-local PuzzleMenu = Menu:extend{ modal = true, items_per_page = 10, single_line = true }
+local PuzzleMenu = Menu:extend{ modal = true, items_per_page = 10, single_line = true, covers_fullscreen = true }
+
+function PuzzleMenu:init()
+    self.custom_title_bar = TitleBar:new{
+        width = Device.screen:getWidth(),
+        fullscreen = true,
+        title = self.title,
+        left_icon = BD.mirroredUILayout() and "chevron.right" or "chevron.left",
+        left_icon_tap_callback = function() self:onClose() end,
+        show_parent = self,
+    }
+    Menu.init(self)
+end
+
 local function rating(value)
     if type(value) == "number" and value >= 1 and value <= 5 then return value .. "/5" end
     return "–"
