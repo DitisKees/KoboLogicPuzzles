@@ -57,6 +57,12 @@ The local equivalent is `dotnet run --project apps/server -- refresh`. Set `Cata
 
 The API is intended for a trusted home LAN. See the [API and client sync formats](contracts/README.md).
 
+## Server dashboard
+
+Open the home server address in a browser to see the dashboard. It shows the puzzle catalog by source, Hashi and Slitherlink stock against their generation targets, and each generator’s current attempt and recent outcomes. Use the inventory tabs and the solvability or tiling filter to inspect an individual group. The dashboard refreshes every 30 seconds while visible.
+
+Generation activity and attempt counts cover the server session. Catalog and stock counts come from the database and survive a restart.
+
 ## Puzzle catalog and weekly refresh
 
 - The home server runs a filtered WebPBN search once a week. It pages through all matches, records their IDs and metadata, and deduplicates by WebPBN puzzle ID. Rerunning the search also picks up older puzzles whose ratings now match the filters. [WebPBN puzzle search](https://webpbn.com/find.cgi)

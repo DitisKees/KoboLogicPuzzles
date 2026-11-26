@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="description" content="Stock and generation activity for Kobo Logic Puzzles.">
+    <title>Server dashboard · Kobo Logic Puzzles</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <script type="module" src="dashboard.js"></script>
+</head>
+<body>
+    <a class="skip-link" href="#overview">Skip to dashboard</a>
+    <aside class="sidebar">
+        <a class="brand" href="#overview">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span>Kobo Logic Puzzles</span>
+        </a>
+        <nav class="navigation" aria-label="Dashboard sections">
+            <a href="#overview" aria-current="location"><span class="nav-icon overview-icon" aria-hidden="true"></span>Overview</a>
+            <a href="#inventory"><span class="nav-icon inventory-icon" aria-hidden="true"></span>Inventory</a>
+            <a href="#generation"><span class="nav-icon generation-icon" aria-hidden="true"></span>Generation</a>
+            <a href="#catalog"><span class="nav-icon catalog-icon" aria-hidden="true"></span>Catalog</a>
+        </nav>
+    </aside>
+
+    <main class="dashboard">
+        <header class="hero" id="overview">
+            <div>
+                <p class="connection" id="connection" data-state="loading" role="status">
+                    <span class="status-dot"></span><span id="connection-label">Connecting to server</span>
+                </p>
+                <h1>Server dashboard</h1>
+                <p class="updated" id="updated">Waiting for the first update</p>
+            </div>
+            <button class="refresh-button" type="button" id="refresh">Refresh</button>
+        </header>
+
+        <noscript><p class="notice">Enable JavaScript to view live server data.</p></noscript>
+        <p id="fetch-error" class="notice" role="status" hidden></p>
+
+        <div class="metrics" aria-label="Server summary">
+            <article class="metric">
+                <span class="metric-icon catalog-metric" aria-hidden="true"><span></span></span>
+                <h2>Catalog puzzles</h2>
+                <p class="metric-value" id="catalog-total">—</p>
+                <p class="metric-detail" id="catalog-detail">Unstarted across all games</p>
+            </article>
+            <article class="metric">
+                <span class="metric-icon target-metric" aria-hidden="true"><span></span></span>
+                <h2>Target coverage</h2>
+                <p class="metric-value" id="coverage">—</p>
+                <p class="metric-detail" id="coverage-detail">Stock across configured targets</p>
+                <div class="metric-meter"><div id="coverage-meter"></div></div>
+            </article>
+            <article class="metric">
+                <span class="metric-icon worker-metric" aria-hidden="true"><span></span></span>
+                <h2>Active generators</h2>
+                <p class="metric-value" id="worker-total">—</p>
+                <p class="metric-detail" id="worker-detail">Hashi and Slitherlink</p>
+            </article>
+        </div>
+
+        <div class="workspace">
+            <section class="panel inventory-panel" id="inventory" aria-labelledby="inventory-title">
+                <header class="panel-heading">
+                    <div>
+                        <h2 id="inventory-title">Stock inventory</h2>
+                        <p>Generation targets and unstarted stock</p>
+                    </div>
+                    <div class="tabs" role="tablist" aria-label="Puzzle type">
+                        <button type="button" id="tab-hashi" role="tab" aria-selected="true" aria-controls="stock-panel">Hashi</button>
+                        <button type="button" id="tab-slitherlink" role="tab" aria-selected="false" aria-controls="stock-panel" tabindex="-1">Slitherlink</button>
+                    </div>
+                </header>
+                <div id="stock-panel" role="tabpanel" aria-labelledby="tab-hashi">
+                    <div class="stock-controls">
+                        <div class="filter">
+                            <label for="stock-filter" id="stock-filter-label">Solvability</label>
+                            <div class="select-wrap">
+                                <select id="stock-filter" disabled><option value="">All levels</option></select>
+                            </div>
+                        </div>
+                        <div class="legend" aria-label="Stock legend">
+                            <span><i class="legend-swatch met"></i>Target met</span>
+                            <span><i class="legend-swatch partial"></i>Below target</span>
+                            <span><i class="legend-swatch missing"></i>Empty</span>
+                        </div>
+                    </div>
+                    <div class="table-scroll" id="stock-content" role="region" aria-label="Stock table" tabindex="0">
+                        <p class="empty-state">Loading inventory…</p>
+                    </div>
+                    <div id="stock-note" class="stock-note" hidden></div>
+                </div>
+            </section>
+
+            <section class="panel generation-panel" id="generation" aria-labelledby="generation-title">
+                <header class="panel-heading">
+                    <div>
+                        <h2 id="generation-title">Generation</h2>
+                        <p>Worker activity and latest outcomes</p>
+                    </div>
+                </header>
+                <div id="workers" class="workers">
+                    <p class="empty-state">Loading worker status…</p>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel catalog-panel" id="catalog" aria-labelledby="catalog-title">
+            <header class="panel-heading">
+                <div>
+                    <h2 id="catalog-title">Puzzle catalog</h2>
+                    <p>Server catalog by game and source</p>
+                </div>
+            </header>
+            <div class="catalog-grid" id="catalog-content">
+                <p class="empty-state">Loading catalog…</p>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

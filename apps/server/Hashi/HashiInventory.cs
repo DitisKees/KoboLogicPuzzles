@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -16,7 +15,8 @@ public sealed record HashiInventoryBucket(int Size, string? Difficulty, string S
 public sealed record HashiInventoryTarget(int Size, string Difficulty, string Solvability, int Unstarted, int Target);
 
 public sealed record HashiInventoryStatus(bool Enabled, IReadOnlyList<HashiInventoryBucket> Stock,
-    IReadOnlyList<HashiInventoryTarget> Targets, IReadOnlyDictionary<string, long> Outcomes, HashiGenerationOutcome? LastAttempt);
+    IReadOnlyList<HashiInventoryTarget> Targets, IReadOnlyDictionary<string, long> Outcomes, HashiGenerationOutcome? LastAttempt,
+    GenerationActivitySnapshot Activity);
 
 public sealed record HashiGenerationOutcome(string Status, int Size, HashiGenerationParameters Parameters, string? PuzzleId = null,
     string? Validation = null, int? ExactNodes = null, string? Difficulty = null, string? Solvability = null,
@@ -26,7 +26,7 @@ public sealed record HashiGenerationOutcome(string Status, int Size, HashiGenera
 public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator generator, HashiGenerationOptions options,
     TimeProvider time, ILogger<HashiInventory> logger)
 {
-    private readonly ConcurrentDictionary<string, long> outcomes = new(StringComparer.Ordinal);
+    private readonly GenerationActivity activity = new(time);
     private readonly HashSet<HashiStockKey> pendingRefills = [];
     private HashiGenerationOutcome? lastAttempt;
     private int cycleNumber;
@@ -39,8 +39,9 @@ public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator g
         var eligible = CountEligible(stock);
         var targets = TargetKeys(eligible).Select(key => new HashiInventoryTarget(key.Size, Name(key.Rating.Difficulty)!,
             Name(key.Rating.Solvability)!, eligible.GetValueOrDefault(key), options.TargetPerDifficulty)).ToArray();
-        return new HashiInventoryStatus(options.Enabled, buckets, targets, new Dictionary<string, long>(outcomes),
-            Volatile.Read(ref lastAttempt));
+        var snapshot = activity.Snapshot();
+        return new HashiInventoryStatus(options.Enabled, buckets, targets, snapshot.Outcomes,
+            Volatile.Read(ref lastAttempt), snapshot);
     }
 
     // Returns true if a productive pass should be followed immediately by another.
@@ -96,7 +97,7 @@ public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator g
                     var candidate = new HashiStockRating(tier, rating.Solvability);
                     admitted = new HashiStockKey(size, candidate);
                     return options.IncludesRating(candidate) && eligible.GetValueOrDefault(admitted) < targetCount;
-                }, cancellationToken);
+                }, cancellationToken, target);
                 if (outcome.Status == "stored")
                 {
                     eligible[admitted] = eligible.GetValueOrDefault(admitted) + 1;
@@ -129,7 +130,26 @@ public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator g
     }
 
     private async Task<HashiGenerationOutcome> AttemptAsync(int size, HashiGenerationParameters parameters, bool diagnostic,
-        Func<HashiPuzzleRating, bool> acceptsRating, CancellationToken cancellationToken)
+        Func<HashiPuzzleRating, bool> acceptsRating, CancellationToken cancellationToken, HashiStockRating? target = null)
+    {
+        activity.Begin(size, Name(target?.Difficulty), Name(target?.Solvability));
+        try
+        {
+            return await GenerateAndVerifyAsync(size, parameters, diagnostic, acceptsRating, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            activity.Finish("generation_failed");
+            throw;
+        }
+        finally
+        {
+            activity.Clear();
+        }
+    }
+
+    private async Task<HashiGenerationOutcome> GenerateAndVerifyAsync(int size, HashiGenerationParameters parameters,
+        bool diagnostic, Func<HashiPuzzleRating, bool> acceptsRating, CancellationToken cancellationToken)
     {
         GeneratedHashiCandidate generated;
         try
@@ -147,6 +167,7 @@ public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator g
             return Record(new HashiGenerationOutcome("generation_failed", size, parameters, Detail: exception.Message));
         }
 
+        activity.Verifying();
         var started = Stopwatch.GetTimestamp();
         var (validation, verified) = VerifiedHashiPuzzle.Verify(generated.Candidate, parameters, options.StageTimeout,
             time.GetUtcNow(), cancellationToken);
@@ -194,8 +215,8 @@ public sealed class HashiInventory(PuzzleStore store, IHashiCandidateGenerator g
 
     private HashiGenerationOutcome Record(HashiGenerationOutcome result)
     {
-        outcomes.AddOrUpdate(result.Status, 1, (_, count) => count + 1);
         Volatile.Write(ref lastAttempt, result);
+        activity.Finish(result.Status, result.Difficulty, result.Solvability);
         if (result.Detail is { } detail)
             logger.LogWarning("Hashi generation for size {Size} ended with {Status}: {Detail}", result.Size, result.Status, detail);
         else

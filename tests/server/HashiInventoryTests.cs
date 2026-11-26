@@ -8,6 +8,30 @@ public sealed class HashiInventoryTests
     private static readonly HashiGenerationParameters Parameters = new("00000001", 10, 10, 2);
 
     [Fact]
+    public async Task ReportsCurrentGenerationAndMovesItToCompletedActivity()
+    {
+        using var database = new TestDatabase();
+        var pending = new TaskCompletionSource<GeneratedHashiCandidate>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var generator = new Stub((_, _, _) => pending.Task);
+        var inventory = Create(database, generator, [20]);
+
+        var attempt = inventory.GenerateOnceAsync(20, Parameters, diagnostic: true, CancellationToken.None);
+        var current = Assert.IsType<GenerationJob>(inventory.GetStatus().Activity.Current);
+        Assert.Equal(20, current.Size);
+        Assert.Equal("generating", current.Stage);
+
+        pending.SetResult(new GeneratedHashiCandidate(TestData.HashiPair(), 1, 2000));
+        Assert.Equal("verified", (await attempt).Status);
+        var snapshot = inventory.GetStatus().Activity;
+        Assert.Null(snapshot.Current);
+        var last = Assert.IsType<GenerationResult>(snapshot.Last);
+        Assert.Equal("verified", last.Status);
+        Assert.Equal(current.StartedAt, last.Job.StartedAt);
+        Assert.True(last.FinishedAt >= last.Job.StartedAt);
+        Assert.Equal(1, snapshot.Outcomes["verified"]);
+    }
+
+    [Fact]
     public void DefaultTargetsEachVerifiedRatingCombinationAtEverySize()
     {
         using var database = new TestDatabase();

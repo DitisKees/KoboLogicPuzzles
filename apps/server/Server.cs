@@ -76,8 +76,11 @@ public static class Server
             },
         });
 
+        app.UseDefaultFiles();
+        app.UseStaticFiles();
         app.MapHealthChecks("/health");
         GameApi.MapEndpoints(app);
+        DashboardApi.MapEndpoints(app);
     }
 
     internal static IResult BadRequest(string detail) => Results.Problem(detail, statusCode: StatusCodes.Status400BadRequest);
