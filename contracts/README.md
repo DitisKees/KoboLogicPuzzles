@@ -13,7 +13,7 @@ Kobo Logic Puzzles uses `/api/v2` for both games. Nonogram definitions and saves
 | `POST /api/v2/offline-queue` | Top up one game’s unstarted cache. Returns `{ puzzles, remaining }`. |
 | `POST /api/v2/progress` | Back up up to 100 changed boards in one transaction. Returns `{ savedCount, backedUpAt }` after commit. |
 | `GET /api/v2/restore` | Return `{ puzzle, progress }` records for both games, or specify `game` for one game. |
-| `GET /api/v2/hashi/status` | Show Hashi stock and unstarted counts by size and rating, configured targets, and generation outcomes for the running server. |
+| `GET /api/v2/hashi/status` | Show Hashi stock, unstarted counts and targets by size, difficulty, and solvability, and generation outcomes for the running server. |
 
 Catalog order is descending WebPBN ID for Nonogram and descending content hash for Hashi. Summaries carry `id`, `game`, dimensions, available metadata, and a `status` of `unstarted`, `started`, or `solved`. Nonogram filters use difficulty on a 1–5 scale in quarter-star increments and numeric WebPBN solvability levels 1–6. Metadata may also include quality on the same star scale. Hashi filters use `easy`, `medium`, `hard`, or `expert` and `basic_logic`, `advanced_logic`, `bounded_lookahead`, `requires_search`, or `unknown`. Malformed filters and cursors from the other game return `400`.
 

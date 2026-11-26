@@ -13,11 +13,11 @@ internal static class TestData
 
     public static PuzzleSummary Summary(int id, int width = 3, int height = 2) => new(id, $"Puzzle {id}", "Tess", width, height);
 
-    public static HashiCandidate HashiPair(int row = 0, int count = 1, int size = 20)
+    public static HashiCandidate HashiPair(int row = 0, int count = 1, int size = 20, int column = 0)
     {
         var description = Enumerable.Repeat('a', size * size).ToArray();
-        description[row * size] = description[row * size + 4] = (char)('0' + count);
-        return HashiCandidate.ParseBridges(size, new string(description), $"S;L0,{row},4,{row},{count}");
+        description[row * size + column] = description[row * size + column + 4] = (char)('0' + count);
+        return HashiCandidate.ParseBridges(size, new string(description), $"S;L{column},{row},{column + 4},{row},{count}");
     }
 
     public static HashiCandidate HashiFixture(int size, string seed, int upstreamDifficulty = 2)

@@ -13,7 +13,8 @@ public sealed class HashiInventoryWorker(HashiInventory inventory, HashiGenerati
         {
             try
             {
-                await inventory.RunCycleAsync(stoppingToken);
+                if (await inventory.RunCycleAsync(stoppingToken))
+                    continue;
             }
             catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {

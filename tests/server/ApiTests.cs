@@ -176,13 +176,14 @@ public sealed class ApiTests
     private static GameProgressUpload Upload(int id, string marks, bool completed) =>
         new(1, [new GameProgressUpdate($"nonogram-webpbn-{id}", JsonSerializer.SerializeToElement(marks), completed)]);
 
-    internal static WebApplication CreateApp(TestDatabase database, WebPbnClient source)
+    internal static WebApplication CreateApp(TestDatabase database, WebPbnClient source, Action<WebApplicationBuilder>? configure = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Configuration["Storage:DatabasePath"] = database.Path;
         builder.Configuration["WebPbn:MinArea"] = "1";
         builder.Configuration["CatalogRefresh:Enabled"] = "false";
+        configure?.Invoke(builder);
         Server.AddServices(builder);
         builder.Services.AddSingleton(source);
         var app = builder.Build();

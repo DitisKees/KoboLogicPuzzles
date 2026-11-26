@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 
 namespace KoboLogicPuzzles.Server.Hashi;
 
+internal readonly record struct HashiStockRating(HashiDifficulty Difficulty, HashiSolvability Solvability);
+
 public sealed class HashiGenerationOptions : IValidatableObject
 {
     private static readonly int[] DefaultSizes = [20, 25, 30, 35, 40, 45, 50];
@@ -10,7 +12,17 @@ public sealed class HashiGenerationOptions : IValidatableObject
     private static readonly int[] IntroductoryDensities20 = [8, 10, 20];
     private static readonly HashiDifficulty[] DefaultDifficulties =
         [HashiDifficulty.Easy, HashiDifficulty.Medium, HashiDifficulty.Hard, HashiDifficulty.Expert];
-    private static readonly HashiSolvability[] DefaultSolvabilities = [HashiSolvability.BasicLogic, HashiSolvability.AdvancedLogic];
+    private static readonly HashiSolvability[] DefaultSolvabilities =
+        [HashiSolvability.BasicLogic, HashiSolvability.AdvancedLogic, HashiSolvability.BoundedLookahead];
+    // The native generator has produced these ratings at every supported grid size.
+    private static readonly HashiStockRating[] StandardRatings =
+    [
+        new(HashiDifficulty.Easy, HashiSolvability.BasicLogic),
+        new(HashiDifficulty.Medium, HashiSolvability.BasicLogic),
+        new(HashiDifficulty.Hard, HashiSolvability.AdvancedLogic),
+        new(HashiDifficulty.Expert, HashiSolvability.AdvancedLogic),
+        new(HashiDifficulty.Expert, HashiSolvability.BoundedLookahead),
+    ];
 
     public bool Enabled { get; init; }
     public string? ExecutablePath { get; init; }
@@ -22,10 +34,10 @@ public sealed class HashiGenerationOptions : IValidatableObject
     [Range(0, 2)] public int? UpstreamDifficulty { get; init; }
     [Range(2, 750)] public int MinIslands { get; init; } = 25;
     [Range(0, 30)] public int MinDensityPercent { get; init; } = 4;
-    [Range(1, 20)] public int TargetPerDifficulty { get; init; } = 2;
-    [Range(0, 19)] public int LowWatermark { get; init; } = 1;
-    [Range(1, 100)] public int MaxUnstartedPerSize { get; init; } = 12;
-    [Range(1, 10)] public int AttemptsPerSize { get; init; } = 3;
+    [Range(1, 100)] public int TargetPerDifficulty { get; init; } = 50;
+    [Range(0, 99)] public int? LowWatermark { get; init; }
+    [Range(1, 10000)] public int MaxUnstartedPerSize { get; init; } = 1000;
+    [Range(1, 10)] public int AttemptsPerSize { get; init; } = 10;
     [Range(1, 86400)] public int PollIntervalSeconds { get; init; } = 600;
     [Range(1, 3600)] public int StageTimeoutSeconds { get; init; } = 180;
 
@@ -33,9 +45,32 @@ public sealed class HashiGenerationOptions : IValidatableObject
     internal IReadOnlyList<int> SelectedDensities => Densities ?? DefaultDensities;
     internal IReadOnlyList<HashiDifficulty> SelectedDifficulties => Difficulties ?? DefaultDifficulties;
     internal IReadOnlyList<HashiSolvability> SelectedSolvabilities => Solvabilities ?? DefaultSolvabilities;
+    internal int RefillThreshold => LowWatermark ?? TargetPerDifficulty - 1;
     internal TimeSpan StageTimeout => TimeSpan.FromSeconds(StageTimeoutSeconds);
 
     internal static bool IsSupportedSize(int size) => size is >= 20 and <= 50 && size % 5 == 0;
+
+    internal bool IncludesRating(HashiStockRating rating) =>
+        SelectedDifficulties.Contains(rating.Difficulty) && SelectedSolvabilities.Contains(rating.Solvability);
+
+    internal HashiStockRating[] StartingRatings()
+    {
+        var standard = StandardRatings.Where(IncludesRating).ToArray();
+        if (standard.Length > 0)
+            return standard;
+
+        // Allow an operator to request rarer combinations whose score ranges overlap.
+        return (from tier in SelectedDifficulties
+                from solvability in SelectedSolvabilities
+                where solvability switch
+                {
+                    HashiSolvability.BasicLogic => tier <= HashiDifficulty.Medium,
+                    HashiSolvability.AdvancedLogic => true,
+                    HashiSolvability.BoundedLookahead => tier >= HashiDifficulty.Medium,
+                    _ => false,
+                }
+                select new HashiStockRating(tier, solvability)).ToArray();
+    }
 
     internal IReadOnlyList<int> DensitiesFor(int size, HashiDifficulty tier)
     {
@@ -60,7 +95,7 @@ public sealed class HashiGenerationOptions : IValidatableObject
         if (SelectedSolvabilities.Count == 0 || SelectedSolvabilities.Any(solvability => !Enum.IsDefined(solvability)) ||
             SelectedSolvabilities.Distinct().Count() != SelectedSolvabilities.Count)
             yield return new ValidationResult("HashiGeneration solvabilities must be distinct classifications.");
-        if (LowWatermark >= TargetPerDifficulty || TargetPerDifficulty * SelectedDifficulties.Count > MaxUnstartedPerSize)
-            yield return new ValidationResult("HashiGeneration needs a low-water mark below its target and room for every tier.");
+        if (RefillThreshold >= TargetPerDifficulty || TargetPerDifficulty * StartingRatings().Length > MaxUnstartedPerSize)
+            yield return new ValidationResult("HashiGeneration needs a low-water mark below its target and room for every configured rating combination.");
     }
 }

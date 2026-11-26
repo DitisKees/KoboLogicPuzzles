@@ -37,9 +37,9 @@ docker run --rm --network none --entrypoint /app/hashi/bridgegen \
 
 ## Background inventory
 
-- Fill Easy, Medium, Hard, and Expert stock for each size. Choose the Bridges generator settings based on which tier needs stock, then use the server's own verified rating to decide where the candidate belongs. Require at least 25 islands and at least 4% actual density.
+- Keep a separate target for each grid size, difficulty, and solvability combination. Initial targets cover Easy and Medium with Basic logic, Hard and Expert with Advanced logic, and Expert with Bounded lookahead at every size. Further combinations get their own target when a verified board with a difficulty rating turns up. Require at least 25 islands and at least 4% actual density.
 - Run one candidate at a time in the background. Start with configurable three-minute budgets per stage and a 128 MiB address-space limit for the native helper. Terminate and reap the helper on timeout or worker shutdown.
-- Rotate among sizes with a stock shortfall. Allow up to three attempts per size per replenishment cycle, then report the shortfall and retry in a later cycle. Store the verified definition and solution with the seed, settings, and versions so stored puzzles never depend on regeneration.
+- Rotate through sizes and ratings with a shortfall. Store a candidate in its verified combination when that combination needs stock. Productive passes continue immediately while there is room and stock to fill. Idle passes and passes that add no puzzles wait for the configured polling interval. Persist each verified puzzle as soon as it becomes available.
 
 The server image enables the worker by default. Local .NET runs can enable it with `HashiGeneration__Enabled=true` and set `HashiGeneration__ExecutablePath` to the compiled helper. The worker and CLI use one lock file beside the database. The operating system releases the lock when its holder exits. The inventory cap applies to unstarted stock for each size. Saved and completed boards retain their definitions.
 
@@ -47,16 +47,16 @@ The server image enables the worker by default. Local .NET runs can enable it wi
 | --- | --- |
 | `Sizes` | 20, 25, 30, 35, 40, 45, 50 |
 | `Densities` | Hard and Expert use 10% and 20%. Easy and Medium also try 8% at 20×20 and 6% at larger sizes. An explicit list applies to all tiers. |
-| `Difficulties` and `Solvabilities` | `Easy`, `Medium`, `Hard`, `Expert` and `BasicLogic`, `AdvancedLogic` |
+| `Difficulties` and `Solvabilities` | `Easy`, `Medium`, `Hard`, `Expert` and `BasicLogic`, `AdvancedLogic`, `BoundedLookahead` |
 | `Expansion` | 10 percent |
 | `UpstreamDifficulty` | The worker uses 0 for Easy, 1 for Medium, and 2 for Hard and Expert. An explicit value applies to all tiers. The CLI defaults to 2. |
-| `TargetPerDifficulty` and `LowWatermark` | 2 unstarted puzzles per size and tier, with refill triggered at 1 |
-| `MaxUnstartedPerSize` and `AttemptsPerSize` | 12 unstarted puzzles per size and 3 attempts per size per pass |
-| `StageTimeoutSeconds` and `PollIntervalSeconds` | 180 seconds per stage and 600 seconds between passes |
+| `TargetPerDifficulty` and `LowWatermark` | 50 unstarted puzzles per size, difficulty, and solvability combination. The default refill threshold is one below the target. |
+| `MaxUnstartedPerSize` and `AttemptsPerSize` | A total cap of 1,000 unstarted puzzles per size and 10 attempts per size per pass |
+| `StageTimeoutSeconds` and `PollIntervalSeconds` | 180 seconds per stage and a 600-second delay when a pass adds no puzzles or finishes replenishing |
 
-The density floor can be set with `MinIslands` and `MinDensityPercent`. For Compose array settings, set indexed environment keys such as `HashiGeneration__Sizes__0: "20"` and `HashiGeneration__Sizes__1: "50"`. The worker checks all configured targets at startup, so an updated server adds the new tiers to its existing catalog. Later passes resume when stock reaches its low-water mark and continue to the target. To pause automatic replenishment while keeping stored Hashi available, set `HashiGeneration__Enabled=false`.
+The density floor can be set with `MinIslands` and `MinDensityPercent`. For Compose array settings, set indexed environment keys such as `HashiGeneration__Sizes__0: "20"` and `HashiGeneration__Sizes__1: "50"`. The worker checks all configured targets on startup. To use the defaults after an Expert-only run, clear the `Sizes`, `Difficulties`, `Solvabilities`, and stock limit overrides. Progress saved to the server removes a board from the unstarted stock and can trigger a refill. To pause automatic replenishment, set `HashiGeneration__Enabled=false`.
 
-Inspect the live worker at `/api/v2/hashi/status`. The CLI reads persisted stock and reports the outcome of the requested generation. `--diagnostic true` checks the seed, uniqueness, and rating without adding stock. Remove that option to store a verified puzzle that meets the density floor and inventory cap. CLI generation shares the worker lock, so it may report `busy` during a replenishment pass.
+Inspect each combination's live count and target at `/api/v2/hashi/status`. The CLI reads persisted stock and reports the outcome of the requested generation. `--diagnostic true` checks the seed, uniqueness, and rating without adding stock. Remove that option to store a verified puzzle that meets the density floor and inventory cap. CLI generation shares the worker lock, so it may report `busy` during a replenishment pass.
 
 ```sh
 docker compose -f apps/server/compose.example.yaml exec server \

@@ -202,7 +202,11 @@ public sealed class GameApiTests
         var mediumId = PuzzleId.FromHashi(medium.Puzzle.ContentHash).Value;
         var expertId = PuzzleId.FromHashi(expert.Puzzle.ContentHash).Value;
         using var source = UnavailableSource();
-        await using var app = ApiTests.CreateApp(database, source);
+        await using var app = ApiTests.CreateApp(database, source, builder =>
+        {
+            builder.Configuration["HashiGeneration:Solvabilities:0"] = "BasicLogic";
+            builder.Configuration["HashiGeneration:Solvabilities:1"] = "AdvancedLogic";
+        });
         await app.StartAsync();
         using var http = app.GetTestClient();
 
