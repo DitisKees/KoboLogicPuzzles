@@ -13,7 +13,9 @@ public sealed record GameSavedProgress(string PuzzleId, int SchemaVersion, JsonE
 
 public sealed record GameSavedBoard(GamePuzzleDefinition Puzzle, GameSavedProgress Progress);
 
-public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library, TimeProvider time)
+internal sealed record FillAPixProgressUpdate(PuzzleId Id, string Marks, bool Completed);
+
+public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library, PuzzleProviders providers, TimeProvider time)
 {
     public async Task<ProgressReceipt> SaveAsync(GameProgressUpload upload, CancellationToken cancellationToken)
     {
@@ -24,6 +26,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
 
         var nonograms = new List<ProgressUpdate>();
         var hashes = new List<HashiProgressUpdate>();
+        var fillAPix = new List<FillAPixProgressUpdate>();
         var seen = new HashSet<PuzzleId>();
         foreach (var board in boards)
         {
@@ -34,6 +37,13 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 if (board.Marks.ValueKind != JsonValueKind.String)
                     throw new ArgumentException("Nonogram marks must be a string.");
                 nonograms.Add(new ProgressUpdate(number, board.Marks.GetString()!, board.Completed));
+            }
+            else if (id.Game == PuzzleGame.FillAPix)
+            {
+                if (board.Marks.ValueKind != JsonValueKind.String || board.Marks.GetString() is not { Length: > 0 } marks ||
+                    marks.Any(mark => mark is not ('.' or '#' or 'x')))
+                    throw new ArgumentException($"Puzzle {id} requires one mark (., #, or x) per cell.");
+                fillAPix.Add(new(id, marks, board.Completed));
             }
             else
             {
@@ -52,8 +62,17 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
         }
 
         await NonogramProgressValidator.ValidateAsync(library, nonograms, cancellationToken);
+        foreach (var board in fillAPix)
+        {
+            if (await providers.GetDefinitionAsync(board.Id, false, cancellationToken) is not FillAPixPuzzleDefinition puzzle)
+                throw new ArgumentException($"Puzzle {board.Id} is unavailable and its progress could not be backed up.");
+            if (board.Marks.Length != puzzle.Clues.Length)
+                throw new ArgumentException($"Puzzle {board.Id} requires one mark (., #, or x) per cell.");
+            if (board.Completed && !puzzle.MatchesClues(board.Marks))
+                throw new ArgumentException($"The filled cells for puzzle {board.Id} do not satisfy its clues.");
+        }
         var backedUpAt = time.GetUtcNow();
-        store.SaveMixedProgress(nonograms, hashes, backedUpAt, cancellationToken);
+        store.SaveMixedProgress(nonograms, hashes, fillAPix, backedUpAt, cancellationToken);
         return new ProgressReceipt(boards.Length, backedUpAt);
     }
 }

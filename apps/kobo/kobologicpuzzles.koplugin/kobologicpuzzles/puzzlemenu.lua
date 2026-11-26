@@ -18,11 +18,21 @@ local function rating(value)
     return "–"
 end
 
-function PuzzleMenu.details(metadata, game)
+function PuzzleMenu.details(metadata, game, author)
     metadata = type(metadata) == "table" and metadata or {}
     if game == "hashi" then
         return (Puzzle.difficultyNames[metadata.difficulty] or "Difficulty unknown") .. " · "
             .. (Puzzle.hashiSolvabilityNames[metadata.solvability] or "Solvability unknown")
+    end
+    if game == "fill-a-pix" then
+        local details = {}
+        if type(author) == "string" and author ~= "" then details[#details + 1] = author end
+        local source = Puzzle.fillAPixSources[metadata.source]
+        if source then details[#details + 1] = source end
+        if type(metadata.quality) == "number" then details[#details + 1] = "Quality " .. rating(metadata.quality) end
+        if type(metadata.complexity) == "number" then details[#details + 1] = "Complexity " .. metadata.complexity .. "%" end
+        if #details == 0 then return end
+        return table.concat(details, " · ")
     end
     return string.format("Difficulty %s · Quality %s · %s",
         rating(metadata.difficulty), rating(metadata.quality),

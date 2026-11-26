@@ -1,13 +1,13 @@
 # Kobo Logic Puzzles
 
-Kobo Logic Puzzles plays Nonogram and Hashi offline in KOReader on the Kobo Aura H2O (N250). A home server provides the WebPBN Nonogram catalog, generates Hashi puzzles locally, and backs up progress for both games.
+Kobo Logic Puzzles plays Nonogram, Hashi, and Fill-a-Pix offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi puzzles locally, and imports Fill-a-Pix from three catalogs.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
 | [`apps/kobo/`](apps/kobo/README.md) | KOReader plugin, with [installation and play instructions](apps/kobo/README.md). |
-| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles WebPBN imports, Hashi generation, the catalog, and progress in SQLite. |
+| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles puzzle imports, Hashi generation, the catalog, and progress in SQLite. |
 | [`apps/server/Hashi/`](apps/server/Hashi/README.md) | Hashi generator, C# validation and rating, and feasibility results. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
 | [`KoboLogicPuzzles.slnx`](KoboLogicPuzzles.slnx) | Solution for the .NET projects. |
@@ -83,6 +83,14 @@ WebPBN filters by total cells. The server applies the width and height limits wh
 `WebPbn__MaxWidth` and `WebPbn__MaxHeight` each accept an integer from 1 to 100 cells. An out-of-range value prevents the server from starting. To restore the defaults, remove those overrides or set both to `80`, then apply the Compose changes with `docker compose up -d`.
 
 Configure the filters through the server configuration or environment variables such as `WebPbn__MinQuality=4.25`. Settings include `MinArea`, `MaxArea`, `MaxWidth`, `MaxHeight`, `MinQuality`, `MaxQuality`, `MinDifficulty`, `MaxDifficulty`, `IncludeUnratedQuality`, `IncludeUnratedDifficulty`, `Solvability`, and `RequestDelayMilliseconds`. Solvability uses WebPBN’s values 0–6, with 0 accepting any rating. Requests are spaced by 250 ms by default.
+
+## Fill-a-Pix catalog
+
+The server combines Janko’s Mosaik, GrandGames, and Fill-a-Pix.net under `game=fill-a-pix`. Each puzzle retains its source ID and link. The catalog accepts every valid board size supplied by the three sources. [Janko](https://www.janko.at/Raetsel/Mosaik/index.htm) · [GrandGames](https://en.grandgames.net/mosaic) · [Fill-a-Pix.net](https://fill-a-pix.net/collection/index.html)
+
+Each source refreshes independently at startup and seven days after its last success. Failed refreshes retry after one hour. GrandGames saves each catalog page as it arrives and resumes from the next page after an interruption. The server caches Janko and Fill-a-Pix.net definitions during refresh and GrandGames definitions when first requested. Cached puzzles with progress remain available if a source withdraws them.
+
+Run `dotnet run --project apps/server -- refresh-fill-a-pix` to refresh manually, or pass `refresh-fill-a-pix` to the server DLL in Docker. `FillAPix__RefreshEnabled` controls the background import and defaults to the value of `CatalogRefresh__Enabled`. See the [API contract](contracts/README.md) for definitions, downloads, and progress.
 
 ## Offline play and synchronization
 

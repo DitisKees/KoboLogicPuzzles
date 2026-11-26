@@ -1,9 +1,12 @@
 local Board = require("kobologicpuzzles/board")
+local FillAPix = require("kobologicpuzzles/fillapixboard")
 local Hashi = require("kobologicpuzzles/hashiboard")
 
 local Puzzle = {}
-Puzzle.games = { "nonogram", "hashi" }
-Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi" }
+Puzzle.games = { "nonogram", "hashi", "fill-a-pix" }
+Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix" }
+Puzzle.fillAPixSources = { janko = "Janko", grandgames = "GrandGames", fillapixnet = "Fill-a-Pix.net" }
+local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix }
 Puzzle.difficulties = { "easy", "medium", "hard", "expert" }
 Puzzle.difficultyNames = { easy = "Easy", medium = "Medium", hard = "Hard", expert = "Expert" }
 Puzzle.hashiSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahead", "requires_search", "unknown" }
@@ -18,6 +21,8 @@ function Puzzle.localId(value)
     if number and #number <= 10 and tonumber(number) <= 2147483647 then return tonumber(number) end
     local hash = value:match("^hashi%-local%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
+    local source, upstreamId = value:match("^fill%-a%-pix%-([a-z0-9]+)%-([1-9]%d*)$")
+    if Puzzle.fillAPixSources[source] and #upstreamId <= 10 and tonumber(upstreamId) <= 2147483647 then return value end
 end
 
 function Puzzle.isId(id)
@@ -36,9 +41,13 @@ function Puzzle.wireId(id)
     return id
 end
 
-function Puzzle.game(id) return type(id) == "number" and "nonogram" or "hashi" end
+function Puzzle.game(id)
+    if type(id) == "number" then return "nonogram" end
+    if type(id) == "string" and id:sub(1, 11) == "fill-a-pix-" then return "fill-a-pix" end
+    return "hashi"
+end
 
-function Puzzle.rules(id) return type(id) == "number" and Board or Hashi end
+function Puzzle.rules(id) return rules[Puzzle.game(id)] end
 
 function Puzzle.valid(puzzle)
     return type(puzzle) == "table" and Puzzle.isId(puzzle.id)
@@ -53,7 +62,7 @@ function Puzzle.fromWire(puzzle)
     for key, value in pairs(puzzle) do decoded[key] = value end
     decoded.id = id
     if not Puzzle.valid(decoded) then return end
-    if puzzle.game == "nonogram" and puzzle.solution ~= nil and not Board.validSolution(decoded, puzzle.solution) then return end
+    if puzzle.game ~= "hashi" and puzzle.solution ~= nil and not Puzzle.rules(id).validSolution(decoded, puzzle.solution) then return end
     return decoded
 end
 
@@ -61,12 +70,12 @@ function Puzzle.decodeProgress(puzzle, progress)
     if type(progress) ~= "table" or progress.schemaVersion ~= 1 or progress.puzzleId ~= Puzzle.wireId(puzzle.id)
         or type(progress.completed) ~= "boolean" then return end
     local marks
-    if type(puzzle.id) == "number" then
-        if not Board.validMarks(puzzle, progress.marks) then return end
-        marks = progress.marks
-    else
+    if Puzzle.game(puzzle.id) == "hashi" then
         marks = Hashi.decodeMarks(puzzle, progress.marks, progress.completed)
         if not marks then return end
+    else
+        if not Puzzle.rules(puzzle.id).validMarks(puzzle, progress.marks, progress.completed) then return end
+        marks = progress.marks
     end
     return { marks = marks, completed = progress.completed, backedUpAt = progress.backedUpAt }
 end
@@ -74,16 +83,17 @@ end
 function Puzzle.encodeProgress(progress)
     local id = progress.puzzleId
     return { puzzleId = Puzzle.wireId(id), completed = progress.completed,
-        marks = type(id) == "number" and progress.marks or Hashi.encodeMarks(progress.marks) }
+        marks = Puzzle.game(id) == "hashi" and Hashi.encodeMarks(progress.marks) or progress.marks }
 end
 
 function Puzzle.title(puzzle)
-    if Puzzle.game(puzzle.id) == "nonogram" then return puzzle.title end
+    if Puzzle.game(puzzle.id) ~= "hashi" then return puzzle.title end
     return string.format("Hashi %s", puzzle.id:sub(-6))
 end
 
 local filterKeys = { "width", "height", "size", "difficulty", "solvability" }
 local dimension = { min = 1, max = 100, step = 1 }
+local fillDimension = { min = 1, max = 2147483647, step = 1 }
 local filterDomains = {
     nonogram = {
         width = dimension, height = dimension,
@@ -93,6 +103,7 @@ local filterDomains = {
         width = dimension, height = dimension, size = { min = 20, max = 50, step = 5 },
         difficulty = Puzzle.difficultyNames, solvability = Puzzle.hashiSolvabilityNames,
     },
+    ["fill-a-pix"] = { width = fillDimension, height = fillDimension },
 }
 
 local function filterValue(domain, token)
@@ -110,14 +121,14 @@ function Puzzle.filterSelection(game, key, value)
     if type(value) == "number" then value = tostring(value) end
     if type(value) ~= "string" or #value == 0 or #value > 1024 then return end
 
-    local terms, selected = {}, {}
+    local terms, selected, ranges = {}, {}, {}
     for term in (value .. ","):gmatch("(.-),") do
         local first, last = term:match("^%s*([%d.]+)%s*%-%s*([%d.]+)%s*$")
         if first then
             if not domain.step then return end
             first, last = filterValue(domain, first), filterValue(domain, last)
             if not first or not last or first > last then return end
-            for entry = first, last, domain.step do selected[entry] = true end
+            ranges[#ranges + 1] = { first, last }
             terms[#terms + 1] = first == last and tostring(first) or first .. "-" .. last
         else
             local entry = filterValue(domain, term:match("^%s*(.-)%s*$"))
@@ -125,6 +136,16 @@ function Puzzle.filterSelection(game, key, value)
             selected[entry] = true
             terms[#terms + 1] = tostring(entry)
         end
+    end
+    if #ranges > 0 then
+        setmetatable(selected, { __index = function(_, number)
+            if type(number) ~= "number" then return end
+            for _, range in ipairs(ranges) do
+                if number >= range[1] and number <= range[2] and (number - range[1]) % domain.step == 0 then
+                    return true
+                end
+            end
+        end })
     end
     return table.concat(terms, ","), selected
 end

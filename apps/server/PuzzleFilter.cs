@@ -14,14 +14,35 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     private static readonly int[] HashiDifficulties = Enum.GetValues<HashiDifficulty>().Select(value => (int)value).ToArray();
     private static readonly int[] HashiSolvabilities = Enum.GetValues<HashiSolvability>().Select(value => (int)value).ToArray();
 
-    public static bool TryParseGame(string? value, out PuzzleGame game) => TryParseName(value, out game);
+    internal readonly record struct DimensionRange(int Min, int Max)
+    {
+        public bool Contains(int size) => size >= Min && size <= Max;
+    }
+
+    internal DimensionRange[]? FillAPixWidths { get; init; }
+    internal DimensionRange[]? FillAPixHeights { get; init; }
+
+    public static bool TryParseGame(string? value, out PuzzleGame game)
+    {
+        game = PuzzleGame.FillAPix;
+        return value == FillAPixSources.Game || TryParseName(value, out game) && game != PuzzleGame.FillAPix;
+    }
 
     public static PuzzleFilter? Parse(string? game, int? width, int? height, string? difficulty, string? solvability,
         string? widthFilter = null, string? heightFilter = null, string? difficultyFilter = null,
         string? solvabilityFilter = null, string? sizeFilter = null)
     {
-        if (!TryParseGame(game, out var kind) ||
-            !TrySelect(width?.ToString(CultureInfo.InvariantCulture), widthFilter, Dimensions, Integer, true, out var widths) ||
+        if (!TryParseGame(game, out var kind))
+            return null;
+        if (kind == PuzzleGame.FillAPix)
+        {
+            if (difficulty is not null || solvability is not null || difficultyFilter is not null ||
+                solvabilityFilter is not null || sizeFilter is not null ||
+                !TryDimensionRanges(width, widthFilter, out var widthRanges) || !TryDimensionRanges(height, heightFilter, out var heightRanges))
+                return null;
+            return new PuzzleFilter(kind, null, null, null, null) { FillAPixWidths = widthRanges, FillAPixHeights = heightRanges };
+        }
+        if (!TrySelect(width?.ToString(CultureInfo.InvariantCulture), widthFilter, Dimensions, Integer, true, out var widths) ||
             !TrySelect(height?.ToString(CultureInfo.InvariantCulture), heightFilter, Dimensions, Integer, true, out var heights))
             return null;
 
@@ -45,6 +66,35 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             return null;
 
         return new PuzzleFilter(kind, widths, heights, difficulties, solvabilities);
+    }
+
+    private static bool TryDimensionRanges(int? exact, string? expression, out DimensionRange[]? ranges)
+    {
+        ranges = null;
+        if (exact is { } size)
+        {
+            if (expression is not null || size < 1)
+                return false;
+            ranges = [new(size, size)];
+        }
+        if (expression is null)
+            return true;
+        if (expression.Length is 0 or > 1024)
+            return false;
+
+        var parsed = new List<DimensionRange>();
+        foreach (var term in expression.Split(','))
+        {
+            var bounds = term.Split('-', StringSplitOptions.TrimEntries);
+            if (bounds.Length > 2 || Integer(bounds[0]) is not { } first || first < 1)
+                return false;
+            var last = bounds.Length == 1 ? first : Integer(bounds[1]);
+            if (last is null || last < first)
+                return false;
+            parsed.Add(new(first, last.Value));
+        }
+        ranges = parsed.ToArray();
+        return true;
     }
 
     private static bool TrySelect(string? exact, string? expression, int[] domain, Func<string, int?> parse,
@@ -125,6 +175,8 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             nonogram.Metadata?.Solvability),
         HashiPuzzleDefinition hashi => Matches(hashi.Width, hashi.Height, Rating<HashiDifficulty>(hashi.Metadata.Difficulty),
             Rating<HashiSolvability>(hashi.Metadata.Solvability)),
+        FillAPixPuzzleDefinition fillAPix => (FillAPixWidths is null || FillAPixWidths.Any(range => range.Contains(fillAPix.Width))) &&
+            (FillAPixHeights is null || FillAPixHeights.Any(range => range.Contains(fillAPix.Height))),
         _ => false,
     };
 }

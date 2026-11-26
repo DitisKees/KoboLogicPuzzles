@@ -6,13 +6,28 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = Path.GetFullPath(databasePath),
         ForeignKeys = true,
     }.ToString();
+
+    internal bool HasCurrentSchema()
+    {
+        var probeSettings = new SqliteConnectionStringBuilder(connectionString)
+        {
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+            DefaultTimeout = 2,
+        };
+        using var connection = new SqliteConnection(probeSettings.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version";
+        return command.ExecuteScalar() is long version && version == SchemaVersion;
+    }
 
     public void Initialize()
     {
@@ -33,14 +48,13 @@ public sealed partial class PuzzleStore(string databasePath)
             transaction.Commit();
             return;
         }
-        if (version != 0)
-            throw new InvalidOperationException($"The database must use schema {SchemaVersion}.");
+        if (version == 0)
+        {
+            command.CommandText = "SELECT 1 FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' LIMIT 1";
+            if (command.ExecuteScalar() is not null)
+                throw new InvalidOperationException("The database must use a versioned schema.");
 
-        command.CommandText = "SELECT 1 FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*' LIMIT 1";
-        if (command.ExecuteScalar() is not null)
-            throw new InvalidOperationException($"The database must use schema {SchemaVersion}.");
-
-        command.CommandText = $"""
+            command.CommandText = """
             CREATE TABLE catalog (
                 id INTEGER PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -78,6 +92,37 @@ public sealed partial class PuzzleStore(string databasePath)
             );
             CREATE TABLE hashi_progress (
                 content_hash TEXT NOT NULL PRIMARY KEY REFERENCES hashi_puzzles(content_hash) ON DELETE RESTRICT,
+                marks TEXT NOT NULL,
+                completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                backed_up_at TEXT NOT NULL
+            );
+            """;
+            command.ExecuteNonQuery();
+        }
+
+        command.CommandText = $"""
+            CREATE TABLE fill_a_pix_puzzles (
+                id TEXT NOT NULL PRIMARY KEY,
+                source TEXT NOT NULL,
+                width INTEGER NOT NULL CHECK (width > 0),
+                height INTEGER NOT NULL CHECK (height > 0),
+                title TEXT NOT NULL,
+                author TEXT,
+                metadata TEXT NOT NULL,
+                definition TEXT,
+                seen_revision INTEGER NOT NULL,
+                active INTEGER NOT NULL CHECK (active IN (0, 1))
+            );
+            CREATE INDEX fill_a_pix_puzzles_source ON fill_a_pix_puzzles (source, active);
+            CREATE TABLE fill_a_pix_refresh (
+                source TEXT NOT NULL PRIMARY KEY,
+                revision INTEGER NOT NULL,
+                completed_at TEXT,
+                next_page INTEGER NOT NULL DEFAULT 1
+            );
+            INSERT INTO fill_a_pix_refresh (source, revision) VALUES ('grandgames', 0);
+            CREATE TABLE fill_a_pix_progress (
+                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES fill_a_pix_puzzles(id),
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
                 backed_up_at TEXT NOT NULL

@@ -107,7 +107,8 @@ function Game:resize()
     self.titleFace = Font:getFace("tfont", 21)
     self.buttonFace = Font:getFace("cfont", 17)
     self.clueFace = Font:getFace("cfont", 16)
-    local sample = math.max(layout.puzzle.width, layout.puzzle.height) == 100 and "100" or "00"
+    local sample = self.board.clueStates and "0"
+        or (math.max(layout.puzzle.width, layout.puzzle.height) == 100 and "100" or "00")
     local sampleWidth = RenderText:sizeUtf8Text(0, false, self.clueFace, sample, true).x
     local gridFontSize = math.max(5, math.min(16, math.floor(16 * (layout.cell - 2) / sampleWidth)))
     self.gridClueFace = Font:getFace("cfont", gridFontSize)
@@ -180,10 +181,10 @@ function Game:makeBuffers()
     local l = self.layout
     local buffers = {
         screen = BB.new(l.width, l.height, BB.TYPE_BB8),
-        rowClues = BB.new(l.gridX - l.pad, l.cell, BB.TYPE_BB8),
-        columnClues = BB.new(l.cell, l.gridY - l.headerY, BB.TYPE_BB8),
         cross = BB.new(l.cell, l.cell, BB.TYPE_BB8),
     }
+    if l.leftSlots > 0 then buffers.rowClues = BB.new(l.gridX - l.pad, l.cell, BB.TYPE_BB8) end
+    if l.topSlots > 0 then buffers.columnClues = BB.new(l.cell, l.gridY - l.headerY, BB.TYPE_BB8) end
     buffers.cross:fill(BB.COLOR_WHITE)
     text(buffers.cross, "×", self.markFace, rectangle(0, 0, l.cell, l.cell), BB.COLOR_GRAY_5)
     self.buffers = buffers
@@ -244,11 +245,12 @@ end
 function Game:paintGrid(bb, frame, full)
     local l, board = self.layout, self.board
     local gridX, gridY, cell = l.gridX, l.gridY, l.cell
+    local clueStates = board.clueStates
     local firstRow, lastRow, firstColumn, lastColumn
     for r = 0, l.rows - 1 do
         local row = self.row + r
-        if full or frame.rows[row] ~= board.rows[row]
-            or (row == frame.selectedRow) ~= (row == self.selectedRow) then
+        if l.leftSlots > 0 and (full or frame.rows[row] ~= board.rows[row]
+            or (row == frame.selectedRow) ~= (row == self.selectedRow)) then
             self:paintRowClues(bb, row, gridY + r * cell)
             frame.rows[row] = board.rows[row]
             firstRow, lastRow = firstRow or r, r
@@ -256,16 +258,18 @@ function Game:paintGrid(bb, frame, full)
         for c = 0, l.columns - 1 do
             local index = (row - 1) * board.width + self.column + c
             local mark = board.cells[index]
-            if full or frame.cells[index] ~= mark then
-                self:paintCell(bb, mark, r, c, full)
+            local clueState = clueStates and clueStates[index]
+            if full or frame.cells[index] ~= mark or (clueStates and frame.clueStates[index] ~= clueState) then
+                self:paintCell(bb, mark, r, c, full, index, clueState)
                 frame.cells[index] = mark
+                if clueStates then frame.clueStates[index] = clueState end
             end
         end
     end
     for c = 0, l.columns - 1 do
         local column = self.column + c
-        if full or frame.columns[column] ~= board.columns[column]
-            or (column == frame.selectedColumn) ~= (column == self.selectedColumn) then
+        if l.topSlots > 0 and (full or frame.columns[column] ~= board.columns[column]
+            or (column == frame.selectedColumn) ~= (column == self.selectedColumn)) then
             self:paintColumnClues(bb, column, gridX + c * cell)
             frame.columns[column] = board.columns[column]
             firstColumn, lastColumn = firstColumn or c, c
@@ -294,19 +298,26 @@ end
 function Game:paintOverview(bb)
     local l, board = self.layout, self.board
     local x, y, cell = l:overview()
+    local function edge(index) return math.floor(index * cell) end
     for row = 1, board.height do
-        for column = 1, board.width do
-            local mark = board:get(row, column)
-            if mark ~= "." then
-                bb:paintRect(x + (column - 1) * cell, y + (row - 1) * cell, cell, cell,
-                    mark == "#" and BB.COLOR_BLACK or BB.COLOR_LIGHT_GRAY)
+        local top, bottom = edge(row - 1), edge(row)
+        if bottom > top then
+            for column = 1, board.width do
+                local mark = board:get(row, column)
+                local left, right = edge(column - 1), edge(column)
+                if mark ~= "." and right > left then
+                    bb:paintRect(x + left, y + top, right - left, bottom - top,
+                        mark == "#" and BB.COLOR_BLACK or BB.COLOR_LIGHT_GRAY)
+                end
             end
         end
     end
-    bb:paintBorder(x, y, board.width * cell, board.height * cell, 1, BB.COLOR_BLACK)
-    local viewX, viewY = x + (self.column - 1) * cell, y + (self.row - 1) * cell
-    bb:paintBorder(viewX, viewY, l.columns * cell, l.rows * cell, 4, BB.COLOR_WHITE)
-    bb:paintBorder(viewX, viewY, l.columns * cell, l.rows * cell, 2, BB.COLOR_BLACK)
+    bb:paintBorder(x, y, math.max(1, edge(board.width)), math.max(1, edge(board.height)), 1, BB.COLOR_BLACK)
+    local left, top = edge(self.column - 1), edge(self.row - 1)
+    local width = math.max(1, edge(self.column + l.columns - 1) - left)
+    local height = math.max(1, edge(self.row + l.rows - 1) - top)
+    if width >= 8 and height >= 8 then bb:paintBorder(x + left, y + top, width, height, 4, BB.COLOR_WHITE) end
+    bb:paintBorder(x + left, y + top, width, height, math.min(2, width, height), BB.COLOR_BLACK)
 end
 
 function Game:paintTo(bb)
@@ -323,7 +334,7 @@ function Game:paintTo(bb)
     if full then
         frame = {
             row = self.row, column = self.column, overview = self.overview, complete = complete,
-            cells = {}, rows = {}, columns = {}, buttons = {},
+            cells = {}, rows = {}, columns = {}, clueStates = self.board.clueStates and {} or nil, buttons = {},
         }
         self.frame = frame
         canvas:fill(BB.COLOR_WHITE)
@@ -434,13 +445,14 @@ function Game:refreshStroke(changes)
     local l, frame, board = self.layout, self.frame, self.board
     local lastVisibleRow, lastVisibleColumn = self.row + l.rows - 1, self.column + l.columns - 1
     local minRow, maxRow, minColumn, maxColumn = lastVisibleRow + 1, 0, lastVisibleColumn + 1, 0
+    local radius = board.clueStates and 1 or 0
     local cluesChanged = false
     for _, change in ipairs(changes) do
-        local rowVisible = change.row >= self.row and change.row <= lastVisibleRow
-        local columnVisible = change.column >= self.column and change.column <= lastVisibleColumn
+        local rowVisible = change.row + radius >= self.row and change.row - radius <= lastVisibleRow
+        local columnVisible = change.column + radius >= self.column and change.column - radius <= lastVisibleColumn
         if rowVisible and columnVisible then
-            minRow, maxRow = math.min(minRow, change.row), math.max(maxRow, change.row)
-            minColumn, maxColumn = math.min(minColumn, change.column), math.max(maxColumn, change.column)
+            minRow, maxRow = math.min(minRow, change.row - radius), math.max(maxRow, change.row + radius)
+            minColumn, maxColumn = math.min(minColumn, change.column - radius), math.max(maxColumn, change.column + radius)
         elseif frame then
             cluesChanged = cluesChanged or (rowVisible and frame.rows[change.row] ~= board.rows[change.row])
                 or (columnVisible and frame.columns[change.column] ~= board.columns[change.column])

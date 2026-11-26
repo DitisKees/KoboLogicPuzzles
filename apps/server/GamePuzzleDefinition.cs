@@ -6,6 +6,7 @@ namespace KoboLogicPuzzles.Server;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "game")]
 [JsonDerivedType(typeof(NonogramPuzzleDefinition), "nonogram")]
 [JsonDerivedType(typeof(HashiPuzzleDefinition), "hashi")]
+[JsonDerivedType(typeof(FillAPixPuzzleDefinition), "fill-a-pix")]
 public abstract record GamePuzzleDefinition(string Id, int Width, int Height)
 {
     public int SchemaVersion => 1;

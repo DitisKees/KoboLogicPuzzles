@@ -131,16 +131,21 @@ local function checkLine(cells, start, length, stride, clues)
     return completed
 end
 
-function Board:new(puzzle, marks)
+function Board:newGrid(puzzle, marks)
     local board = setmetatable({
         puzzle = puzzle, width = puzzle.width, height = puzzle.height,
         cells = {}, rows = {}, columns = {}, undo = {}, redo = {}, unfinished = 0,
     }, self)
-    if Board.validSolution(puzzle, puzzle.solution) then board.solution = puzzle.solution end
+    if self.validSolution(puzzle, puzzle.solution) then board.solution = puzzle.solution end
     local initialMarks = marks or string.rep(".", puzzle.width * puzzle.height)
     for index = 1, #initialMarks do
         board.cells[index] = initialMarks:sub(index, index)
     end
+    return board
+end
+
+function Board:new(puzzle, marks)
+    local board = self:newGrid(puzzle, marks)
     local rows, columns = {}, {}
     for row = 1, board.height do rows[row] = board:checkRow(row) end
     for column = 1, board.width do columns[column] = board:checkColumn(column) end
@@ -253,7 +258,7 @@ end
 function Board:finishStroke()
     local stroke = self.stroke
     self.stroke = nil
-    if stroke then return self:remember(stroke, true) end
+    if stroke then return self:remember(stroke, self.autoCross ~= false) end
 end
 
 function Board:cancelStroke()

@@ -1,4 +1,5 @@
 local JSON = require("json")
+local Puzzle = require("kobologicpuzzles/puzzle")
 local Trapper = require("ui/trapper")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
@@ -6,8 +7,26 @@ local socketutil = require("socketutil")
 local url = require("socket.url")
 
 local API = {}
--- Decode optional null fields as nil so KOReader can serialize the response from its subprocess.
-local decodeResponse = JSON.decode.getDecoder({ initialObject = true, others = { allowUndefined = false, null = false } })
+local jsonNull = JSON.util.null
+local decodeResponse = JSON.decode.getDecoder({ initialObject = true, others = { allowUndefined = false, null = jsonNull } })
+
+-- Keep a value at every clue index. Optional null fields elsewhere still become nil.
+local function normalizeNulls(values)
+    local clues = values.game == "fill-a-pix" and values.clues
+    for key, value in pairs(values) do
+        if value == jsonNull then
+            values[key] = nil
+        elseif type(value) == "table" then
+            if value == clues then
+                for index, clue in pairs(value) do
+                    if clue == jsonNull then value[index] = false end
+                end
+            else
+                normalizeNulls(value)
+            end
+        end
+    end
+end
 
 function API.normalize(address)
     address = address:match("^%s*(.-)%s*$"):gsub("/+$", "")
@@ -42,6 +61,7 @@ local function request(server, method, path, payload)
     local code = tonumber(status)
     if not code then return nil, "Could not reach the server. " .. tostring(status or "") end
     local decoded, reply = pcall(decodeResponse, table.concat(chunks))
+    if decoded and type(reply) == "table" then normalizeNulls(reply) end
     if code < 200 or code >= 300 then
         local detail = decoded and type(reply) == "table" and (reply.detail or reply.title)
         return nil, "Server returned HTTP " .. status .. (type(detail) == "string" and (". " .. detail) or ""), code
@@ -66,7 +86,7 @@ function API.capabilities(request)
     end
     local games = { advancedFilters = reply.advancedFilters == true }
     for _, game in ipairs(reply.games) do
-        if game == "nonogram" or game == "hashi" then games[game] = true end
+        if Puzzle.gameNames[game] then games[game] = true end
     end
     if not games.nonogram then return nil, unsupportedServer end
     return games

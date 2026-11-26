@@ -13,6 +13,7 @@ require("ui/bidi").setup()
 package.path = pluginRoot .. "/?.lua;" .. package.path
 
 local Board = require("kobologicpuzzles/board")
+local FillAPix = require("kobologicpuzzles/fillapixboard")
 local API = require("kobologicpuzzles/api")
 local Geom = require("ui/geometry")
 local Hashi = require("kobologicpuzzles/hashiboard")
@@ -33,6 +34,17 @@ local function wireNonogram(id)
     local puzzle = smallPuzzle(id)
     puzzle.id, puzzle.game, puzzle.schemaVersion = "nonogram-webpbn-" .. id, "nonogram", 1
     return puzzle
+end
+
+local function wireFillAPix(number, width, height)
+    local id = "fill-a-pix-fillapixnet-" .. number
+    local clues = { 2, 3, 1, false, 3, 1 }
+    if width then
+        clues = { 1 }
+        for index = 2, width * height do clues[index] = false end
+    end
+    return { id = id, game = "fill-a-pix", schemaVersion = 1, title = "Picture " .. number, author = "Sample",
+        width = width or 3, height = height or 2, clues = clues, metadata = { source = "fillapixnet" } }
 end
 
 local function hashiFixture(size, suffix, points, usesEdge)
@@ -164,19 +176,85 @@ local function testHashiSync()
     assert(not err and result.pending == 1 and store.records[localHashi.id].dirty)
 
     store = assert(Store.open(home .. "/fresh-restore"))
-    assert(store:updateSettings({ server = "http://example.test:8080", target = 0, hashiTarget = 0 }))
+    local server = "http://example.test:8080"
+    local fillAPix = wireFillAPix(1)
+    assert(store:updateSettings({ server = server, restoredV2Server = server, restoredV2Games = "nonogram,hashi",
+        target = 0, hashiTarget = 0 }))
     result, err = Sync.run(store, function(_, path)
         assert(path == "/restore")
         return {
             { puzzle = wireNonogram(7), progress = { schemaVersion = 1, puzzleId = "nonogram-webpbn-7",
                 marks = "#x....", completed = false } },
+            { puzzle = fillAPix, progress = { schemaVersion = 1, puzzleId = fillAPix.id, marks = "#xx#x#", completed = true } },
+            { puzzle = { game = "future-game" } },
             { puzzle = localHashi, progress = { schemaVersion = 1, puzzleId = localHashi.id,
                 marks = Hashi.encodeMarks("x..."), completed = false } },
         }
     end, games)
-    assert(not err and result.restored == 2 and result.backedUp == 0)
+    assert(not err and result.restored == 3 and result.backedUp == 0)
     store = assert(Store.open(store.root))
     assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
+    assert(store.records[fillAPix.id].completed and store.records[fillAPix.id].marks == "#xx#x#")
+    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix")
+end
+
+local function testFillAPixRulesAndSync()
+    local puzzle = wireFillAPix(2)
+    local board = FillAPix:new(puzzle)
+    local zero = FillAPix:new({ width = 1, height = 1, clues = { 0 } })
+    assert(zero:isComplete() and zero.clueStates[1] == "matched")
+    zero:beginStroke(1, 1, "x")
+    zero:finishStroke()
+    assert(zero:isComplete() and zero.clueStates[1] == "satisfied")
+    assert(Puzzle.fromWire(puzzle) and not Puzzle.localId("fill-a-pix-fillapixnet-02"))
+    assert(FillAPix.validSolution(puzzle, "#..#.#") and not FillAPix.validSolution(puzzle, "#.#..#"))
+    puzzle.clues[1] = 5
+    assert(not Puzzle.fromWire(puzzle))
+    puzzle.clues[1] = 2
+    board:beginStroke(1, 1, "#")
+    board:extendStroke(2, 1)
+    board:finishStroke()
+    assert(board:marks() == "#..#.." and board.clueStates[1] == "matched" and not board:isComplete())
+    local checkpoint = board:marks()
+    board:beginStroke(1, 3, "#")
+    board:finishStroke()
+    assert(board:isComplete() and board:marks() == "#.##..")
+    board:beginStroke(2, 3, "#")
+    board:finishStroke()
+    assert(board.clueStates[3] == "conflict" and not board:isComplete())
+    assert(board:undoStroke() and board:isComplete())
+    assert(board:redoStroke() and board.conflicts > 0)
+    assert(board:restoreCheckpoint(checkpoint) and board.conflicts == 0)
+    assert(not Puzzle.decodeProgress(puzzle, { schemaVersion = 1, puzzleId = puzzle.id, marks = checkpoint, completed = true }))
+
+    local root = home .. "/fillapix-sync"
+    local store = assert(Store.open(root))
+    local games = assert(API.capabilities(function()
+        return { apiVersion = 2, schemaVersion = 1, advancedFilters = true, games = { "nonogram", "fill-a-pix" } }
+    end))
+    assert(games["fill-a-pix"] and store:target("fill-a-pix") == 5)
+    assert(store:updateSettings({ server = "http://example.test:8080", target = 0, fillAPixTarget = 1 }))
+    assert(store:download(puzzle) and store:hasGame("fill-a-pix") and not store:hasGame("hashi"))
+    assert(store:saveGame(board, { row = 1, column = 1, zoom = 2 }, true) and store:saveCheckpoint(board))
+    assert(store:setFilters("fill-a-pix", { width = "100-2147483647", height = 118, difficulty = "easy" }))
+    local large = wireFillAPix(3, 100, 118)
+    local result, err = Sync.run(store, function(_, path, payload)
+        if path == "/restore" then return {} end
+        if path == "/progress" then
+            local sent = payload.boards[1]
+            assert(sent.puzzleId == puzzle.id and sent.marks == checkpoint and not sent.completed)
+            return { savedCount = 1, backedUpAt = "2026-11-26T12:00:00Z" }
+        end
+        assert(path == "/offline-queue" and payload.game == "fill-a-pix" and payload.targetCount == 1)
+        assert(payload.widthFilter == "100-2147483647" and payload.height == 118 and not payload.difficulty)
+        assert(payload.excludedPuzzleIds[1] == puzzle.id)
+        return { puzzles = { large }, remaining = 0 }
+    end, games)
+    assert(not err and result.backedUp == 1 and result.added == 1)
+    assert(store:saveMetadata(large.id, { source = "fillapixnet", complexity = 17 }))
+    store = assert(Store.open(root))
+    assert(store.records[large.id].puzzle.clues[11800] == false and store.records[large.id].puzzle.metadata.complexity == 17)
+    assert(not store.records[puzzle.id].dirty and store.records[puzzle.id].checkpoint == checkpoint)
 end
 
 local function saveFilterInput(title, value)
@@ -275,6 +353,9 @@ local function testApiTransport()
             reply = '{"puzzles":[],"nextBeforeId":null}'
         elseif path == "/restore" then
             reply = "[]"
+        elseif path == "/offline-queue" then
+            reply = '{"remaining":0,"puzzles":[{"schemaVersion":1,"game":"fill-a-pix","id":"fill-a-pix-janko-1",'
+                .. '"title":"Blank clues","width":3,"height":2,"clues":[null,0,null,0,null,null],"solution":null}]}'
         else
             assert(path == "/progress" and options.method == "POST")
             local payload = json.decode(assert(options.source()))
@@ -291,6 +372,10 @@ local function testApiTransport()
             local page = assert(API.request(server, "GET", "/puzzles?game=hashi"))
             assert(page.nextBeforeId == nil and #page.puzzles == 0)
             assert(#assert(API.request(server, "GET", "/restore")) == 0)
+            local queue = assert(API.request(server, "POST", "/offline-queue", { game = "fill-a-pix", targetCount = 1 }))
+            local picture = assert(Puzzle.fromWire(queue.puzzles[1]))
+            assert(picture.solution == nil and #picture.clues == 6 and picture.clues[1] == false
+                and picture.clues[2] == 0 and picture.clues[3] == false and picture.clues[6] == false)
             local receipt = assert(API.request(server, "POST", "/progress", { schemaVersion = 1,
                 boards = { Puzzle.encodeProgress({ puzzleId = hashiSquare("a").id, marks = "....", completed = false }) } }))
             assert(receipt.savedCount == 1)
@@ -1258,10 +1343,118 @@ local function testHashiUI()
     plugin.library:onClose()
 end
 
+local function testFillAPixUI()
+    local BB = require("ffi/blitbuffer")
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } },
+        store = assert(Store.open(home .. "/fillapix-ui")),
+    }
+    assert(plugin.store:updateSettings({ server = "http://example.test:8080" }))
+    local large, small = wireFillAPix(1, 118, 100), wireFillAPix(2)
+    plugin.online = function(self, operation)
+        local games = { nonogram = true, ["fill-a-pix"] = true, advancedFilters = true }
+        self.games = games
+        operation(function(method, path)
+            assert(method == "GET")
+            if path == "/restore" then return {} end
+            if path == "/puzzles?limit=25&game=fill-a-pix&widthFilter=101-125" then return { puzzles = { large } } end
+            assert(path == "/puzzles/" .. large.id .. "?includeSolution=true")
+            return large
+        end, games)
+    end
+    plugin:showLibrary()
+    plugin:chooseGame()
+    local picker = UI:getTopmostVisibleWidget()
+    assert(picker.buttons[1][2].text == "Check server for games")
+    picker.buttons[1][2].callback()
+    UI:getTopmostVisibleWidget().buttons[1][2].callback()
+    assert(plugin.store.settings.lastGame == "fill-a-pix")
+    plugin:settings()
+    local settings = UI:getTopmostVisibleWidget()
+    assert(settings.buttons[2][1].text:find("(5)", 1, true))
+    UI:close(settings)
+    plugin:filterSettings("fill-a-pix")
+    UI:getTopmostVisibleWidget().buttons[1][1].callback()
+    saveFilterInput("Width", "101-125")
+    plugin:browse()
+    assert(plugin.catalog.item_table[2].details == "Sample · Fill-a-Pix.net")
+    plugin.catalog.item_table[2].callback()
+    local game = assert(plugin.game)
+    assert(game.board.width == 118 and game.layout.leftSlots == 0 and game.layout.topSlots == 0)
+    game:onButton("plus")
+    game:onButton("overview")
+    local x, y, cell = game.layout:overview()
+    game:onTap(nil, { pos = { x = x + 117 * cell, y = y + 99 * cell } })
+    assert(not game.overview and game.column + game.layout.columns - 1 == 118)
+    local row, column, zoom = game.row, game.column, game.zoom
+    game:onClose()
+    plugin.online = function() error("Offline play attempted a network request") end
+    plugin:showGame(large.id)
+    game = assert(plugin.game)
+    assert(game.row == row and game.column == column and game.zoom == zoom)
+    game:onClose()
+
+    assert(plugin.store:download(small))
+    plugin:showGame(small.id)
+    game = assert(plugin.game)
+    local function tap(r, c)
+        local layout = game.layout
+        assert(game:onGesture{ ges = "tap", pos = Geom:new{
+            x = layout.gridX + (c - 0.5) * layout.cell, y = layout.gridY + (r - 0.5) * layout.cell,
+        } })
+    end
+    UI:forceRePaint()
+    tap(1, 1)
+    tap(2, 1)
+    UI:forceRePaint()
+    assert(game.frame.clueStates[1] == "matched")
+    local pixels = BB.tostring(device.screen.bb)
+    game.frame = nil
+    UI:setDirty(game, "ui")
+    UI:forceRePaint()
+    assert(BB.tostring(device.screen.bb) == pixels, "Fill-a-Pix changed clue differs from a full redraw")
+    game:onHold(nil, { pos = { x = game.layout.gridX + 2, y = game.layout.gridY + 2 } })
+    assert(UI:getTopmostVisibleWidget().text:find("2 filled · 2 undecided", 1, true))
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("checkpoint")
+    UI:getTopmostVisibleWidget().buttons[1][1].callback()
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("cross")
+    tap(1, 2)
+    game:onButton("check")
+    assert(UI:getTopmostVisibleWidget().text:find("No conflicts", 1, true))
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("undo")
+    assert(game.board:marks() == "#..#..")
+    game:onButton("redo")
+    assert(game.board:marks() == "#x.#..")
+    game:onButton("checkpoint")
+    UI:getTopmostVisibleWidget().buttons[2][1].callback()
+    assert(game.board:marks() == "#..#..")
+    game:onButton("fill")
+    tap(2, 3)
+    assert(game.board:isComplete() and plugin.store.records[small.id].completed)
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("restart")
+    local confirm = UI:getTopmostVisibleWidget()
+    UI:close(confirm)
+    confirm.ok_callback()
+    assert(game.board:marks() == "......" and not plugin.store.records[small.id].completed)
+    game:onButton("undo")
+    assert(game.board:isComplete())
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onClose()
+    UI:forceRePaint()
+    local last = #plugin.library.item_table
+    assert(plugin.library.item_table[last].mandatory == "3×2  Solved" and plugin.library.item_group[last].thumbnail.preview)
+    plugin.library:onClose()
+end
+
 testBoard()
 testSync()
 testHashiRules()
 testHashiSync()
+testFillAPixRulesAndSync()
 testQueueFilters()
 testApiTransport()
 testPluginDiscovery()
@@ -1271,4 +1464,5 @@ testSuspendResume()
 testMoveRedraw()
 testGameUI()
 testHashiUI()
+testFillAPixUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

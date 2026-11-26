@@ -2,17 +2,17 @@
 
 ## Version 2
 
-Kobo Logic Puzzles uses `/api/v2` for both games. Nonogram definitions and saves use their WebPBN IDs in SQLite. The API exposes those IDs with the `nonogram-webpbn-` prefix.
+Kobo Logic Puzzles uses `/api/v2`. Nonogram definitions and saves use their WebPBN IDs in SQLite. The API exposes those IDs with the `nonogram-webpbn-` prefix.
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/v2/capabilities` | Return `apiVersion`, `schemaVersion`, the supported `games`, and `advancedFilters: true` when ranges and multiple values are available. Hashi is advertised while generation is enabled or when stored Hashi puzzles are available. |
-| `GET /api/v2/puzzles` | Browse one game. Supply `game=nonogram` or `game=hashi` and optional filters and `limit` (1–100, default 50). Returns `{ puzzles, nextBeforeId }`. Repeat the filters and pass `nextBeforeId` as `beforeId` for the next page. |
+| `GET /api/v2/capabilities` | Return `apiVersion`, `schemaVersion`, the supported `games`, and `advancedFilters: true` when ranges and multiple values are available. Hashi is advertised while generation is enabled or when stored Hashi puzzles are available. Fill-a-Pix is advertised when its first puzzles are imported. |
+| `GET /api/v2/puzzles` | Browse one game. Supply `game=nonogram`, `game=hashi`, or `game=fill-a-pix` and optional filters and `limit` (1–100, default 50). Returns `{ puzzles, nextBeforeId }`. Repeat the filters and pass `nextBeforeId` as `beforeId` for the next page. |
 | `GET /api/v2/puzzles/{id}` | Retrieve a puzzle definition. Set `includeSolution=true` to request its solution. |
-| `GET /api/v2/puzzles/metadata` | Look up ratings for up to 100 typed IDs supplied as repeated `id` parameters. Returns an object keyed by puzzle ID. |
+| `GET /api/v2/puzzles/metadata` | Look up source metadata or ratings for up to 100 typed IDs supplied as repeated `id` parameters. Returns an object keyed by puzzle ID. |
 | `POST /api/v2/offline-queue` | Top up one game’s unstarted cache. Returns `{ puzzles, remaining }`. |
 | `POST /api/v2/progress` | Back up up to 100 changed boards in one transaction. Returns `{ savedCount, backedUpAt }` after commit. |
-| `GET /api/v2/restore` | Return `{ puzzle, progress }` records for both games, or specify `game` for one game. |
+| `GET /api/v2/restore` | Return `{ puzzle, progress }` records for all games. Supply `game` to restore one game. |
 | `GET /api/v2/hashi/status` | Show Hashi stock, unstarted counts and targets by size, difficulty, and solvability, and generation outcomes for the running server. |
 
 Catalog order is descending WebPBN ID for Nonogram and descending content hash for Hashi. Summaries carry `id`, `game`, dimensions, available metadata, and a `status` of `unstarted`, `started`, or `solved`. Nonogram filters use difficulty on a 1–5 scale in quarter-star increments and numeric WebPBN solvability levels 1–6. Metadata may also include quality on the same star scale. Hashi filters use `easy`, `medium`, `hard`, or `expert` and `basic_logic`, `advanced_logic`, `bounded_lookahead`, `requires_search`, or `unknown`. Malformed filters and cursors from the other game return `400`.
@@ -23,6 +23,8 @@ Catalog order is descending WebPBN ID for Nonogram and descending content hash f
 
 Hashi also accepts `sizeFilter` for square sizes from 20 to 50 in steps of 5. For example, `sizeFilter=20-30&difficultyFilter=easy,medium&solvability=basic_logic` matches 20×20, 25×25, and 30×30 boards that are Easy or Medium and use Basic logic. `sizeFilter` takes the place of both width and height filters. Supply one form per field and omit fields that accept any value. A puzzle with missing rating metadata is excluded when the corresponding rating is filtered.
 
+Fill-a-Pix accepts `width`, `height`, `widthFilter`, and `heightFilter` with any positive integer dimensions. It orders catalog entries by descending string ID. Source ratings are available as metadata when supplied upstream.
+
 ### Definitions
 
 `GET /api/v2/puzzles/{id}` returns `game`, `schemaVersion` (currently 1), `id`, `width`, `height`, and game-specific fields. IDs are canonical and case-sensitive. A malformed ID returns `400`. An unavailable puzzle returns `404`. Pass `includeSolution=true` to request a solution.
@@ -31,6 +33,7 @@ Hashi also accepts `sizeFilter` for square sizes from 20 to 50 in steps of 5. Fo
 | --- | --- | --- |
 | `nonogram` | `nonogram-webpbn-12` for WebPBN ID 12 | `title`, `author`, `rowClues`, `columnClues`, and optional WebPBN `metadata`. An empty clue line has an empty array. The requested `solution`, when available, is a row-major string using `#` for filled and `.` for empty cells. |
 | `hashi` | `hashi-local-` followed by the 64-character lowercase SHA-256 of the canonical clue layout | `islands` contains `{ x, y, clue }` objects. `edges` contains `{ first, second }` pairs of island indices. The requested `solution` is an array of counts aligned with `edges`. |
+| `fill-a-pix` | `fill-a-pix-janko-12`, `fill-a-pix-grandgames-7178`, or `fill-a-pix-fillapixnet-1`, using the source’s numeric ID | `title`, optional `author`, and a flat row-major `clues` array with `null` for a cell without a clue and 0–9 for numbered cells. Metadata carries `source`, `sourceUrl`, and any available `license`, `quality`, or `complexity`. The requested `solution`, when available, is a row-major string with `#` for filled and `.` for empty. |
 
 Hashi coordinates and array indices start at zero. Island indices follow `(x, y)` order and edges follow `(first, second)` order. An edge joins the nearest islands in one row or column. Hashi `metadata` carries `islandCount`, `actualDensity` as a percentage, `solvability`, and `difficulty` and `difficultyScore` when rated.
 
@@ -47,6 +50,8 @@ Send `schemaVersion: 1` and a `boards` array to `/progress`. Each board supplies
 }
 ```
 
-Each restored progress object carries `puzzleId`, `schemaVersion`, `marks`, `completed`, and `backedUpAt`. Restore uses one consistent database snapshot across both games. Restore before the first upload, and keep local edits pending until the server acknowledges the batch. Top up after sending changes so the server can exclude played boards.
+Fill-a-Pix queue results include the source solution when available. Fill-a-Pix progress uses the same row-major marks as Nonogram. A completed board must satisfy every numbered cell’s count of filled cells in its surrounding 3×3 neighborhood, including the numbered cell itself.
 
-The KOReader plugin checks v2 capabilities before catalog browsing or sync and uses the advertised games. Retriable WebPBN fetch failures return `502` or `504`.
+Each restored progress object carries `puzzleId`, `schemaVersion`, `marks`, `completed`, and `backedUpAt`. Restore uses one consistent database snapshot. Restore before the first upload, and keep local edits pending until the server acknowledges the batch. Top up after sending changes so the server can exclude played boards.
+
+The KOReader plugin checks v2 capabilities before catalog browsing or sync. It restores games supported by the installed plugin from the combined response. Retriable upstream fetch failures return `502` or `504`.

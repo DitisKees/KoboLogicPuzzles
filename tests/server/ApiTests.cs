@@ -4,12 +4,35 @@ using System.Text.Json;
 using KoboLogicPuzzles.Server;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace KoboLogicPuzzles.Server.Tests;
 
 public sealed class ApiTests
 {
+    [Fact]
+    public async Task HealthReflectsTheLocalDatabaseSchema()
+    {
+        using var database = new TestDatabase();
+        using var source = TestData.Source(_ => throw new InvalidOperationException("Unexpected upstream call."));
+        await using var app = CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+
+        using var healthy = await http.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, healthy.StatusCode);
+
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database.Path }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version = 0";
+        command.ExecuteNonQuery();
+
+        using var unhealthy = await http.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, unhealthy.StatusCode);
+    }
+
     [Fact]
     public async Task V2DefinitionsUseTypedIdsAndOptionalSolutionsForBothGames()
     {
@@ -176,7 +199,8 @@ public sealed class ApiTests
     private static GameProgressUpload Upload(int id, string marks, bool completed) =>
         new(1, [new GameProgressUpdate($"nonogram-webpbn-{id}", JsonSerializer.SerializeToElement(marks), completed)]);
 
-    internal static WebApplication CreateApp(TestDatabase database, WebPbnClient source, Action<WebApplicationBuilder>? configure = null)
+    internal static WebApplication CreateApp(TestDatabase database, WebPbnClient source, Action<WebApplicationBuilder>? configure = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -186,6 +210,7 @@ public sealed class ApiTests
         configure?.Invoke(builder);
         Server.AddServices(builder);
         builder.Services.AddSingleton(source);
+        configureServices?.Invoke(builder.Services);
         var app = builder.Build();
         app.Services.GetRequiredService<PuzzleStore>().Initialize();
         Server.MapEndpoints(app);

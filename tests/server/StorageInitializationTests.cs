@@ -11,9 +11,28 @@ public sealed class StorageInitializationTests
 
         await Task.WhenAll(Task.Run(database.Store.Initialize), Task.Run(new PuzzleStore(database.Path).Initialize));
 
-        Assert.Equal(1L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(2L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Empty(database.Store.RestoreProgress());
         Assert.Empty(database.Store.RestoreHashiProgress());
+    }
+
+    [Fact]
+    public void SchemaOneIsUpgradedWithoutLosingExistingPuzzles()
+    {
+        using var database = new TestDatabase();
+        database.Store.CachePuzzle(TestData.Puzzle(12));
+        Execute(database.Path, """
+            DROP TABLE fill_a_pix_progress;
+            DROP TABLE fill_a_pix_puzzles;
+            DROP TABLE fill_a_pix_refresh;
+            PRAGMA user_version = 1;
+            """);
+
+        database.Store.Initialize();
+
+        Assert.Equal(2L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(12, database.Store.FindPuzzle(12)!.Id);
+        Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.FillAPix));
     }
 
     [Fact]

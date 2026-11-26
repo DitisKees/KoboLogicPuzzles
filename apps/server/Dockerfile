@@ -23,7 +23,10 @@ RUN dotnet publish -c Release --no-restore -o /out
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-RUN mkdir /data && chown "$APP_UID" /data
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir /data && chown "$APP_UID" /data
 COPY --from=build /out ./
 COPY --from=bridges-build /out/ ./hashi/
 ENV Storage__DatabasePath=/data/kobologicpuzzles.db

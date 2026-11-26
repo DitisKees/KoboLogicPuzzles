@@ -7,6 +7,7 @@ local logger = require("logger")
 
 local Store = {}
 Store.__index = Store
+Store.targetKeys = { nonogram = "target", hashi = "hashiTarget", ["fill-a-pix"] = "fillAPixTarget" }
 
 local function copy(record)
     local result = {}
@@ -51,12 +52,11 @@ function Store.open(root)
     end
     local settings = read(root .. "/settings.json") or { format = 1 }
     if type(settings.server) ~= "string" then settings.server = "" end
-    if type(settings.target) ~= "number" or settings.target < 0 or settings.target > 100 then settings.target = 10 end
-    settings.target = math.floor(settings.target)
-    if type(settings.hashiTarget) ~= "number" or settings.hashiTarget < 0 or settings.hashiTarget > 100 then
-        settings.hashiTarget = 5
+    for game, key in pairs(Store.targetKeys) do
+        local target = settings[key]
+        if type(target) ~= "number" or target < 0 or target > 100 then target = game == "nonogram" and 10 or 5 end
+        settings[key] = math.floor(target)
     end
-    settings.hashiTarget = math.floor(settings.hashiTarget)
     if not Puzzle.gameNames[settings.lastGame] then settings.lastGame = "nonogram" end
     settings.hashiGuides = settings.hashiGuides ~= false
     if type(settings.filters) ~= "table" then settings.filters = {} end
@@ -140,10 +140,18 @@ end
 function Store:saveMetadata(id, metadata)
     local current = self.records[id]
     local previous = current.puzzle.metadata
-    if type(previous) == "table" and previous.difficulty == metadata.difficulty
-        and previous.quality == metadata.quality and previous.solvability == metadata.solvability
-        and previous.difficultyScore == metadata.difficultyScore and previous.islandCount == metadata.islandCount
-        and previous.actualDensity == metadata.actualDensity then return true end
+    if type(previous) == "table" then
+        local same = true
+        for key, value in pairs(previous) do
+            if metadata[key] ~= value then same = false break end
+        end
+        if same then
+            for key, value in pairs(metadata) do
+                if previous[key] ~= value then same = false break end
+            end
+        end
+        if same then return true end
+    end
     local record = copy(current)
     record.puzzle = copy(record.puzzle)
     record.puzzle.metadata = metadata
@@ -191,7 +199,7 @@ function Store:list(game)
     return records
 end
 
-function Store:target(game) return game == "hashi" and self.settings.hashiTarget or self.settings.target end
+function Store:target(game) return self.settings[Store.targetKeys[game]] end
 
 function Store:setFilters(game, value)
     local filters = copy(self.settings.filters)
@@ -199,8 +207,8 @@ function Store:setFilters(game, value)
     return self:updateSettings({ filters = filters })
 end
 
-function Store:hasHashi()
-    for id in pairs(self.records) do if type(id) == "string" then return true end end
+function Store:hasGame(game)
+    for id in pairs(self.records) do if Puzzle.game(id) == game then return true end end
     return false
 end
 

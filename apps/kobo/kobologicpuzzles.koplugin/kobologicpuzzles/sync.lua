@@ -3,18 +3,26 @@ local Puzzle = require("kobologicpuzzles/puzzle")
 local Sync = {}
 
 function Sync.restore(store, request)
-    if store.settings.restoredV2Server == store.settings.server then return 0 end
+    local supportedGames = table.concat(Puzzle.games, ",")
+    if store.settings.restoredV2Server == store.settings.server
+        and store.settings.restoredV2Games == supportedGames then return 0 end
     local saved, err = request("GET", "/restore")
     if not saved then return nil, err end
     local records, seen = {}, {}
     for _, entry in ipairs(saved) do
-        local puzzle = type(entry) == "table" and Puzzle.fromWire(entry.puzzle)
-        local progress = puzzle and Puzzle.decodeProgress(puzzle, entry.progress)
-        if not progress or seen[puzzle.id] then
+        local wire = type(entry) == "table" and entry.puzzle
+        if type(wire) ~= "table" or type(wire.game) ~= "string" or wire.game == "" then
             return nil, "The server returned a malformed backup."
         end
-        seen[puzzle.id] = true
-        records[#records + 1] = { puzzle = puzzle, progress = progress }
+        if Puzzle.gameNames[wire.game] then
+            local puzzle = Puzzle.fromWire(wire)
+            local progress = puzzle and Puzzle.decodeProgress(puzzle, entry.progress)
+            if not progress or seen[puzzle.id] then
+                return nil, "The server returned a malformed backup."
+            end
+            seen[puzzle.id] = true
+            records[#records + 1] = { puzzle = puzzle, progress = progress }
+        end
     end
     local restored, latest = 0, store.settings.lastBackup
     for _, entry in ipairs(records) do
@@ -27,7 +35,8 @@ function Sync.restore(store, request)
             latest = timestamp
         end
     end
-    local ok, saveError = store:updateSettings({ restoredV2Server = store.settings.server, lastBackup = latest })
+    local ok, saveError = store:updateSettings({ restoredV2Server = store.settings.server,
+        restoredV2Games = supportedGames, lastBackup = latest })
     if not ok then return nil, saveError end
     return restored
 end

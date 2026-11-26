@@ -7,7 +7,7 @@
 3. Open **Tools → Kobo Logic Puzzles → Settings → Home server URL**. Enter the server’s HTTP address on your home network, for example `http://192.168.1.10:8080`.
 4. Choose **Sync now**. On a fresh installation, the app restores any backed-up boards and then downloads puzzles. You can also choose an individual puzzle under **Browse server catalog**.
 
-Catalog browsing and sync require a home server with API v2. In the library, choose **Game → Check for Hashi** to discover Hashi on the server. Once Hashi puzzles are cached, you can switch to their library offline.
+Catalog browsing and sync require a home server with API v2. In the library, choose **Game → Check server for games** to discover Hashi and Fill-a-Pix. Once puzzles are cached, you can switch to their libraries offline.
 
 Download `kobologicpuzzles.koplugin.zip` from the release and extract its `kobologicpuzzles.koplugin` folder. The workflow also publishes test ZIPs as build artifacts. [Plugin releases](https://github.com/DitisKees/KoboLogicPuzzles/releases) · [Build workflow](https://github.com/DitisKees/KoboLogicPuzzles/actions/workflows/kobo-plugin.yml)
 
@@ -43,11 +43,18 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 - Drag with two fingers to pan, or start a one-finger drag away from islands. Use **−** and **+** to change scale, or open **Overview** and tap an area to jump there. The game saves your view and marks as you play. **Undo**, **Redo**, **Checkpoint**, and **Restart** are available offline.
 - **Check** counts decisions that disagree with the stored solution. A single bridge on an edge that ultimately needs two is accepted. The library shows bridges placed as a percentage of the total required, alongside a thumbnail of the current board.
 
+## Play Fill-a-Pix
+
+- Fill cells so every clue matches the number of filled cells in its surrounding 3×3 area, including the numbered cell itself. The grid is solved when all counts match. A clue is struck through when all of its cells are marked and the count matches. A border around a number marks a conflict.
+- Tap or drag with **Fill**, **Cross**, **Clear**, or **Cycle**. Numbered cells turn gray when crossed. Hold a numbered cell or select it and tap **Clue** to inspect its counts. **Check** compares your marks with the source solution when available and checks clue conflicts otherwise.
+- Use **Pan**, two-finger panning, **Overview**, and **−** or **+** to navigate large grids. **Undo**, **Redo**, **Checkpoint**, and **Restart** work offline. Your marks and position save as you play.
+- The catalog and library show the puzzle’s source and any author credit supplied by the server. Fill-a-Pix has its own offline queue and width and height filters, including dimensions above 100.
+
 ## Backup and offline puzzles
 
-**Sync now** backs up changed boards and tops up both available games. Set each game's target under **Settings → Offline queue size**. **Catalog and queue filters** set each game's size, difficulty, and solvability preferences. Sync reports open queue slots when the server has fewer matching puzzles available. Downloaded boards remain playable offline. The library shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
+**Sync now** backs up changed boards and tops up each available game. Set each game's target under **Settings → Offline queue size**. **Catalog and queue filters** apply to browsing and downloads. Sync reports open queue slots when the server has fewer matching puzzles available. Downloaded boards remain playable offline. The library shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
 
-For Nonogram width, height, and difficulty, or Hashi grid size, type one value, an inclusive range such as `20-30`, or comma-separated values such as `20,30,50`. You can combine ranges and values in one field, for example `20-30,50`. Hashi sizes use steps of 5 and Nonogram difficulty uses quarter-star steps. For solvability in either game and Hashi difficulty, select the entries you want and tap **Save**. A puzzle must match one choice in every configured field. Use **Any** or leave a numeric field blank to clear it. Ranges and multiple selections require a home server that supports them.
+For Nonogram width, height, and difficulty, Hashi grid size, or Fill-a-Pix width and height, type one value, an inclusive range such as `20-30`, or comma-separated values such as `20,30,50`. You can combine ranges and values in one field, for example `20-30,50`. Hashi sizes use steps of 5 and Nonogram difficulty uses quarter-star steps. For Nonogram or Hashi solvability and Hashi difficulty, select the entries you want and tap **Save**. A puzzle must match one choice in every configured field. Use **Any** or leave a numeric field blank to clear it. Ranges and multiple selections require a home server that supports them.
 
 On a clean KOReader installation, install the plugin, enter the same server URL, and choose **Sync now** to restore your boards. Local settings and board files live in the `kobologicpuzzles/` folder in KOReader’s data directory.
 
@@ -64,7 +71,7 @@ Use the tested plugin ZIP and a test server with generated fixtures. To seed the
 1. On the current plugin, sync pending moves. Record the last backup time and open a large saved Nonogram to note its marks, checkpoint, and position.
 2. Back up the active plugin and its data directory, then install the candidate using the [manual update instructions](#update-the-plugin).
 3. Eject the Kobo, open KOReader, and check that **Tools** has one **Kobo Logic Puzzles** entry. Before changing the server URL, reopen the large Nonogram with Wi-Fi off. Verify its marks, viewport, clues, and checkpoint.
-4. Exit KOReader and set the original data folder aside. Restart with empty plugin data, enable Wi-Fi, and enter the test server URL. Choose **Game → Check for Hashi**, then download **20×20**, **35×35**, and **50×50** boards. Use **Browse server catalog** and the size filter if the offline queue fills with other sizes.
+4. Exit KOReader and set the original data folder aside. Restart with empty plugin data, enable Wi-Fi, and enter the test server URL. Choose **Game → Check server for games**, select **Hashi**, then download **20×20**, **35×35**, and **50×50** boards. Use **Browse server catalog** and the size filter if the offline queue fills with other sizes.
 5. Disable Wi-Fi. On each size, drag between neighboring islands to cycle through one, two, and zero bridges. Try a crossing, mark no bridge, undo and redo, and test zoom, two-finger panning, and overview jumps. Note tap accuracy near screen edges and whether ordinary moves avoid a full-screen flash. Reopen the game after a KOReader restart to verify marks and viewport.
 6. Finish a test puzzle offline and use **Check**. Back up that board and an unfinished one to the test server. With KOReader closed, archive the test data and reinstall the candidate from the ZIP. Start with empty plugin data, connect to the test server, and sync. Verify the restored boards offline.
 7. To return to the live setup, exit KOReader. Archive the test plugin and test data separately, then put both original folders back in their original locations. Eject the Kobo and verify the original server URL, the single Tools entry, and the large Nonogram.

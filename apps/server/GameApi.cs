@@ -13,7 +13,7 @@ internal static class GameApi
             ApiVersion = 2,
             SchemaVersion = 1,
             AdvancedFilters = true,
-            Games = options.Enabled || store.HasHashiPuzzles() ? new[] { "nonogram", "hashi" } : ["nonogram"],
+            Games = GetGames(options, store),
         });
         api.MapGet("/hashi/status", (HashiInventory inventory) => inventory.GetStatus());
 
@@ -35,7 +35,7 @@ internal static class GameApi
             CancellationToken cancellationToken) =>
         {
             if (!PuzzleId.TryParse(id, out var puzzleId))
-                return Server.BadRequest("Supply a namespaced puzzle ID such as nonogram-webpbn-12 or hashi-local-<content hash>.");
+                return Server.BadRequest("Supply a namespaced puzzle ID such as nonogram-webpbn-12 or fill-a-pix-janko-12.");
             var definition = await providers.GetDefinitionAsync(puzzleId, includeSolution == true, cancellationToken);
             return definition is null ? Results.NotFound() : Results.Ok(definition);
         });
@@ -83,5 +83,15 @@ internal static class GameApi
             return PuzzleFilter.TryParseGame(game, out var kind) ? Results.Ok(store.RestoreGameProgress(kind)) :
                 Server.BadRequest("Supply a supported game.");
         });
+    }
+
+    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store)
+    {
+        var games = new List<string> { "nonogram" };
+        if (options.Enabled || store.HasHashiPuzzles())
+            games.Add("hashi");
+        if (store.HasFillAPixPuzzles())
+            games.Add(FillAPixSources.Game);
+        return games.ToArray();
     }
 }

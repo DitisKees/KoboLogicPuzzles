@@ -3,6 +3,7 @@ local Board = require("kobologicpuzzles/board")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
+local FillAPixGame = require("kobologicpuzzles/fillapixgame")
 local Game = require("kobologicpuzzles/game")
 local HashiGame = require("kobologicpuzzles/hashigame")
 local InfoMessage = require("ui/widget/infomessage")
@@ -21,6 +22,7 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
 local LogicPuzzles = WidgetContainer:extend{ name = "kobologicpuzzles", is_doc_only = false }
+local gameWidgets = { nonogram = Game, hashi = HashiGame, ["fill-a-pix"] = FillAPixGame }
 
 local function notice(text)
     UIManager:show(InfoMessage:new{ text = text })
@@ -66,11 +68,11 @@ function LogicPuzzles:libraryItems()
         end
         local progress = math.min(100, math.floor(100 * placed / total))
         local progressLabel = placed > 0 and progress == 0 and "<1%" or progress .. "%"
-        if record.completed then progressLabel = game == "hashi" and "Solved" or progressLabel .. "  Solved" end
-        if game == "hashi" and not record.marks then progressLabel = "Not started" end
+        if record.completed then progressLabel = game == "nonogram" and progressLabel .. "  Solved" or "Solved" end
+        if game ~= "nonogram" and not record.marks then progressLabel = "Not started" end
         items[#items + 1] = {
             text = Puzzle.title(puzzle),
-            details = PuzzleMenu.details(puzzle.metadata, game),
+            details = PuzzleMenu.details(puzzle.metadata, game, puzzle.author),
             mandatory = string.format("%d×%d  %s", puzzle.width, puzzle.height, progressLabel),
             preview = record.marks and record,
             callback = function() self:showGame(puzzle.id) end,
@@ -125,7 +127,7 @@ function LogicPuzzles:showGame(id)
         self.library = nil
     end
     local game = Puzzle.game(id)
-    local widget = game == "hashi" and HashiGame or Game
+    local widget = gameWidgets[game]
     local rules = Puzzle.rules(id)
     self.game = widget:new{
         board = rules:new(record.puzzle, record.marks),
@@ -162,7 +164,8 @@ function LogicPuzzles:editServer()
         local address = API.normalize(value)
         if not address then return nil, "Enter the home server's HTTP address, including http://." end
         if address == self.store.settings.server then return true end
-        local ok, err = self.store:updateSettings({ server = address, restoredV2Server = false, lastBackup = false })
+        local ok, err = self.store:updateSettings({ server = address, restoredV2Server = false,
+            restoredV2Games = false, lastBackup = false })
         if ok then
             self.games = nil
             self:updateLibrary()
@@ -189,15 +192,14 @@ end
 
 function LogicPuzzles:chooseGame()
     local function show(games, checked)
-        local choices = {{ "Nonogram", "nonogram" }}
-        local hasHashi = self.store:hasHashi() or (games and games.hashi)
-        if hasHashi then
-            choices[2] = { "Hashi", "hashi" }
-        elseif not checked then
-            choices[2] = { "Check for Hashi", "check" }
+        local choices = {}
+        for _, game in ipairs(Puzzle.games) do
+            if game == "nonogram" or (games and games[game]) or self.store:hasGame(game) then
+                choices[#choices + 1] = { Puzzle.gameNames[game], game }
+            end
         end
-        local title = checked and not hasHashi and "Hashi is unavailable on the home server." or "Choose a game"
-        choose(title, choices, function(game)
+        if not checked and #choices < #Puzzle.games then choices[#choices + 1] = { "Check server for games", "check" } end
+        choose("Choose a game", choices, function(game)
             if game == "check" then return self:online(function(_, available) show(available, true) end) end
             local ok, err = self.store:updateSettings({ lastGame = game })
             if ok then self:updateLibrary() else notice(err) end
@@ -257,7 +259,8 @@ function LogicPuzzles:filterSettings(game, onChange)
         return ok, err
     end
 
-    local keys = game == "hashi" and { "size", "difficulty", "solvability" } or { "width", "difficulty", "height", "solvability" }
+    local keys = game == "hashi" and { "size", "difficulty", "solvability" }
+        or game == "fill-a-pix" and { "width", "height" } or { "width", "difficulty", "height", "solvability" }
     local titles = { size = "Grid size", width = "Width", height = "Height", difficulty = "Difficulty", solvability = "Solvability" }
     local choices = {}
     for _, key in ipairs(keys) do
@@ -286,6 +289,7 @@ function LogicPuzzles:filterSettings(game, onChange)
         local value = filters[key]
         if key == "size" then value = value or filters.width or filters.height end
         local hint = "Use whole numbers from 1 to 100, e.g. 20-35 or 25,40."
+        if game == "fill-a-pix" then hint = "Use positive whole numbers, e.g. 30-120 or 50,118." end
         if key == "size" then hint = "Use 20 to 50 in steps of 5, e.g. 20-30 or 25,40." end
         if key == "difficulty" then hint = "Use 1 to 5 in steps of 0.25, e.g. 3.5-4.25 or 2,4." end
         input(titles[key], tostring(value or ""), "Any", function(text)
@@ -300,7 +304,7 @@ end
 function LogicPuzzles:settings()
     local dialog
     local game = self.store.settings.lastGame
-    local targetKey = game == "hashi" and "hashiTarget" or "target"
+    local targetKey = Store.targetKeys[game]
     local boardSetting
     if game == "hashi" then
         local guides = self.store.settings.hashiGuides
@@ -309,7 +313,7 @@ function LogicPuzzles:settings()
             local ok, err = self.store:updateSettings({ hashiGuides = not guides })
             if not ok then notice(err) else self:settings() end
         end }
-    else
+    elseif game == "nonogram" then
         boardSetting = { text = "Clues to show  (" .. self.store.settings.clueLimit .. ")", callback = function()
             UIManager:close(dialog)
             local maximum = Viewport.maxClueLimit
@@ -323,35 +327,36 @@ function LogicPuzzles:settings()
                 end)
         end }
     end
+    local buttons = {
+        {{ text = "Home server URL", callback = function()
+            UIManager:close(dialog)
+            self:editServer()
+        end }},
+        {{ text = "Offline queue size  (" .. self.store:target(game) .. ")", callback = function()
+            UIManager:close(dialog)
+            input("Unstarted puzzles to keep offline", self.store:target(game), "0–100", function(value)
+                local target = tonumber(value)
+                if not target or target < 0 or target > 100 or target ~= math.floor(target) then
+                    return nil, "Enter a whole number from 0 to 100."
+                end
+                return self.store:updateSettings({ [targetKey] = target })
+            end)
+        end }},
+        {{ text = "Catalog and queue filters", callback = function()
+            UIManager:close(dialog)
+            self:filterSettings(game)
+        end }},
+        {{ text = "Update plugin", callback = function()
+            UIManager:close(dialog)
+            self:checkPluginUpdate()
+        end }},
+        {{ text = "Close", callback = function() UIManager:close(dialog) end }},
+    }
+    if boardSetting then table.insert(buttons, 4, { boardSetting }) end
     dialog = ButtonDialog:new{
         title = Puzzle.gameNames[game] .. " settings",
         modal = true,
-        buttons = {
-            {{ text = "Home server URL", callback = function()
-                UIManager:close(dialog)
-                self:editServer()
-            end }},
-            {{ text = "Offline queue size  (" .. self.store:target(game) .. ")", callback = function()
-                UIManager:close(dialog)
-                input("Unstarted puzzles to keep offline", self.store:target(game), "0–100", function(value)
-                    local target = tonumber(value)
-                    if not target or target < 0 or target > 100 or target ~= math.floor(target) then
-                        return nil, "Enter a whole number from 0 to 100."
-                    end
-                    return self.store:updateSettings({ [targetKey] = target })
-                end)
-            end }},
-            {{ text = "Catalog and queue filters", callback = function()
-                UIManager:close(dialog)
-                self:filterSettings(game)
-            end }},
-            { boardSetting },
-            {{ text = "Update plugin", callback = function()
-                UIManager:close(dialog)
-                self:checkPluginUpdate()
-            end }},
-            {{ text = "Close", callback = function() UIManager:close(dialog) end }},
-        },
+        buttons = buttons,
     }
     UIManager:show(dialog)
 end
@@ -460,7 +465,9 @@ function LogicPuzzles:sync()
                 summary = summary .. string.format("\n%d %s queue slots still open", missing, Puzzle.gameNames[game])
             end
         end
-        if result.pending > 0 then summary = summary .. "\nHashi backups are waiting for server support." end
+        if result.pending > 0 then
+            summary = summary .. string.format("\n%d changed boards are waiting for server support.", result.pending)
+        end
         notice(err and ("Sync incomplete\n" .. summary .. "\n\n" .. tostring(err)) or summary)
     end)
 end
@@ -484,7 +491,7 @@ function LogicPuzzles:browse(beforeId)
         for _, puzzle in ipairs(page.puzzles) do
             local id = type(puzzle) == "table" and Puzzle.localId(puzzle.id)
             if not id or Puzzle.game(id) ~= game or puzzle.game ~= game
-                or (game == "nonogram" and type(puzzle.title) ~= "string")
+                or (game ~= "hashi" and type(puzzle.title) ~= "string")
                 or type(puzzle.width) ~= "number" or type(puzzle.height) ~= "number" then
                 return notice("The server returned an invalid catalog entry.")
             end
@@ -493,7 +500,7 @@ function LogicPuzzles:browse(beforeId)
                 or (puzzle.status == "solved" and "  Solved" or (puzzle.status == "started" and "  In progress" or ""))
             items[#items + 1] = {
                 text = Puzzle.title(puzzle),
-                details = PuzzleMenu.details(puzzle.metadata, game),
+                details = PuzzleMenu.details(puzzle.metadata, game, puzzle.author),
                 mandatory = string.format("%d×%d%s", puzzle.width, puzzle.height, status),
                 callback = function() self:downloadAndPlay(id, matches) end,
             }

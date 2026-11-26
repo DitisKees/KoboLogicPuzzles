@@ -1,5 +1,6 @@
 using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
 namespace KoboLogicPuzzles.Server;
@@ -10,6 +11,7 @@ public static class Server
     {
         var services = builder.Services;
         services.AddProblemDetails();
+        services.AddHealthChecks().AddCheck<StorageHealthCheck>("sqlite");
         services.AddOptions<WebPbnOptions>().BindConfiguration("WebPbn").ValidateDataAnnotations().ValidateOnStart();
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<WebPbnOptions>>().Value);
         services.AddOptions<HashiGenerationOptions>().BindConfiguration("HashiGeneration").ValidateDataAnnotations().ValidateOnStart();
@@ -23,11 +25,26 @@ public static class Server
         services.AddSingleton<PuzzleLibrary>();
         services.AddSingleton<IPuzzleProvider, WebPbnPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, LocalHashiPuzzleProvider>();
+        services.AddSingleton<IPuzzleProvider, FillAPixPuzzleProvider>();
         services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<GameCatalog>();
         services.AddSingleton<GameProgressBackup>();
         if (builder.Configuration.GetValue("CatalogRefresh:Enabled", true))
             services.AddHostedService<CatalogRefreshWorker>();
+        if (builder.Configuration.GetValue("FillAPix:RefreshEnabled", builder.Configuration.GetValue("CatalogRefresh:Enabled", true)))
+            services.AddHostedService<FillAPixRefreshWorker>();
+        services.AddHttpClient("fill-a-pix", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            UseCookies = false,
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+        });
+        services.AddSingleton(provider => new FillAPixClient(provider.GetRequiredService<IHttpClientFactory>().CreateClient("fill-a-pix")));
+        services.AddSingleton<FillAPixLibrary>();
         services.AddSingleton(provider => new WebPbnClient(new HttpClient(new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
@@ -51,8 +68,19 @@ public static class Server
             },
         });
 
+        app.MapHealthChecks("/health");
         GameApi.MapEndpoints(app);
     }
 
     internal static IResult BadRequest(string detail) => Results.Problem(detail, statusCode: StatusCodes.Status400BadRequest);
+}
+
+internal sealed class StorageHealthCheck(PuzzleStore store) : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(store.HasCurrentSchema() ? HealthCheckResult.Healthy() :
+            HealthCheckResult.Unhealthy("The puzzle database has an unexpected schema version."));
+    }
 }

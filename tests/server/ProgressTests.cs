@@ -67,7 +67,7 @@ public sealed class ProgressTests
     }
 
     private static GameProgressBackup CreateBackup(PuzzleStore store, WebPbnClient source, TimeProvider time) =>
-        new(store, new PuzzleLibrary(store, source, TestData.Options, time), time);
+        new(store, new PuzzleLibrary(store, source, TestData.Options, time), new PuzzleProviders([]), time);
 
     private static GameProgressUpdate Board(int id, string marks, bool completed) =>
         new($"nonogram-webpbn-{id}", JsonSerializer.SerializeToElement(marks), completed);

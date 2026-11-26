@@ -40,7 +40,7 @@ function Viewport:new(width, height, puzzle, zoom, clueLimit)
     local maxLeft = math.max(1, math.floor((availableW - math.min(4, puzzle.width) * cell) / step))
     local maxTop = math.max(1, math.floor((availableH - math.min(4, puzzle.height) * cell) / step))
     local leftSlots, leftEllipsis, topSlots, topEllipsis = 0, false, 0, false
-    if puzzle.game ~= "hashi" then
+    if puzzle.game ~= "hashi" and puzzle.game ~= "fill-a-pix" then
         leftSlots, leftEllipsis = clueSlots(puzzle.rowClues, clueLimit, maxLeft)
         topSlots, topEllipsis = clueSlots(puzzle.columnClues, clueLimit, maxTop)
     end
@@ -75,9 +75,10 @@ function Viewport:cellAt(x, y, firstRow, firstColumn, extend)
 end
 
 function Viewport:overview()
-    local cell = math.max(1, math.floor(math.min(
+    local fit = math.min(
         (self.width - 2 * self.pad - 2) / self.puzzle.width,
-        (self.footerY - self.headerY - 2 * self.pad - self.status) / self.puzzle.height)))
+        (self.footerY - self.headerY - 2 * self.pad - self.status) / self.puzzle.height)
+    local cell = fit < 1 and fit or math.floor(fit)
     return math.floor((self.width - cell * self.puzzle.width) / 2),
         self.headerY + self.pad, cell
 end
