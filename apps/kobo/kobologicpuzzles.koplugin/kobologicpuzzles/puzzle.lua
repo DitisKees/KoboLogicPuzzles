@@ -10,6 +10,7 @@ Puzzle.hashiSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahea
 Puzzle.hashiSolvabilityNames = { basic_logic = "Basic logic", advanced_logic = "Advanced logic",
     bounded_lookahead = "Bounded lookahead", requires_search = "Requires search", unknown = "Solvability unknown" }
 Puzzle.nonogramSolvabilityNames = { "Trivial", "Line logic", "Moderate lookahead", "Deep lookahead", "Some guessing", "Much guessing" }
+Puzzle.advancedFilterMessage = "Update the home server to use ranges and multiple filter values."
 
 function Puzzle.localId(value)
     if type(value) ~= "string" then return end
@@ -81,42 +82,111 @@ function Puzzle.title(puzzle)
     return string.format("Hashi %s", puzzle.id:sub(-6))
 end
 
+local filterKeys = { "width", "height", "size", "difficulty", "solvability" }
+local dimension = { min = 1, max = 100, step = 1 }
+local filterDomains = {
+    nonogram = {
+        width = dimension, height = dimension,
+        difficulty = { min = 1, max = 5, step = 0.25 }, solvability = { min = 1, max = 6 },
+    },
+    hashi = {
+        width = dimension, height = dimension, size = { min = 20, max = 50, step = 5 },
+        difficulty = Puzzle.difficultyNames, solvability = Puzzle.hashiSolvabilityNames,
+    },
+}
+
+local function filterValue(domain, token)
+    if not domain.min then return domain[token] and token end
+    local pattern = domain.step == 0.25 and "^[%d.]+$" or "^%d+$"
+    local number = token:match(pattern) and tonumber(token)
+    if number and number >= domain.min and number <= domain.max and (number - domain.min) % (domain.step or 1) == 0 then
+        return number
+    end
+end
+
+function Puzzle.filterSelection(game, key, value)
+    local domain = filterDomains[game][key]
+    if not domain then return end
+    if type(value) == "number" then value = tostring(value) end
+    if type(value) ~= "string" or #value == 0 or #value > 1024 then return end
+
+    local terms, selected = {}, {}
+    for term in (value .. ","):gmatch("(.-),") do
+        local first, last = term:match("^%s*([%d.]+)%s*%-%s*([%d.]+)%s*$")
+        if first then
+            if not domain.step then return end
+            first, last = filterValue(domain, first), filterValue(domain, last)
+            if not first or not last or first > last then return end
+            for entry = first, last, domain.step do selected[entry] = true end
+            terms[#terms + 1] = first == last and tostring(first) or first .. "-" .. last
+        else
+            local entry = filterValue(domain, term:match("^%s*(.-)%s*$"))
+            if not entry then return end
+            selected[entry] = true
+            terms[#terms + 1] = tostring(entry)
+        end
+    end
+    return table.concat(terms, ","), selected
+end
+
 function Puzzle.filters(game, value)
     value = type(value) == "table" and value or {}
     local filters = {}
-    for _, key in ipairs({ "width", "height" }) do
-        local size = value[key]
-        if type(size) == "number" and size >= 1 and size <= 100 and size == math.floor(size) then
-            filters[key] = size
-        end
+    for _, key in ipairs(filterKeys) do
+        local expression = Puzzle.filterSelection(game, key, value[key])
+        if expression and (key == "width" or key == "height") then expression = tonumber(expression) or expression end
+        filters[key] = expression
     end
-    if game == "hashi" then
-        if Puzzle.difficultyNames[value.difficulty] then filters.difficulty = value.difficulty end
-        if Puzzle.hashiSolvabilityNames[value.solvability] then filters.solvability = value.solvability end
-    else
-        local difficulty = tonumber(value.difficulty)
-        if difficulty and difficulty >= 1 and difficulty <= 5 and difficulty * 4 % 1 == 0 then
-            filters.difficulty = tostring(difficulty)
-        end
-        local solvability = tonumber(value.solvability)
-        if solvability and Puzzle.nonogramSolvabilityNames[solvability] then filters.solvability = tostring(solvability) end
+    if filters.size then
+        local size = tonumber(filters.size)
+        filters.width, filters.height = size, size
+        if size then filters.size = nil end
     end
     return filters
 end
 
-function Puzzle.matchesFilters(puzzle, filters)
-    local metadata = type(puzzle.metadata) == "table" and puzzle.metadata or {}
-    return (not filters.width or filters.width == puzzle.width) and (not filters.height or filters.height == puzzle.height)
-        and (not filters.difficulty or filters.difficulty == tostring(metadata.difficulty))
-        and (not filters.solvability or filters.solvability == tostring(metadata.solvability))
+function Puzzle.filterMatcher(game, filters)
+    local selections = {}
+    for key, value in pairs(filters) do
+        local _, selected = Puzzle.filterSelection(game, key, value)
+        selections[key] = selected
+    end
+    local function matches(key, value)
+        local selected = selections[key]
+        return not selected or selected[value] == true
+    end
+    return function(puzzle)
+        local metadata = type(puzzle.metadata) == "table" and puzzle.metadata or {}
+        local difficulty, solvability = metadata.difficulty, metadata.solvability
+        if game == "nonogram" then difficulty, solvability = tonumber(difficulty), tonumber(solvability) end
+        return matches("width", puzzle.width) and matches("height", puzzle.height)
+            and matches("size", puzzle.width) and matches("size", puzzle.height)
+            and matches("difficulty", difficulty) and matches("solvability", solvability)
+    end
+end
+
+function Puzzle.filterParameters(filters)
+    local parameters, advanced = {}, false
+    for key, value in pairs(filters) do
+        if key == "size" or (type(value) == "string" and value:find("[,-]")) then
+            parameters[key .. "Filter"] = value
+            advanced = true
+        else
+            parameters[key] = value
+        end
+    end
+    return parameters, advanced
 end
 
 function Puzzle.catalogQuery(game, filters)
+    local parameters, advanced = Puzzle.filterParameters(filters)
     local query = "game=" .. game
-    for _, key in ipairs({ "width", "height", "difficulty", "solvability" }) do
-        if filters[key] then query = query .. "&" .. key .. "=" .. filters[key] end
+    for _, key in ipairs(filterKeys) do
+        if parameters[key] then query = query .. "&" .. key .. "=" .. parameters[key] end
+        local extended = key .. "Filter"
+        if parameters[extended] then query = query .. "&" .. extended .. "=" .. parameters[extended] end
     end
-    return query
+    return query, advanced
 end
 
 return Puzzle

@@ -26,6 +26,7 @@ public sealed class GameApiTests
 
         var capabilities = await http.GetFromJsonAsync<JsonElement>("/api/v2/capabilities");
         Assert.Equal(new[] { "nonogram", "hashi" }, capabilities.GetProperty("games").EnumerateArray().Select(value => value.GetString()));
+        Assert.True(capabilities.GetProperty("advancedFilters").GetBoolean());
         var query = "/api/v2/puzzles?game=hashi&width=20&height=20&difficulty=easy&solvability=basic_logic&limit=1";
         var first = (await http.GetFromJsonAsync<GameCatalogPage>(query))!;
         var firstPuzzle = Assert.Single(first.Puzzles);
@@ -44,6 +45,106 @@ public sealed class GameApiTests
         Assert.Equal("easy", ratings[hashi.Value].GetProperty("difficulty").GetString());
         using var invalid = await http.GetAsync($"/api/v2/puzzles?game=nonogram&beforeId={hashi}");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task NonogramRangesAndChoicesApplyToCatalogPagesAndQueueCounts()
+    {
+        using var database = new TestDatabase();
+        var entries = new[]
+        {
+            TestData.Summary(18, 7, 2) with { Metadata = new PuzzleMetadata(4.75m, null, 3) },
+            TestData.Summary(17, 3, 2),
+            TestData.Summary(16, 7, 2) with { Metadata = new PuzzleMetadata(4.75m, null, 4) },
+            TestData.Summary(15, 5, 2) with { Metadata = new PuzzleMetadata(3.75m, null, 2) },
+            TestData.Summary(14, 4, 2) with { Metadata = new PuzzleMetadata(4m, null, 4) },
+            TestData.Summary(13, 3, 2) with { Metadata = new PuzzleMetadata(3.5m, null, 2) },
+            TestData.Summary(12, 3, 3) with { Metadata = new PuzzleMetadata(3.75m, null, 2) },
+        };
+        database.SeedCatalog(entries);
+        foreach (var entry in entries)
+            database.Store.CachePuzzle(new PuzzleDefinition(entry.Id, entry.Title, entry.Author, entry.Width, entry.Height,
+                Enumerable.Repeat(Array.Empty<int>(), entry.Height).ToArray(), Enumerable.Repeat(Array.Empty<int>(), entry.Width).ToArray()));
+        using var source = UnavailableSource();
+        await using var app = ApiTests.CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+
+        var path = "/api/v2/puzzles?game=nonogram&widthFilter=3-4,7&heightFilter=2&difficultyFilter=3.5-4,4.75&solvabilityFilter=2,4&limit=2";
+        var first = (await http.GetFromJsonAsync<GameCatalogPage>(path))!;
+        Assert.Equal(["nonogram-webpbn-16", "nonogram-webpbn-14"], first.Puzzles.Select(puzzle => puzzle.Id));
+        Assert.Equal("nonogram-webpbn-14", first.NextBeforeId);
+        var second = (await http.GetFromJsonAsync<GameCatalogPage>($"{path}&beforeId={first.NextBeforeId}"))!;
+        Assert.Equal("nonogram-webpbn-13", Assert.Single(second.Puzzles).Id);
+        Assert.Null(second.NextBeforeId);
+
+        using var reply = await http.PostAsJsonAsync("/api/v2/offline-queue", new
+        {
+            Game = "nonogram", TargetCount = 4, WidthFilter = "3-4,7", Height = 2, DifficultyFilter = "3.5-4,4.75",
+            SolvabilityFilter = "2,4", CachedUnstartedPuzzleIds = new[] { "nonogram-webpbn-13", "nonogram-webpbn-15", "nonogram-webpbn-17" },
+        });
+        reply.EnsureSuccessStatusCode();
+        var queue = (await reply.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!;
+        Assert.Equal(["nonogram-webpbn-16", "nonogram-webpbn-14"], queue.Puzzles.Select(puzzle => puzzle.Id));
+        Assert.Equal(1, queue.Remaining);
+    }
+
+    [Fact]
+    public async Task HashiSizeRangesAndRatingChoicesUseTheSameRulesForBrowsingAndDownloads()
+    {
+        using var database = new TestDatabase();
+        var cached = AddHashi(database, row: 0, size: 25);
+        var lastInRange = AddHashi(database, row: 0, size: 30);
+        var separateSize = AddHashi(database, row: 0, size: 50);
+        var outside = AddHashi(database, row: 0, size: 35);
+        var medium = TestData.HashiFixture(20, "00000066", upstreamDifficulty: 1);
+        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(medium)));
+        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(TestData.HashiFixture(20, "00000065"))));
+        Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(TestData.HashiFixture(20, "00000066"))));
+        var mediumId = PuzzleId.FromHashi(medium.Puzzle.ContentHash).Value;
+        using var source = UnavailableSource();
+        await using var app = ApiTests.CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+
+        var page = (await http.GetFromJsonAsync<GameCatalogPage>(
+            "/api/v2/puzzles?game=hashi&sizeFilter=20-30,50&difficultyFilter=easy,medium,expert&solvabilityFilter=basic_logic,advanced_logic"))!;
+        Assert.Equal(new[] { cached.Value, lastInRange.Value, separateSize.Value, mediumId }.OrderDescending(), page.Puzzles.Select(puzzle => puzzle.Id));
+        using var reply = await http.PostAsJsonAsync("/api/v2/offline-queue", new
+        {
+            Game = "hashi", TargetCount = 5, SizeFilter = "20-30,50", DifficultyFilter = "easy,medium,expert",
+            SolvabilityFilter = "basic_logic,advanced_logic", CachedUnstartedPuzzleIds = new[] { cached.Value, outside.Value },
+        });
+        reply.EnsureSuccessStatusCode();
+        var queue = (await reply.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!;
+        Assert.Equal(page.Puzzles.Where(puzzle => puzzle.Id != cached.Value).Select(puzzle => puzzle.Id), queue.Puzzles.Select(puzzle => puzzle.Id));
+        Assert.Equal(1, queue.Remaining);
+    }
+
+    [Theory]
+    [InlineData("nonogram", "widthFilter", "35-20")]
+    [InlineData("nonogram", "heightFilter", "20,")]
+    [InlineData("nonogram", "difficultyFilter", "3.2-4.25")]
+    [InlineData("nonogram", "solvabilityFilter", "2-4")]
+    [InlineData("nonogram", "sizeFilter", "20-30")]
+    [InlineData("hashi", "sizeFilter", "20-31")]
+    [InlineData("hashi", "sizeFilter", "")]
+    [InlineData("hashi", "difficultyFilter", "easy,3.75")]
+    [InlineData("hashi", "solvabilityFilter", "basic_logic,all")]
+    public async Task BothEndpointsRejectInvalidFilterExpressions(string game, string key, string value)
+    {
+        using var database = new TestDatabase();
+        using var source = UnavailableSource();
+        await using var app = ApiTests.CreateApp(database, source);
+        await app.StartAsync();
+        using var http = app.GetTestClient();
+        using var catalog = await http.GetAsync($"/api/v2/puzzles?game={game}&{key}={Uri.EscapeDataString(value)}");
+        using var queue = await http.PostAsJsonAsync("/api/v2/offline-queue", new Dictionary<string, object>
+        {
+            ["game"] = game, ["targetCount"] = 2, [key] = value,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, catalog.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, queue.StatusCode);
     }
 
     [Fact]

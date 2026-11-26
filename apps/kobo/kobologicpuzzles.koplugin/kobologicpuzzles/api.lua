@@ -64,7 +64,7 @@ function API.capabilities(request)
     if not reply or reply.apiVersion ~= 2 or reply.schemaVersion ~= 1 or type(reply.games) ~= "table" then
         return nil, unsupportedServer
     end
-    local games = {}
+    local games = { advancedFilters = reply.advancedFilters == true }
     for _, game in ipairs(reply.games) do
         if game == "nonogram" or game == "hashi" then games[game] = true end
     end

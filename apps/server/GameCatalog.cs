@@ -1,70 +1,8 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
 
 namespace KoboLogicPuzzles.Server;
-
-public sealed record PuzzleFilter(PuzzleGame Game, int? Width, int? Height, decimal? WebPbnDifficulty, int? WebPbnSolvability,
-    HashiDifficulty? HashiDifficulty, HashiSolvability? HashiSolvability)
-{
-    internal IReadOnlyList<HashiDifficulty>? PreferredDifficulties { get; init; }
-    internal IReadOnlyList<HashiSolvability>? PreferredSolvabilities { get; init; }
-
-    public static bool TryParseGame(string? value, out PuzzleGame game) =>
-        TryParseName(value, out game);
-
-    public static PuzzleFilter? Parse(string? game, int? width, int? height, string? difficulty, string? solvability)
-    {
-        if (!TryParseGame(game, out var kind) || width is < 1 or > 100 || height is < 1 or > 100)
-            return null;
-        if (kind == PuzzleGame.Nonogram)
-        {
-            var stars = 0m;
-            if (difficulty is not null && (!decimal.TryParse(difficulty, NumberStyles.AllowDecimalPoint,
-                    CultureInfo.InvariantCulture, out stars) || stars is < 1 or > 5 || stars * 4 % 1 != 0))
-                return null;
-            var level = 0;
-            if (solvability is not null && (!int.TryParse(solvability, NumberStyles.None, CultureInfo.InvariantCulture,
-                    out level) || level is < 1 or > 6))
-                return null;
-            return new PuzzleFilter(kind, width, height, difficulty is null ? null : stars,
-                solvability is null ? null : level, null, null);
-        }
-
-        HashiDifficulty rating = default;
-        HashiSolvability classification = default;
-        if ((difficulty is not null && !TryParseName(difficulty, out rating)) ||
-            (solvability is not null && !TryParseName(solvability, out classification)))
-            return null;
-        return new PuzzleFilter(kind, width, height, null, null, difficulty is null ? null : rating,
-            solvability is null ? null : classification);
-    }
-
-    private static bool TryParseName<T>(string? value, out T result) where T : struct, Enum
-    {
-        foreach (var member in Enum.GetValues<T>())
-        {
-            if (JsonNamingPolicy.SnakeCaseLower.ConvertName(member.ToString()) == value)
-            {
-                result = member;
-                return true;
-            }
-        }
-        result = default;
-        return false;
-    }
-
-    internal bool Matches(PuzzleDefinition puzzle) => DimensionsMatch(puzzle.Width, puzzle.Height) &&
-        (WebPbnDifficulty is null || WebPbnDifficulty == puzzle.Metadata?.Difficulty) &&
-        (WebPbnSolvability is null || WebPbnSolvability == puzzle.Metadata?.Solvability);
-
-    internal bool Matches(StoredHashiPuzzle puzzle) => DimensionsMatch(puzzle.Puzzle.Width, puzzle.Puzzle.Height) &&
-        (HashiDifficulty is null || HashiDifficulty == puzzle.Metadata.Rating.Difficulty) &&
-        (HashiSolvability is null || HashiSolvability == puzzle.Metadata.Rating.Solvability);
-
-    private bool DimensionsMatch(int width, int height) => (Width is null || Width == width) && (Height is null || Height == height);
-}
 
 public sealed record GamePuzzleSummary(string Id, string Game, int Width, int Height, string Status,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? Metadata,
@@ -77,7 +15,9 @@ public sealed record GamePuzzleSummary(string Id, string Game, int Width, int He
 public sealed record GameCatalogPage(IReadOnlyList<GamePuzzleSummary> Puzzles, string? NextBeforeId);
 
 public sealed record GameOfflineQueueRequest(string? Game, [property: JsonRequired] int TargetCount,
-    string[]? CachedUnstartedPuzzleIds, string[]? ExcludedPuzzleIds, int? Width, int? Height, string? Difficulty, string? Solvability);
+    string[]? CachedUnstartedPuzzleIds, string[]? ExcludedPuzzleIds, int? Width, int? Height, string? Difficulty, string? Solvability,
+    string? WidthFilter = null, string? HeightFilter = null, string? DifficultyFilter = null, string? SolvabilityFilter = null,
+    string? SizeFilter = null);
 
 public sealed record GameOfflineQueueResponse(IReadOnlyList<GamePuzzleDefinition> Puzzles, int Remaining);
 
@@ -92,7 +32,8 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
 
     public async Task<GameOfflineQueueResponse> TopUpAsync(GameOfflineQueueRequest request, CancellationToken cancellationToken)
     {
-        var filter = PuzzleFilter.Parse(request.Game, request.Width, request.Height, request.Difficulty, request.Solvability)
+        var filter = PuzzleFilter.Parse(request.Game, request.Width, request.Height, request.Difficulty, request.Solvability,
+            request.WidthFilter, request.HeightFilter, request.DifficultyFilter, request.SolvabilityFilter, request.SizeFilter)
             ?? throw new ArgumentException("Supply a supported game and valid dimension, difficulty, and solvability filters.");
         if (request.TargetCount is < 0 or > 100 || request.CachedUnstartedPuzzleIds is { Length: > 100 } ||
             request.ExcludedPuzzleIds is { Length: > 1000 })
@@ -108,12 +49,12 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
 
         excluded.UnionWith(cached);
         var puzzles = new List<GamePuzzleDefinition>();
-        if (filter.Game == PuzzleGame.Hashi && request.Difficulty is null && request.Solvability is null)
+        if (filter.Game == PuzzleGame.Hashi && filter.Difficulties is null && filter.Solvabilities is null)
         {
             var preferred = filter with
             {
-                PreferredDifficulties = hashiOptions.SelectedDifficulties,
-                PreferredSolvabilities = hashiOptions.SelectedSolvabilities,
+                Difficulties = hashiOptions.SelectedDifficulties.Select(tier => (int)tier).ToArray(),
+                Solvabilities = hashiOptions.SelectedSolvabilities.Select(level => (int)level).ToArray(),
             };
             await FillAsync(provider, preferred, needed, excluded, puzzles, cancellationToken);
         }
@@ -141,7 +82,7 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
                 if (!excluded.Add(before))
                     continue;
                 var puzzle = await provider.GetOfflineDefinitionAsync(before, cancellationToken);
-                if (puzzle is null)
+                if (puzzle is null || !filter.Matches(puzzle))
                     continue;
                 puzzles.Add(puzzle);
                 if (puzzles.Count == needed)

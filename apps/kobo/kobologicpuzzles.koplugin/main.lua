@@ -140,10 +140,10 @@ function LogicPuzzles:showGame(id)
     UIManager:show(self.game, "full")
 end
 
-local function input(title, value, hint, save, numeric)
+local function input(title, value, hint, save, numeric, description)
     local dialog
     dialog = InputDialog:new{
-        title = title, input = tostring(value), input_hint = hint, modal = true,
+        title = title, input = tostring(value), input_hint = hint, description = description, modal = true,
         input_type = (numeric or type(value) == "number") and "number" or nil,
         buttons = {{
             { text = "Cancel", callback = function() UIManager:close(dialog) end },
@@ -206,75 +206,94 @@ function LogicPuzzles:chooseGame()
     show(self.games)
 end
 
+local function filterOptions(game, key)
+    local values, labels
+    if key == "difficulty" and game == "hashi" then
+        values, labels = Puzzle.difficulties, Puzzle.difficultyNames
+    elseif key == "solvability" and game == "hashi" then
+        values, labels = Puzzle.hashiSolvabilities, Puzzle.hashiSolvabilityNames
+    elseif key == "solvability" then
+        values, labels = {}, Puzzle.nonogramSolvabilityNames
+        for index in ipairs(labels) do values[index] = index end
+    end
+    return values, labels
+end
+
+local function filterChecklist(title, values, labels, selected, save)
+    local dialog
+    local buttons = {}
+    for _, value in ipairs(values) do
+        buttons[#buttons + 1] = {{ text = labels[value], checked_func = function() return selected[value] end,
+            callback = function() selected[value] = not selected[value] end }}
+    end
+    local function apply(expression)
+        local ok, err = save(expression)
+        if ok then UIManager:close(dialog) else notice(err) end
+    end
+    buttons[#buttons + 1] = {
+        { text = "Any", callback = function() apply(false) end },
+        { text = "Cancel", callback = function() UIManager:close(dialog) end },
+        { text = "Save", callback = function()
+            local choices = {}
+            for _, value in ipairs(values) do
+                if selected[value] then choices[#choices + 1] = tostring(value) end
+            end
+            apply(#choices > 0 and table.concat(choices, ",") or false)
+        end },
+    }
+    dialog = ButtonDialog:new{ title = title, modal = true, buttons = buttons }
+    UIManager:show(dialog)
+end
+
 function LogicPuzzles:filterSettings(game, onChange)
     local filters = self.store.settings.filters[game]
-    local function save(patch)
-        for key, value in pairs(filters) do
-            if patch[key] == nil then patch[key] = value end
-        end
+    local function save(key, expression)
+        local patch = {}
+        for name, value in pairs(filters) do patch[name] = value end
+        patch[key] = expression
+        if key == "size" then patch.width, patch.height = nil, nil end
         local ok, err = self.store:setFilters(game, patch)
         if ok and onChange then UIManager:nextTick(onChange) end
         return ok, err
     end
-    local function selectValue(title, key, choices)
-        choose(title, choices, function(value)
-            local ok, err = save({ [key] = value })
-            if not ok then notice(err) end
-        end)
-    end
-    local modes = {{ "Any", false }}
+
+    local keys = game == "hashi" and { "size", "difficulty", "solvability" } or { "width", "difficulty", "height", "solvability" }
+    local titles = { size = "Grid size", width = "Width", height = "Height", difficulty = "Difficulty", solvability = "Solvability" }
     local choices = {}
-    local difficulty = filters.difficulty or "Any"
-    if game == "hashi" then
-        difficulty = Puzzle.difficultyNames[filters.difficulty] or difficulty
-        local solvability = Puzzle.hashiSolvabilityNames[filters.solvability]
-        for _, value in ipairs(Puzzle.hashiSolvabilities) do
-            modes[#modes + 1] = { Puzzle.hashiSolvabilityNames[value], value }
-        end
-        choices[1] = { "Grid size  ·  " .. (filters.width or "Any"), "size" }
-        choices[3] = { "Solvability  ·  " .. (solvability or "Any"), "solvability" }
-    else
-        for index, name in ipairs(Puzzle.nonogramSolvabilityNames) do modes[#modes + 1] = { name, index } end
-        choices[1] = { "Width  ·  " .. (filters.width or "Any"), "width" }
-        choices[3] = { "Height  ·  " .. (filters.height or "Any"), "height" }
-        choices[4] = { "Solvability  ·  " .. (Puzzle.nonogramSolvabilityNames[tonumber(filters.solvability)] or "Any"), "solvability" }
-    end
-    choices[2] = { "Difficulty  ·  " .. difficulty, "difficulty" }
-    choose(Puzzle.gameNames[game] .. " catalog and queue filters", choices, function(key)
-        if key == "size" then
-            local sizes = {{ "Any", false }}
-            for _, value in ipairs({ 20, 25, 30, 35, 40, 45, 50 }) do
-                sizes[#sizes + 1] = { value .. "×" .. value, value }
+    for _, key in ipairs(keys) do
+        local value = filters[key]
+        if key == "size" then value = value or filters.width or filters.height end
+        local values, labels = filterOptions(game, key)
+        local _, selected = Puzzle.filterSelection(game, key, value)
+        local summary = value or "Any"
+        if selected and values then
+            local count, single = 0, nil
+            for _, option in ipairs(values) do
+                if selected[option] then count, single = count + 1, labels[option] end
             end
-            choose("Hashi grid size", sizes, function(value)
-                local ok, err = save({ width = value, height = value })
-                if not ok then notice(err) end
-            end)
-        elseif key == "solvability" then
-            selectValue("Solvability", key, modes)
-        elseif game == "hashi" then
-            local tiers = {{ "Any", false }}
-            for _, value in ipairs(Puzzle.difficulties) do tiers[#tiers + 1] = { Puzzle.difficultyNames[value], value } end
-            selectValue("Difficulty", key, tiers)
-        elseif key == "difficulty" then
-            input("Difficulty from 1 to 5 in steps of 0.25", filters[key] or "", "Leave blank for any", function(value)
-                local number = tonumber(value)
-                if value == "" then return save({ [key] = false }) end
-                if not number or number < 1 or number > 5 or number * 4 % 1 ~= 0 then
-                    return nil, "Enter a number from 1 to 5 in steps of 0.25."
-                end
-                return save({ [key] = number })
-            end)
-        else
-            input(key == "width" and "Puzzle width" or "Puzzle height", filters[key] or "", "Leave blank for any", function(value)
-                local size = tonumber(value)
-                if value == "" then return save({ [key] = false }) end
-                if not size or size < 1 or size > 100 or size ~= math.floor(size) then
-                    return nil, "Enter a whole number from 1 to 100."
-                end
-                return save({ [key] = size })
-            end, true)
+            summary = count == 1 and single or count .. " selected"
         end
+        choices[#choices + 1] = { titles[key] .. "  ·  " .. summary, key }
+    end
+    choose(Puzzle.gameNames[game] .. " catalog and queue filters", choices, function(key)
+        local values, labels = filterOptions(game, key)
+        if values then
+            local _, selected = Puzzle.filterSelection(game, key, filters[key])
+            filterChecklist(titles[key], values, labels, selected or {}, function(expression) return save(key, expression) end)
+            return
+        end
+
+        local value = filters[key]
+        if key == "size" then value = value or filters.width or filters.height end
+        local hint = "Use whole numbers from 1 to 100, e.g. 20-35 or 25,40."
+        if key == "size" then hint = "Use 20 to 50 in steps of 5, e.g. 20-30 or 25,40." end
+        if key == "difficulty" then hint = "Use 1 to 5 in steps of 0.25, e.g. 3.5-4.25 or 2,4." end
+        input(titles[key], tostring(value or ""), "Any", function(text)
+            if text:match("^%s*$") then return save(key, false) end
+            local expression = Puzzle.filterSelection(game, key, text)
+            if not expression then return nil, hint end
+            return save(key, expression)
+        end, false, hint)
     end)
 end
 
@@ -450,10 +469,13 @@ function LogicPuzzles:browse(beforeId)
     local game = self.store.settings.lastGame
     self:online(function(request, games)
         if not games[game] then return notice("The home server does not currently offer " .. Puzzle.gameNames[game] .. ".") end
+        local filters = self.store.settings.filters[game]
+        local query, advanced = Puzzle.catalogQuery(game, filters)
+        if advanced and not games.advancedFilters then return notice(Puzzle.advancedFilterMessage) end
         local restored, restoreError = Sync.restore(self.store, request)
         if not restored then return notice(restoreError) end
         if restored > 0 then self:updateLibrary() end
-        local query = Puzzle.catalogQuery(game, self.store.settings.filters[game])
+        local matches = Puzzle.filterMatcher(game, filters)
         local page, err = request("GET", "/puzzles?limit=25&" .. query .. (beforeId and "&beforeId=" .. beforeId or ""),
             nil, "Loading the puzzle catalog…")
         if not page then return notice(err) end
@@ -473,7 +495,7 @@ function LogicPuzzles:browse(beforeId)
                 text = Puzzle.title(puzzle),
                 details = PuzzleMenu.details(puzzle.metadata, game),
                 mandatory = string.format("%d×%d%s", puzzle.width, puzzle.height, status),
-                callback = function() self:downloadAndPlay(id) end,
+                callback = function() self:downloadAndPlay(id, matches) end,
             }
         end
         local cursor = page.nextBeforeId
@@ -498,7 +520,7 @@ function LogicPuzzles:browse(beforeId)
     end)
 end
 
-function LogicPuzzles:downloadAndPlay(id)
+function LogicPuzzles:downloadAndPlay(id, matches)
     if self.store.records[id] then return self:showGame(id) end
     self:online(function(request)
         local path = "/puzzles/" .. Puzzle.wireId(id)
@@ -509,6 +531,7 @@ function LogicPuzzles:downloadAndPlay(id)
         if not wire then return notice(err) end
         local puzzle = Puzzle.fromWire(wire)
         if not puzzle or puzzle.id ~= id then return notice("The server returned an invalid puzzle definition.") end
+        if matches and not matches(puzzle) then return notice("This puzzle no longer matches your filters.") end
         local ok, saveError = self.store:download(puzzle)
         if not ok then return notice(saveError) end
         self:showGame(id)

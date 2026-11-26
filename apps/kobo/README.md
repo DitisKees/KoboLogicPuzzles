@@ -47,6 +47,8 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 
 **Sync now** backs up changed boards and tops up both available games. Set each game's target under **Settings → Offline queue size**. **Catalog and queue filters** set each game's size, difficulty, and solvability preferences. Sync reports open queue slots when the server has fewer matching puzzles available. Downloaded boards remain playable offline. The library shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
 
+For Nonogram width, height, and difficulty, or Hashi grid size, type one value, an inclusive range such as `20-30`, or comma-separated values such as `20,30,50`. You can combine ranges and values in one field, for example `20-30,50`. Hashi sizes use steps of 5 and Nonogram difficulty uses quarter-star steps. For solvability in either game and Hashi difficulty, select the entries you want and tap **Save**. A puzzle must match one choice in every configured field. Use **Any** or leave a numeric field blank to clear it. Ranges and multiple selections require a home server that supports them.
+
 On a clean KOReader installation, install the plugin, enter the same server URL, and choose **Sync now** to restore your boards. Local settings and board files live in the `kobologicpuzzles/` folder in KOReader’s data directory.
 
 ## Rehearse the update on Kobo

@@ -32,14 +32,32 @@ function Sync.restore(store, request)
     return restored
 end
 
-local function topUp(store, request, game, result)
+local function topUp(store, request, game, result, advancedFilters)
     local target = store:target(game)
+    if target == 0 then
+        result.shortfalls[game] = 0
+        return true
+    end
     local filters = store.settings.filters[game]
+    local parameters, advanced = Puzzle.filterParameters(filters)
+    if advanced and not advancedFilters then return nil, Puzzle.advancedFilterMessage end
+
     local cached, excluded, matching = {}, {}, 0
     local records = store:list(game)
+    if game == "nonogram" and (filters.difficulty or filters.solvability) then
+        -- WebPBN ratings can change between downloads.
+        local unstarted = {}
+        for _, record in ipairs(records) do
+            if not record.marks then unstarted[#unstarted + 1] = record end
+        end
+        local ok, err = Sync.refreshMetadata(store, request, unstarted)
+        if not ok then return nil, err end
+        records = store:list(game)
+    end
+    local matches = Puzzle.filterMatcher(game, filters)
     for _, record in ipairs(records) do
         local puzzle = record.puzzle
-        if not record.marks and Puzzle.matchesFilters(puzzle, filters) then
+        if not record.marks and matches(puzzle) then
             matching = matching + 1
             if #cached < 100 then cached[#cached + 1] = Puzzle.wireId(puzzle.id) end
         elseif #excluded < 1000 then
@@ -50,7 +68,7 @@ local function topUp(store, request, game, result)
     while matching < target do
         local payload = { game = game, targetCount = math.min(target, matching + 15),
             cachedUnstartedPuzzleIds = cached, excludedPuzzleIds = excluded }
-        for key, value in pairs(filters) do payload[key] = value end
+        for key, value in pairs(parameters) do payload[key] = value end
         local reply, err = request("POST", "/offline-queue", payload, "Downloading " .. Puzzle.gameNames[game] .. " puzzles…")
         if not reply then return nil, err end
         if type(reply.puzzles) ~= "table" or type(reply.remaining) ~= "number" or reply.remaining < 0
@@ -61,7 +79,7 @@ local function topUp(store, request, game, result)
         local entries, seen = {}, {}
         for _, wire in ipairs(reply.puzzles) do
             local puzzle = Puzzle.fromWire(wire)
-            if not puzzle or Puzzle.game(puzzle.id) ~= game or seen[puzzle.id] or not Puzzle.matchesFilters(puzzle, filters) then
+            if not puzzle or Puzzle.game(puzzle.id) ~= game or seen[puzzle.id] or not matches(puzzle) then
                 return nil, "The server returned an invalid puzzle for this queue."
             end
             seen[puzzle.id] = true
@@ -125,15 +143,15 @@ function Sync.run(store, request, games)
     local queueError
     for _, game in ipairs(Puzzle.games) do
         if games[game] then
-            local _, err = topUp(store, request, game, result)
+            local _, err = topUp(store, request, game, result, games.advancedFilters)
             if err and not queueError then queueError = err end
         end
     end
     return result, queueError
 end
 
-function Sync.refreshMetadata(store, request)
-    local records = store:list()
+function Sync.refreshMetadata(store, request, records)
+    records = records or store:list()
     for first = 1, #records, 100 do
         local ids, query = {}, {}
         for index = first, math.min(first + 99, #records) do

@@ -16,21 +16,22 @@ public sealed partial class PuzzleStore
             LEFT JOIN puzzles p ON p.id = c.id
             LEFT JOIN progress s ON s.puzzle_id = c.id
             WHERE ($before IS NULL OR c.id < $before)
-                AND ($width IS NULL OR c.width = $width) AND ($height IS NULL OR c.height = $height)
+                AND ($width IS NULL OR c.width IN (SELECT value FROM json_each($width)))
+                AND ($height IS NULL OR c.height IN (SELECT value FROM json_each($height)))
                 AND ($unstarted = 0 OR s.puzzle_id IS NULL)
                 AND ($difficulty IS NULL OR CAST(CASE WHEN m.metadata IS NULL
                     THEN json_extract(p.definition, '$.metadata.difficulty') ELSE json_extract(m.metadata, '$.difficulty') END AS REAL)
-                    = CAST($difficulty AS REAL))
+                    * 4 IN (SELECT value FROM json_each($difficulty)))
                 AND ($solvability IS NULL OR coalesce(json_extract(m.metadata, '$.solvability'),
-                    json_extract(p.definition, '$.metadata.solvability')) = $solvability)
+                    json_extract(p.definition, '$.metadata.solvability')) IN (SELECT value FROM json_each($solvability)))
             ORDER BY c.id DESC LIMIT $limit
             """;
         command.Parameters.AddWithValue("$before", (object?)before ?? DBNull.Value);
-        command.Parameters.AddWithValue("$width", (object?)filter.Width ?? DBNull.Value);
-        command.Parameters.AddWithValue("$height", (object?)filter.Height ?? DBNull.Value);
+        command.Parameters.AddWithValue("$width", FilterValues(filter.Widths));
+        command.Parameters.AddWithValue("$height", FilterValues(filter.Heights));
         command.Parameters.AddWithValue("$unstarted", unstartedOnly);
-        command.Parameters.AddWithValue("$difficulty", (object?)filter.WebPbnDifficulty ?? DBNull.Value);
-        command.Parameters.AddWithValue("$solvability", (object?)filter.WebPbnSolvability ?? DBNull.Value);
+        command.Parameters.AddWithValue("$difficulty", FilterValues(filter.Difficulties));
+        command.Parameters.AddWithValue("$solvability", FilterValues(filter.Solvabilities));
         command.Parameters.AddWithValue("$limit", limit);
 
         using var reader = command.ExecuteReader();
@@ -66,22 +67,19 @@ public sealed partial class PuzzleStore
             SELECT p.content_hash, p.width, p.height, p.metadata, s.completed
             FROM hashi_puzzles p LEFT JOIN hashi_progress s USING (content_hash)
             WHERE ($before IS NULL OR p.content_hash < $before)
-                AND ($width IS NULL OR p.width = $width) AND ($height IS NULL OR p.height = $height)
+                AND ($width IS NULL OR p.width IN (SELECT value FROM json_each($width)))
+                AND ($height IS NULL OR p.height IN (SELECT value FROM json_each($height)))
                 AND ($unstarted = 0 OR s.content_hash IS NULL)
-                AND ($difficulty IS NULL OR json_extract(p.metadata, '$.rating.difficulty') = $difficulty)
-                AND ($solvability IS NULL OR json_extract(p.metadata, '$.rating.solvability') = $solvability)
-                AND ($tiers IS NULL OR json_extract(p.metadata, '$.rating.difficulty') IN (SELECT value FROM json_each($tiers)))
-                AND ($logic IS NULL OR json_extract(p.metadata, '$.rating.solvability') IN (SELECT value FROM json_each($logic)))
+                AND ($difficulty IS NULL OR json_extract(p.metadata, '$.rating.difficulty') IN (SELECT value FROM json_each($difficulty)))
+                AND ($solvability IS NULL OR json_extract(p.metadata, '$.rating.solvability') IN (SELECT value FROM json_each($solvability)))
             ORDER BY p.content_hash DESC LIMIT $limit
             """;
         command.Parameters.AddWithValue("$before", (object?)before ?? DBNull.Value);
-        command.Parameters.AddWithValue("$width", (object?)filter.Width ?? DBNull.Value);
-        command.Parameters.AddWithValue("$height", (object?)filter.Height ?? DBNull.Value);
+        command.Parameters.AddWithValue("$width", FilterValues(filter.Widths));
+        command.Parameters.AddWithValue("$height", FilterValues(filter.Heights));
         command.Parameters.AddWithValue("$unstarted", unstartedOnly);
-        command.Parameters.AddWithValue("$difficulty", (object?)(int?)filter.HashiDifficulty ?? DBNull.Value);
-        command.Parameters.AddWithValue("$solvability", (object?)(int?)filter.HashiSolvability ?? DBNull.Value);
-        command.Parameters.AddWithValue("$tiers", filter.PreferredDifficulties is { } tiers ? (object)JsonSerializer.Serialize(tiers, Json) : DBNull.Value);
-        command.Parameters.AddWithValue("$logic", filter.PreferredSolvabilities is { } logic ? (object)JsonSerializer.Serialize(logic, Json) : DBNull.Value);
+        command.Parameters.AddWithValue("$difficulty", FilterValues(filter.Difficulties));
+        command.Parameters.AddWithValue("$solvability", FilterValues(filter.Solvabilities));
         command.Parameters.AddWithValue("$limit", limit);
 
         using var reader = command.ExecuteReader();
@@ -94,6 +92,8 @@ public sealed partial class PuzzleStore
         }
         return summaries;
     }
+
+    private static object FilterValues(int[]? values) => values is null ? DBNull.Value : JsonSerializer.Serialize(values, Json);
 
     internal IReadOnlyDictionary<string, object> ListHashiMetadata(string[] hashes)
     {

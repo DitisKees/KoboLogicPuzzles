@@ -12,14 +12,17 @@ internal static class GameApi
         {
             ApiVersion = 2,
             SchemaVersion = 1,
+            AdvancedFilters = true,
             Games = options.Enabled || store.HasHashiPuzzles() ? new[] { "nonogram", "hashi" } : ["nonogram"],
         });
         api.MapGet("/hashi/status", (HashiInventory inventory) => inventory.GetStatus());
 
         api.MapGet("/puzzles", (GameCatalog catalog, string? game, int? width, int? height, string? difficulty, string? solvability,
+            string? widthFilter, string? heightFilter, string? difficultyFilter, string? solvabilityFilter, string? sizeFilter,
             string? beforeId, int limit = 50) =>
         {
-            var filter = PuzzleFilter.Parse(game, width, height, difficulty, solvability);
+            var filter = PuzzleFilter.Parse(game, width, height, difficulty, solvability,
+                widthFilter, heightFilter, difficultyFilter, solvabilityFilter, sizeFilter);
             if (filter is null || limit is < 1 or > 100)
                 return Server.BadRequest("Supply a supported game, valid filters, and a limit of 1–100.");
             PuzzleId? before = null;

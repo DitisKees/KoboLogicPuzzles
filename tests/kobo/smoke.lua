@@ -179,6 +179,86 @@ local function testHashiSync()
     assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
 end
 
+local function saveFilterInput(title, value)
+    for widget in UI:topdown_widgets_iter() do
+        if widget.title == title and widget.setInputText then
+            widget:setInputText(value)
+            widget.buttons[1][2].callback()
+            return
+        end
+    end
+    error("Missing filter input: " .. title)
+end
+
+local function testQueueFilters()
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } },
+        store = assert(Store.open(home .. "/queue-filters")),
+    }
+    local function enterFilter(column, title, value)
+        plugin:filterSettings("nonogram")
+        UI:getTopmostVisibleWidget().buttons[1][column].callback()
+        saveFilterInput(title, value)
+    end
+    enterFilter(1, "Width", "3-4, 6")
+    enterFilter(2, "Difficulty", "3.5-4.25")
+    plugin:filterSettings("nonogram")
+    UI:getTopmostVisibleWidget().buttons[2][2].callback()
+    local checklist = UI:getTopmostVisibleWidget()
+    checklist.buttons[2][1].callback()
+    checklist.buttons[4][1].callback()
+    checklist.buttons[7][3].callback()
+
+    local store = plugin.store
+    assert(store:updateSettings({ server = "http://example.test:8080", target = 2, hashiTarget = 2 }))
+    assert(store:setFilters("hashi", { size = "20-25", difficulty = "medium,hard", solvability = "basic_logic,advanced_logic" }))
+    local cached = smallPuzzle(7)
+    cached.metadata = { difficulty = 3, solvability = 2 }
+    local played, nextHashi = hashiSquare("c"), hashiSquare("d")
+    local nextNonogram = wireNonogram(8)
+    nextNonogram.metadata = { difficulty = 4.25, solvability = 4 }
+    assert(store:download(cached) and store:download(played))
+    assert(store:saveGame(Hashi:new(played, "x..."), { row = 1, column = 1, zoom = 2 }, true))
+    store = assert(Store.open(store.root))
+    local stamp = "2026-11-22T10:00:00+00:00"
+
+    local result, err = Sync.run(store, function(_, path, payload)
+        if path == "/restore" then return {} end
+        assert(path == "/progress" and payload.boards[1].puzzleId == played.id)
+        return { savedCount = 1, backedUpAt = stamp }
+    end, { nonogram = true, hashi = true })
+    assert(result.backedUp == 1 and result.added == 0 and err == Puzzle.advancedFilterMessage)
+
+    local games = assert(API.capabilities(function()
+        return { apiVersion = 2, schemaVersion = 1, games = { "nonogram", "hashi" }, advancedFilters = true }
+    end))
+    assert(games.advancedFilters)
+    result, err = Sync.run(store, function(method, path, payload)
+        if method == "GET" then
+            assert(path == "/puzzles/metadata?id=nonogram-webpbn-7")
+            return { ["nonogram-webpbn-7"] = { difficulty = 3.5, solvability = 2 } }
+        end
+        assert(path == "/offline-queue" and payload.targetCount == 2)
+        if payload.game == "nonogram" then
+            assert(payload.widthFilter == "3-4,6" and payload.difficultyFilter == "3.5-4.25" and payload.solvabilityFilter == "2,4")
+            assert(payload.cachedUnstartedPuzzleIds[1] == "nonogram-webpbn-7")
+            return { puzzles = { nextNonogram }, remaining = 0 }
+        end
+        assert(payload.sizeFilter == "20-25" and payload.difficultyFilter == "medium,hard"
+            and payload.solvabilityFilter == "basic_logic,advanced_logic" and payload.excludedPuzzleIds[1] == played.id)
+        return { puzzles = { nextHashi }, remaining = 1 }
+    end, games)
+    assert(not err and result.added == 2 and result.shortfalls.nonogram == 0 and result.shortfalls.hashi == 1)
+
+    local wrong = hashiSquare("e")
+    wrong.metadata.difficulty = "expert"
+    result, err = Sync.run(store, function(_, path)
+        assert(path == "/offline-queue")
+        return { puzzles = { wrong }, remaining = 0 }
+    end, { hashi = true, advancedFilters = true })
+    assert(result.added == 0 and not store.records[wrong.id] and err:find("invalid puzzle", 1, true))
+end
+
 local function testApiTransport()
     local http = require("socket.http")
     local json = require("json")
@@ -972,12 +1052,15 @@ local function testHashiUI()
     assert(plugin.library.item_table[5].mandatory == "20×20  Not started")
     plugin:filterSettings("hashi")
     UI:getTopmostVisibleWidget().buttons[1][1].callback()
-    UI:getTopmostVisibleWidget().buttons[4][2].callback()
+    saveFilterInput("Grid size", "40-50")
     plugin:filterSettings("hashi")
     UI:getTopmostVisibleWidget().buttons[1][2].callback()
-    UI:getTopmostVisibleWidget().buttons[2][2].callback()
+    local checklist = UI:getTopmostVisibleWidget()
+    checklist.buttons[2][1].callback()
+    checklist.buttons[3][1].callback()
+    checklist.buttons[5][3].callback()
 
-    local catalogPath = "/puzzles?limit=25&game=hashi&width=50&height=50&difficulty=hard"
+    local catalogPath = "/puzzles?limit=25&game=hashi&sizeFilter=40-50&difficultyFilter=medium,hard"
     local hashiSummary = { id = large.id, game = "hashi", width = 50, height = 50, metadata = large.metadata }
     local calls = {}
     plugin.online = function(_, operation)
@@ -989,7 +1072,7 @@ local function testHashiUI()
             if path == catalogPath .. "&beforeId=" .. large.id then return { puzzles = { hashiSummary } } end
             assert(path == "/puzzles/" .. large.id .. "?includeSolution=true")
             return large
-        end, { nonogram = true, hashi = true })
+        end, { nonogram = true, hashi = true, advancedFilters = true })
     end
     assert(plugin.store:updateSettings({ server = "http://example.test:8080" }))
     plugin:browse()
@@ -1179,6 +1262,7 @@ testBoard()
 testSync()
 testHashiRules()
 testHashiSync()
+testQueueFilters()
 testApiTransport()
 testPluginDiscovery()
 testPluginUpdate()
