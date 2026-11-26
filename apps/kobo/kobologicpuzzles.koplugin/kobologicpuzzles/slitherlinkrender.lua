@@ -40,7 +40,7 @@ function Render.paint(bb, board, originX, originY, scale, face, thumbnail)
         local x2, y2 = originX + b.x * scale, originY + b.y * scale
         if mark == "#" or not thumbnail then
             line(bb, x1, y1, x2, y2, mark == "#" and (thumbnail and 1 or thick) or 1,
-                mark == "#" and BB.COLOR_BLACK or BB.COLOR_GRAY_9)
+                mark == "#" and BB.COLOR_BLACK or BB.COLOR_GRAY_7)
         end
         if mark == "x" and face then
             local x, y = (x1 + x2) / 2, (y1 + y2) / 2
@@ -69,8 +69,9 @@ function Render.paint(bb, board, originX, originY, scale, face, thumbnail)
                     elseif mark == "." then undecided = undecided + 1 end
                 end
                 local conflict = drawn > clue or drawn + undecided < clue
+                local fulfilled = drawn == clue
                 local label = tostring(clue)
-                local size = RenderText:sizeUtf8Text(0, false, face, label, true)
+                local size = RenderText:sizeUtf8Text(0, false, face, label, true, not fulfilled)
                 local left = x - math.floor(size.x / 2)
                 local top = y - math.ceil((size.y_top + size.y_bottom) / 2)
                 local labelHeight = math.max(1, size.y_top + size.y_bottom)
@@ -78,7 +79,7 @@ function Render.paint(bb, board, originX, originY, scale, face, thumbnail)
                     bb:paintRect(left - 2, top - 2, size.x + 4, labelHeight + 4, BB.COLOR_BLACK)
                 end
                 RenderText:renderUtf8Text(bb, left, y + math.floor((size.y_top - size.y_bottom) / 2), face, label,
-                    true, false, conflict and BB.COLOR_WHITE or drawn == clue and BB.COLOR_GRAY_6 or BB.COLOR_BLACK)
+                    true, not fulfilled, conflict and BB.COLOR_WHITE or fulfilled and BB.COLOR_GRAY or BB.COLOR_BLACK)
             end
         end
     end
