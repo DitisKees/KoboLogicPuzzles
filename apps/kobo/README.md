@@ -38,9 +38,9 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 
 ## Play Hashi
 
-- Drag from a numbered island to its nearest neighbor in the same row or column to cycle through one bridge, two bridges, and zero bridges. You can also select **Bridge**, tap an island, and repeat taps on its neighbor. Tap the selected island or an empty cell to deselect it. With taps, **No bridge** toggles a crossed-out candidate, and **Clear** removes either kind of mark.
+- Start near a numbered island and swipe up, down, left, or right. Even a short swipe cycles through one bridge, two bridges, and zero bridges to the next island in that direction. You can also select **Bridge**, tap an island, and repeat taps on its neighbor. Tap the selected island or an empty cell to deselect it. With taps, **No bridge** toggles a crossed-out candidate, and **Clear** removes either kind of mark.
 - An island turns grey and its number is struck through when it has the right number of bridges. A white number on a black island means it has too many. Bridges cannot cross. To solve the puzzle, match every number and connect all islands in one network. The optional dotted guides show candidates around the selected island. Toggle them in **Hashi settings → Candidate bridges**.
-- Drag with two fingers to pan, or start a one-finger drag in an empty cell. Use **−** and **+** to change scale, or open **Overview** and tap an area to jump there. The game saves your view and marks as you play. **Undo**, **Redo**, **Checkpoint**, and **Restart** are available offline.
+- Drag with two fingers to pan, or start a one-finger drag away from islands. Use **−** and **+** to change scale, or open **Overview** and tap an area to jump there. The game saves your view and marks as you play. **Undo**, **Redo**, **Checkpoint**, and **Restart** are available offline.
 - **Check** counts decisions that disagree with the stored solution. A single bridge on an edge that ultimately needs two is accepted. The library shows bridges placed as a percentage of the total required, alongside a thumbnail of the current board.
 
 ## Backup and offline puzzles

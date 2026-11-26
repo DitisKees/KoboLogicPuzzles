@@ -1070,21 +1070,48 @@ local function testHashiUI()
     game:onButton("undo")
     assert(game.board.states[1] == "x")
     local marks = game.board:marks()
+    local cell = game.layout.cell
+    local function offset(pos, dx, dy) return Geom:new{ x = pos.x + dx, y = pos.y + dy } end
     local neighbor = point(0, 3)
-    game:onGesture{ ges = "swipe", pos = firstIsland, end_pos = point(0, 6) }
+    game:onGesture{ ges = "swipe", pos = firstIsland, end_pos = offset(firstIsland, 0, -cell) }
     assert(game.row == 1 and game.column == 1 and game.board:marks() == marks)
-    game:onGesture{ ges = "pan", start_pos = firstIsland, pos = neighbor }
+    local nearIsland = offset(firstIsland, -math.floor(cell * 0.75), 0)
+    assert(nearIsland.x < game.grid.x)
+    local shortSouth = offset(nearIsland, math.floor(cell / 3), cell)
+    game:onGesture{ ges = "pan", start_pos = nearIsland, pos = shortSouth }
     assert(game.row == 1 and game.column == 1 and game.board:marks() == marks)
-    game:onGesture{ ges = "pan_release", pos = neighbor }
+    game:onGesture{ ges = "pan_release", pos = shortSouth }
     assert(game.board.states[1] == "1")
-    game:onGesture{ ges = "swipe", pos = neighbor, end_pos = firstIsland }
+    game:onGesture{ ges = "swipe", pos = neighbor, end_pos = offset(neighbor, 0, -cell) }
     assert(game.board.states[1] == "2")
-    game:onGesture{ ges = "multiswipe", pos = firstIsland, end_pos = neighbor }
+    game:onGesture{ ges = "multiswipe", pos = firstIsland, end_pos = point(0, 6) }
     assert(game.board.states[1] == ".")
     for _, mark in ipairs({ "2", "1", "x" }) do
         game:onButton("undo")
         assert(game.board.states[1] == mark)
     end
+
+    -- KOReader can classify small movements as taps or hold releases.
+    local short = device.screen:scaleByDPI(12)
+    game:onGesture{ ges = "touch", pos = firstIsland }
+    game:onGesture{ ges = "tap", pos = offset(firstIsland, 1, 0) }
+    assert(game.selectedIsland == 1 and game.board:marks() == marks)
+    game:onGesture{ ges = "touch", pos = firstIsland }
+    game:onGesture{ ges = "tap", pos = offset(firstIsland, short, 0) }
+    assert(game.board.states[1] == "x" and game.board.states[2] == "1")
+    game:moveViewport(1, 4)
+    local westSource = point(3, 0)
+    local westEnd = offset(westSource, -cell, 0)
+    game:onGesture{ ges = "touch", pos = westSource }
+    game:onGesture{ ges = "hold", pos = westSource }
+    game:onGesture{ ges = "hold_pan", start_pos = westSource, pos = westEnd }
+    game:onGesture{ ges = "hold_release", pos = westEnd }
+    assert(game.column == 4 and game.board.states[2] == "2")
+    game:onButton("undo")
+    game:onButton("undo")
+    assert(game.board:marks() == marks)
+    game:moveViewport(1, 1)
+
     local emptyStart, emptyEnd = point(13, 13), point(7, 7)
     game:onGesture{ ges = "pan", start_pos = emptyStart, pos = emptyEnd }
     game:onGesture{ ges = "pan_release", pos = emptyEnd }

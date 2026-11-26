@@ -25,6 +25,8 @@ function HashiGame:resize()
     local l = self.layout
     local fontScale = Device.screen:scaleBySize(100) / 100
     self.islandFace = Font:getFace("cfont", math.max(3, math.floor(l.cell * 0.60 / fontScale)))
+    self.dragRadius = math.max(l.cell * 0.85, Device.screen:scaleByDPI(14))
+    self.dragThreshold = Device.screen:scaleByDPI(8)
     self.grid = rect(l.gridX, l.gridY, l.columns * l.cell, l.rows * l.cell)
     self.dirtyGrid = {}
 end
@@ -137,10 +139,65 @@ function HashiGame:islandAt(position)
     return row and self.board:islandAt(row, column)
 end
 
+function HashiGame:dragSource(position)
+    local l = self.layout
+    if self.overview or position.y < l.pad + l.button or position.y >= l.footerY then return end
+
+    local x, y = self:gridOrigin()
+    local half = math.floor(l.cell / 2)
+    local closest, distance = nil, self.dragRadius * self.dragRadius
+    for id, island in ipairs(self.board.puzzle.islands) do
+        local cx, cy = x + island.x * l.cell + half, y + island.y * l.cell + half
+        local dx, dy = cx - position.x, cy - position.y
+        local squared = dx * dx + dy * dy
+        if squared < distance and contains(self.grid, cx, cy) then
+            closest, distance = id, squared
+        end
+    end
+    return closest
+end
+
+function HashiGame:drawBridge(first, start, finish)
+    local dx, dy = finish.x - start.x, finish.y - start.y
+    local horizontal = math.abs(dx) >= math.abs(dy)
+    local travel = horizontal and dx or dy
+    if math.abs(travel) < self.dragThreshold then return false end
+
+    local source = self.board.puzzle.islands[first]
+    for id in pairs(self.board.graph.neighbors[first]) do
+        local target = self.board.puzzle.islands[id]
+        local offset = horizontal and target.x - source.x or target.y - source.y
+        if travel * offset > 0 then
+            self:editEdge(first, id, "bridge")
+            break
+        end
+    end
+    return true
+end
+
 function HashiGame:editEdge(first, second, mode)
     local changes, err = self.board:edit(first, second, mode)
     self:changed(changes)
     if err then UIManager:show(InfoMessage:new{ text = err, timeout = 2 }) end
+end
+
+function HashiGame:onGesture(gesture)
+    if self.suspended or Device.screen_saver_mode then return true end
+    local kind = gesture.ges
+    if kind == "touch" then
+        self.touchStart = self.touchStart == nil and not self.motion and gesture.pos or false
+        return true
+    end
+    if kind ~= "hold" and kind ~= "hold_pan" then
+        local start = self.touchStart
+        self.touchStart = nil
+        -- KOReader reports release as a tap when movement is below its pan threshold.
+        if start and (kind == "tap" or kind == "hold_release") then
+            local source = self:dragSource(start)
+            if source and self:drawBridge(source, start, gesture.pos) then return true end
+        end
+    end
+    return Game.onGesture(self, gesture)
 end
 
 function HashiGame:onTap(_, gesture)
@@ -180,8 +237,12 @@ function HashiGame:markAt() return nil end
 function HashiGame:onHold() return true end
 
 function HashiGame:beginMotion(start, multi)
-    Game.beginMotion(self, start, multi)
-    if self.motion and not multi then self.motion.island = self:islandAt(start) end
+    local island = not multi and start and self:dragSource(start)
+    if island then
+        self.motion = { start = start, island = island }
+    else
+        Game.beginMotion(self, start, multi)
+    end
 end
 
 function HashiGame:onPan(_, gesture)
@@ -192,12 +253,12 @@ function HashiGame:onPan(_, gesture)
 end
 
 function HashiGame:finishMotion(position)
+    self.touchStart = nil
     local motion = self.motion
     if not motion or not motion.island then return Game.finishMotion(self, position) end
     -- Edit on release so a second finger can turn the gesture into a pan.
     self.motion = nil
-    local target = position and self:islandAt(position)
-    if target then self:editEdge(motion.island, target, "bridge") end
+    if position then self:drawBridge(motion.island, motion.start, position) end
 end
 
 function HashiGame:onButton(action)
