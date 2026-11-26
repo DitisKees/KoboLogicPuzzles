@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
 
@@ -7,6 +8,7 @@ namespace KoboLogicPuzzles.Server;
 [JsonDerivedType(typeof(NonogramPuzzleDefinition), "nonogram")]
 [JsonDerivedType(typeof(HashiPuzzleDefinition), "hashi")]
 [JsonDerivedType(typeof(FillAPixPuzzleDefinition), "fill-a-pix")]
+[JsonDerivedType(typeof(SlitherlinkDefinition), "slitherlink")]
 public abstract record GamePuzzleDefinition(string Id, int Width, int Height)
 {
     public int SchemaVersion => 1;

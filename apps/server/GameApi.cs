@@ -1,4 +1,5 @@
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Slitherlink;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KoboLogicPuzzles.Server;
@@ -8,21 +9,29 @@ internal static class GameApi
     public static void MapEndpoints(WebApplication app)
     {
         var api = app.MapGroup("/api/v2");
-        api.MapGet("/capabilities", (HashiGenerationOptions options, PuzzleStore store) => new
+        api.MapGet("/capabilities", (HashiGenerationOptions options, SlitherlinkOptions slitherlink, PuzzleStore store) =>
         {
-            ApiVersion = 2,
-            SchemaVersion = 1,
-            AdvancedFilters = true,
-            Games = GetGames(options, store),
+            var sources = store.ListSlitherlinkSources();
+            if (slitherlink.Enabled)
+                sources.TryAdd(LoopyGenerator.Source, LoopyGenerator.SourceName);
+            return new
+            {
+                ApiVersion = 2,
+                SchemaVersion = 1,
+                AdvancedFilters = true,
+                Games = GetGames(options, store, sources.Count > 0),
+                SlitherlinkSources = sources,
+            };
         });
         api.MapGet("/hashi/status", (HashiInventory inventory) => inventory.GetStatus());
+        api.MapGet("/slitherlink/status", (SlitherlinkInventory inventory) => inventory.GetStatus());
 
         api.MapGet("/puzzles", (GameCatalog catalog, string? game, int? width, int? height, string? difficulty, string? solvability,
             string? widthFilter, string? heightFilter, string? difficultyFilter, string? solvabilityFilter, string? sizeFilter,
-            string? beforeId, int limit = 50) =>
+            string? beforeId, string? tiling, string? tilingFilter, string? source, string? sourceFilter, int limit = 50) =>
         {
             var filter = PuzzleFilter.Parse(game, width, height, difficulty, solvability,
-                widthFilter, heightFilter, difficultyFilter, solvabilityFilter, sizeFilter);
+                widthFilter, heightFilter, difficultyFilter, solvabilityFilter, sizeFilter, tiling, tilingFilter, source, sourceFilter);
             if (filter is null || limit is < 1 or > 100)
                 return Server.BadRequest("Supply a supported game, valid filters, and a limit of 1–100.");
             PuzzleId? before = null;
@@ -85,13 +94,15 @@ internal static class GameApi
         });
     }
 
-    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store)
+    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink)
     {
         var games = new List<string> { "nonogram" };
         if (options.Enabled || store.HasHashiPuzzles())
             games.Add("hashi");
         if (store.HasFillAPixPuzzles())
             games.Add(FillAPixSources.Game);
+        if (hasSlitherlink)
+            games.Add("slitherlink");
         return games.ToArray();
     }
 }

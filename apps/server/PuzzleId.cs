@@ -3,13 +3,14 @@ using System.Globalization;
 
 namespace KoboLogicPuzzles.Server;
 
-public enum PuzzleGame { Nonogram, Hashi, FillAPix }
+public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink }
 
 public sealed record PuzzleId
 {
     private const string WebPbnPrefix = "nonogram-webpbn-";
     private const string HashiPrefix = "hashi-local-";
     private const string FillAPixPrefix = "fill-a-pix-";
+    private const string SlitherlinkPrefix = "slitherlink-";
 
     private PuzzleId(PuzzleGame game, string value, int? webPbnId, string? contentHash,
         FillAPixSource? fillAPixSource = null, int? fillAPixNumber = null)
@@ -40,6 +41,13 @@ public sealed record PuzzleId
         if (!IsContentHash(contentHash))
             throw new ArgumentException("A Hashi content hash must have 64 lowercase hexadecimal characters.", nameof(contentHash));
         return new PuzzleId(PuzzleGame.Hashi, HashiPrefix + contentHash, null, contentHash);
+    }
+
+    public static PuzzleId FromSlitherlink(string contentHash)
+    {
+        if (!IsContentHash(contentHash))
+            throw new ArgumentException("A Slitherlink content hash must have 64 lowercase hexadecimal characters.", nameof(contentHash));
+        return new PuzzleId(PuzzleGame.Slitherlink, SlitherlinkPrefix + contentHash, null, contentHash);
     }
 
     internal static PuzzleId FromFillAPix(FillAPixSource source, int number)
@@ -73,6 +81,12 @@ public sealed record PuzzleId
                 id = FromHashi(suffix);
                 return true;
             }
+        }
+        else if (value?.StartsWith(SlitherlinkPrefix, StringComparison.Ordinal) is true &&
+                 IsContentHash(value[SlitherlinkPrefix.Length..]))
+        {
+            id = FromSlitherlink(value[SlitherlinkPrefix.Length..]);
+            return true;
         }
         else if (value?.StartsWith(FillAPixPrefix, StringComparison.Ordinal) is true)
         {

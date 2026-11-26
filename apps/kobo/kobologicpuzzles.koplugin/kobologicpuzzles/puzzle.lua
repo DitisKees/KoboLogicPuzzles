@@ -1,18 +1,19 @@
 local Board = require("kobologicpuzzles/board")
 local FillAPix = require("kobologicpuzzles/fillapixboard")
 local Hashi = require("kobologicpuzzles/hashiboard")
+local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 
 local Puzzle = {}
-Puzzle.games = { "nonogram", "hashi", "fill-a-pix" }
-Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix" }
+Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink" }
+Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink" }
 Puzzle.families = {
     { title = "Cell shading", games = { "nonogram", "fill-a-pix" } },
-    { title = "Line drawing", games = { "hashi" } },
+    { title = "Line drawing", games = { "hashi", "slitherlink" } },
     { title = "Region partitioning", games = {} },
     { title = "Object placement", games = {} },
 }
 Puzzle.fillAPixSources = { janko = "Janko", grandgames = "GrandGames", fillapixnet = "Fill-a-Pix.net" }
-local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix }
+local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink }
 Puzzle.difficulties = { "easy", "medium", "hard", "expert" }
 Puzzle.difficultyNames = { easy = "Easy", medium = "Medium", hard = "Hard", expert = "Expert" }
 Puzzle.hashiSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahead", "requires_search", "unknown" }
@@ -26,6 +27,8 @@ function Puzzle.localId(value)
     local number = value:match("^nonogram%-webpbn%-([1-9]%d*)$")
     if number and #number <= 10 and tonumber(number) <= 2147483647 then return tonumber(number) end
     local hash = value:match("^hashi%-local%-([0-9a-f]+)$")
+    if hash and #hash == 64 then return value end
+    hash = value:match("^slitherlink%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
     local source, upstreamId = value:match("^fill%-a%-pix%-([a-z0-9]+)%-([1-9]%d*)$")
     if Puzzle.fillAPixSources[source] and #upstreamId <= 10 and tonumber(upstreamId) <= 2147483647 then return value end
@@ -50,6 +53,7 @@ end
 function Puzzle.game(id)
     if type(id) == "number" then return "nonogram" end
     if type(id) == "string" and id:sub(1, 11) == "fill-a-pix-" then return "fill-a-pix" end
+    if type(id) == "string" and id:sub(1, 12) == "slitherlink-" then return "slitherlink" end
     return "hashi"
 end
 
@@ -97,7 +101,7 @@ function Puzzle.title(puzzle)
     return string.format("Hashi %s", puzzle.id:sub(-6))
 end
 
-local filterKeys = { "width", "height", "size", "difficulty", "solvability" }
+local filterKeys = { "width", "height", "size", "difficulty", "solvability", "tiling", "source" }
 local dimension = { min = 1, max = 100, step = 1 }
 local fillDimension = { min = 1, max = 2147483647, step = 1 }
 local filterDomains = {
@@ -110,9 +114,12 @@ local filterDomains = {
         difficulty = Puzzle.difficultyNames, solvability = Puzzle.hashiSolvabilityNames,
     },
     ["fill-a-pix"] = { width = fillDimension, height = fillDimension },
+    slitherlink = { width = dimension, height = dimension, size = dimension, difficulty = Slitherlink.difficultyNames,
+        tiling = Slitherlink.tilingNames, source = { valid = Slitherlink.validSource } },
 }
 
 local function filterValue(domain, token)
+    if domain.valid then return domain.valid(token) and token end
     if not domain.min then return domain[token] and token end
     local pattern = domain.step == 0.25 and "^[%d.]+$" or "^%d+$"
     local number = token:match(pattern) and tonumber(token)
@@ -189,13 +196,16 @@ function Puzzle.filterMatcher(game, filters)
         return matches("width", puzzle.width) and matches("height", puzzle.height)
             and matches("size", puzzle.width) and matches("size", puzzle.height)
             and matches("difficulty", difficulty) and matches("solvability", solvability)
+            and matches("tiling", metadata.tiling) and matches("source", metadata.source)
     end
 end
 
 function Puzzle.filterParameters(filters)
     local parameters, advanced = {}, false
     for key, value in pairs(filters) do
-        if key == "size" or (type(value) == "string" and value:find("[,-]")) then
+        local extended = type(value) == "string" and (value:find(",", 1, true)
+            or (key ~= "tiling" and key ~= "source" and value:find("-", 1, true)))
+        if key == "size" or extended then
             parameters[key .. "Filter"] = value
             advanced = true
         else

@@ -7,6 +7,7 @@ local socketutil = require("socketutil")
 local url = require("socket.url")
 
 local API = {}
+local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 local jsonNull = JSON.util.null
 local decodeResponse = JSON.decode.getDecoder({ initialObject = true, others = { allowUndefined = false, null = jsonNull } })
 
@@ -87,6 +88,14 @@ function API.capabilities(request)
     local games = { advancedFilters = reply.advancedFilters == true }
     for _, game in ipairs(reply.games) do
         if Puzzle.gameNames[game] then games[game] = true end
+    end
+    if games.slitherlink and type(reply.slitherlinkSources) == "table" then
+        games.slitherlinkSources = {}
+        for source, name in pairs(reply.slitherlinkSources) do
+            if Slitherlink.validSource(source) and type(name) == "string" and #name > 0 and #name <= 320 then
+                games.slitherlinkSources[source] = name
+            end
+        end
     end
     if not games.nonogram then return nil, unsupportedServer end
     return games

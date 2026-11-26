@@ -20,6 +20,7 @@ local Geom = require("ui/geometry")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local Puzzle = require("kobologicpuzzles/puzzle")
 local Store = require("kobologicpuzzles/store")
+local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 local Sync = require("kobologicpuzzles/sync")
 local UI = require("ui/uimanager")
 local Update = require("kobologicpuzzles/update")
@@ -196,7 +197,7 @@ local function testHashiSync()
     store = assert(Store.open(store.root))
     assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
     assert(store.records[fillAPix.id].completed and store.records[fillAPix.id].marks == "#xx#x#")
-    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix")
+    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink")
 end
 
 local function testFillAPixRulesAndSync()
@@ -345,6 +346,7 @@ local function testApiTransport()
     local trapper = require("ui/trapper")
     local originalRequest = http.request
     local server = "http://example.test:8080"
+    local loopId = "slitherlink-" .. string.rep("a", 64)
     http.request = function(options)
         local prefix = server .. "/api/v2"
         assert(options.url:sub(1, #prefix) == prefix)
@@ -357,6 +359,12 @@ local function testApiTransport()
         elseif path == "/offline-queue" then
             reply = '{"remaining":0,"puzzles":[{"schemaVersion":1,"game":"fill-a-pix","id":"fill-a-pix-janko-1",'
                 .. '"title":"Blank clues","width":3,"height":2,"clues":[null,0,null,0,null,null],"solution":null}]}'
+        elseif path == "/puzzles/" .. loopId then
+            reply = '{"schemaVersion":1,"game":"slitherlink","id":"' .. loopId .. '","width":1,"height":1,'
+                .. '"title":"Blank face","vertices":[{"x":0,"y":0},{"x":0,"y":2},{"x":2,"y":0},{"x":2,"y":2}],'
+                .. '"edges":[{"first":0,"second":1},{"first":0,"second":2},{"first":1,"second":3},{"first":2,"second":3}],'
+                .. '"faces":[{"x":1,"y":1,"edges":[0,1,2,3],"clue":null}],'
+                .. '"metadata":{"tiling":"square","source":"loopy","sourceName":"Loopy","faceCount":1},"solution":"####"}'
         else
             assert(path == "/progress" and options.method == "POST")
             local payload = json.decode(assert(options.source()))
@@ -377,6 +385,8 @@ local function testApiTransport()
             local picture = assert(Puzzle.fromWire(queue.puzzles[1]))
             assert(picture.solution == nil and #picture.clues == 6 and picture.clues[1] == false
                 and picture.clues[2] == 0 and picture.clues[3] == false and picture.clues[6] == false)
+            local loop = assert(Puzzle.fromWire(assert(API.request(server, "GET", "/puzzles/" .. loopId))))
+            assert(loop.faces[1].clue == nil and loop.solution == "####")
             local receipt = assert(API.request(server, "POST", "/progress", { schemaVersion = 1,
                 boards = { Puzzle.encodeProgress({ puzzleId = hashiSquare("a").id, marks = "....", completed = false }) } }))
             assert(receipt.savedCount == 1)
@@ -1540,6 +1550,105 @@ local function testFillAPixUI()
     plugin.home:onClose()
 end
 
+local function testSlitherlinkUI()
+    local puzzle = {
+        id = "slitherlink-" .. string.rep("a", 64), game = "slitherlink", schemaVersion = 1,
+        width = 1, height = 2, title = "Polygon fixture",
+        metadata = { tiling = "snub-square", source = "test-library", sourceName = "Test Library", faceCount = 2,
+            difficulty = "tricky" },
+        vertices = { {x = 0, y = 0}, {x = 0, y = 40}, {x = 40, y = 0}, {x = 40, y = 40}, {x = 75, y = 20} },
+        edges = { {first = 0, second = 1}, {first = 0, second = 2}, {first = 1, second = 3},
+            {first = 2, second = 3}, {first = 2, second = 4}, {first = 3, second = 4} },
+        faces = { {x = 20, y = 20, clue = 1, edges = { 0, 1, 2, 3 }}, {x = 52, y = 20, clue = 3, edges = { 3, 4, 5 }} },
+        solution = "...###",
+    }
+    assert(Slitherlink.validSolution(puzzle, puzzle.solution) and not Slitherlink.validSolution(puzzle, "####.."))
+    local store = assert(Store.open(home .. "/slitherlink-ui"))
+    assert(store:updateSettings({ server = "http://example.test:8080", slitherlinkTarget = 0 }))
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } },
+        store = store,
+    }
+    plugin.slitherlinkSources = { ["test-library"] = "Test Library" }
+    plugin:showHome()
+    tapWidget(plugin.home, homeButton(plugin, "slitherlink"))
+    local library = plugin.library
+    library.item_table[2].callback()
+    UI:getTopmostVisibleWidget().buttons[2][1].callback()
+    local filter = UI:getTopmostVisibleWidget()
+    assert(filter.buttons[1][2].text == "Source  ·  Any")
+    filter.buttons[1][2].callback()
+    local source = UI:getTopmostVisibleWidget()
+    assert(source.buttons[2][1].text == "Test Library")
+    source.buttons[2][1].callback()
+    source.buttons[#source.buttons][3].callback()
+    assert(store.settings.filters.slitherlink.source == "test-library")
+    assert(store:setFilters("slitherlink", { source = "test-library", tiling = "snub-square", difficulty = "tricky" }))
+    assert(Puzzle.catalogQuery("slitherlink", store.settings.filters.slitherlink) ==
+        "game=slitherlink&difficulty=tricky&tiling=snub-square&source=test-library")
+    plugin.online = function(_, operation)
+        operation(function(method, path)
+            assert(method == "GET")
+            if path == "/restore" then return {} end
+            if path == "/puzzles?limit=25&game=slitherlink&difficulty=tricky&tiling=snub-square&source=test-library" then
+                return { puzzles = { puzzle } }
+            end
+            assert(path == "/puzzles/" .. puzzle.id .. "?includeSolution=true")
+            return puzzle
+        end, { nonogram = true, slitherlink = true, advancedFilters = true })
+    end
+    plugin:browse()
+    assert(plugin.catalog.item_table[2].details == "Snub-Square · Tricky · Test Library")
+    plugin.catalog.item_table[2].callback()
+    local game = assert(plugin.game)
+    local function edgeAt(i)
+        local edge = puzzle.edges[i]
+        local a, b = puzzle.vertices[edge.first + 1], puzzle.vertices[edge.second + 1]
+        local x, y, scale = game:graphOrigin(false)
+        return Geom:new{ x = game.grid.x + x + (a.x + b.x) * scale / 2,
+            y = game.grid.y + y + (a.y + b.y) * scale / 2 }
+    end
+    local function tapEdge(i)
+        assert(game:onGesture{ ges = "tap", pos = edgeAt(i) })
+    end
+    UI:forceRePaint()
+    tapEdge(4)
+    tapEdge(5)
+    assert(game.board:marks() == "...##.")
+    game:onButton("undo")
+    assert(game.board:marks() == "...#..")
+    game:onButton("redo")
+    assert(game.board:marks() == "...##.")
+    game:onButton("cross")
+    tapEdge(1)
+    game:onButton("check")
+    assert(UI:getTopmostVisibleWidget().text == "No mistakes so far.")
+    UI:close(UI:getTopmostVisibleWidget())
+    assert(store:saveCheckpoint(game.board))
+    game:onButton("draw")
+    tapEdge(6)
+    assert(game.board:isComplete() and store.records[puzzle.id].completed)
+    UI:close(UI:getTopmostVisibleWidget())
+    UI:forceRePaint()
+    device.screen.bb:writePNG(home .. "/slitherlink-solved.png")
+    game:onClose()
+    assert(library.item_table[3].mandatory == "2 cells  Solved")
+    library:onClose()
+    plugin.home:onClose()
+
+    local renamed = assert(Store.open(home .. "/slitherlink-ui"))
+    assert(renamed.records[puzzle.id].checkpoint == "x..##.")
+    assert(renamed.settings.filters.slitherlink.source == "test-library")
+    local fresh = assert(Store.open(home .. "/slitherlink-restore"))
+    assert(Sync.restore(fresh, function(method, path)
+        assert(method == "GET" and path == "/restore")
+        return { { puzzle = puzzle, progress = {
+            puzzleId = puzzle.id, schemaVersion = 1, marks = renamed.records[puzzle.id].marks, completed = true,
+        } } }
+    end) == 1)
+    assert(fresh.records[puzzle.id].completed)
+end
+
 testBoard()
 testSync()
 testHashiRules()
@@ -1555,5 +1664,6 @@ testMoveRedraw()
 testGameUI()
 testHashiUI()
 testFillAPixUI()
+testSlitherlinkUI()
 testHomeUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

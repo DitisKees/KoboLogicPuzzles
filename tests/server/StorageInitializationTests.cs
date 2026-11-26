@@ -11,7 +11,7 @@ public sealed class StorageInitializationTests
 
         await Task.WhenAll(Task.Run(database.Store.Initialize), Task.Run(new PuzzleStore(database.Path).Initialize));
 
-        Assert.Equal(2L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(3L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Empty(database.Store.RestoreProgress());
         Assert.Empty(database.Store.RestoreHashiProgress());
     }
@@ -25,14 +25,33 @@ public sealed class StorageInitializationTests
             DROP TABLE fill_a_pix_progress;
             DROP TABLE fill_a_pix_puzzles;
             DROP TABLE fill_a_pix_refresh;
+            DROP TABLE slitherlink_progress;
+            DROP TABLE slitherlink_puzzles;
             PRAGMA user_version = 1;
             """);
 
         database.Store.Initialize();
 
-        Assert.Equal(2L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(3L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(12, database.Store.FindPuzzle(12)!.Id);
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.FillAPix));
+    }
+
+    [Fact]
+    public void SchemaTwoMigrationKeepsFillAPixData()
+    {
+        using var database = new TestDatabase();
+        Execute(database.Path, """
+            UPDATE fill_a_pix_refresh SET revision = 7 WHERE source = 'grandgames';
+            DROP TABLE slitherlink_progress;
+            DROP TABLE slitherlink_puzzles;
+            PRAGMA user_version = 2;
+            """);
+        database.Store.Initialize();
+
+        Assert.Equal(3L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(7L, Execute(database.Path, "SELECT revision FROM fill_a_pix_refresh WHERE source = 'grandgames'"));
+        Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.Slitherlink));
     }
 
     [Fact]

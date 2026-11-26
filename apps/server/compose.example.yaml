@@ -12,6 +12,7 @@ services:
       Storage__DatabasePath: "/data/kobologicpuzzles.db"
       CatalogRefresh__Enabled: "true" # Refresh on first startup and weekly thereafter.
       HashiGeneration__Enabled: "true" # Replenish verified local Hashi stock in the background.
+      SlitherlinkGeneration__Enabled: "true"
 
       # The server imports black-and-white puzzles with a unique solution and no blotted clues.
       WebPbn__MinArea: "1225" # Total cells.

@@ -6,7 +6,8 @@ namespace KoboLogicPuzzles.Server;
 public sealed partial class PuzzleStore
 {
     internal void SaveMixedProgress(IReadOnlyList<ProgressUpdate> nonograms, IReadOnlyList<HashiProgressUpdate> hashi,
-        IReadOnlyList<FillAPixProgressUpdate> fillAPix, DateTimeOffset backedUpAt, CancellationToken cancellationToken)
+        IReadOnlyList<FillAPixProgressUpdate> fillAPix, IReadOnlyList<SlitherlinkProgressUpdate> slitherlink,
+        DateTimeOffset backedUpAt, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var connection = Open();
@@ -17,6 +18,8 @@ public sealed partial class PuzzleStore
             WriteHashiProgress(connection, transaction, hashi, backedUpAt);
         if (fillAPix.Count > 0)
             WriteFillAPixProgress(connection, transaction, fillAPix, backedUpAt);
+        if (slitherlink.Count > 0)
+            WriteSlitherlinkProgress(connection, transaction, slitherlink, backedUpAt);
         cancellationToken.ThrowIfCancellationRequested();
         transaction.Commit();
     }
@@ -44,6 +47,8 @@ public sealed partial class PuzzleStore
         }
         if (game is null or PuzzleGame.FillAPix)
             RestoreFillAPixProgress(connection, transaction, boards);
+        if (game is null or PuzzleGame.Slitherlink)
+            RestoreSlitherlinkProgress(connection, transaction, boards);
         transaction.Commit();
         return boards;
     }

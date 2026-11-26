@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
 
@@ -14,6 +15,7 @@ public sealed record GameSavedProgress(string PuzzleId, int SchemaVersion, JsonE
 public sealed record GameSavedBoard(GamePuzzleDefinition Puzzle, GameSavedProgress Progress);
 
 internal sealed record FillAPixProgressUpdate(PuzzleId Id, string Marks, bool Completed);
+internal sealed record SlitherlinkProgressUpdate(PuzzleId Id, string Marks, bool Completed);
 
 public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library, PuzzleProviders providers, TimeProvider time)
 {
@@ -27,6 +29,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
         var nonograms = new List<ProgressUpdate>();
         var hashes = new List<HashiProgressUpdate>();
         var fillAPix = new List<FillAPixProgressUpdate>();
+        var slitherlink = new List<SlitherlinkProgressUpdate>();
         var seen = new HashSet<PuzzleId>();
         foreach (var board in boards)
         {
@@ -44,6 +47,17 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                     marks.Any(mark => mark is not ('.' or '#' or 'x')))
                     throw new ArgumentException($"Puzzle {id} requires one mark (., #, or x) per cell.");
                 fillAPix.Add(new(id, marks, board.Completed));
+            }
+            else if (id.Game == PuzzleGame.Slitherlink)
+            {
+                if (board.Marks.ValueKind != JsonValueKind.String)
+                    throw new ArgumentException("Slitherlink marks must be a string.");
+                if (await providers.GetDefinitionAsync(id, false, cancellationToken) is not SlitherlinkDefinition puzzle)
+                    throw new ArgumentException($"Puzzle {id} is unavailable and its progress could not be backed up.");
+                var marks = board.Marks.GetString()!;
+                if (!puzzle.ValidMarks(marks) || board.Completed && !puzzle.IsComplete(marks))
+                    throw new ArgumentException($"Puzzle {id} has invalid edge marks or an invalid completed loop.");
+                slitherlink.Add(new(id, marks, board.Completed));
             }
             else
             {
@@ -72,7 +86,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 throw new ArgumentException($"The filled cells for puzzle {board.Id} do not satisfy its clues.");
         }
         var backedUpAt = time.GetUtcNow();
-        store.SaveMixedProgress(nonograms, hashes, fillAPix, backedUpAt, cancellationToken);
+        store.SaveMixedProgress(nonograms, hashes, fillAPix, slitherlink, backedUpAt, cancellationToken);
         return new ProgressReceipt(boards.Length, backedUpAt);
     }
 }

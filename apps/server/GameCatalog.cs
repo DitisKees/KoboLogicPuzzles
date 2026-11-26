@@ -17,7 +17,7 @@ public sealed record GameCatalogPage(IReadOnlyList<GamePuzzleSummary> Puzzles, s
 public sealed record GameOfflineQueueRequest(string? Game, [property: JsonRequired] int TargetCount,
     string[]? CachedUnstartedPuzzleIds, string[]? ExcludedPuzzleIds, int? Width, int? Height, string? Difficulty, string? Solvability,
     string? WidthFilter = null, string? HeightFilter = null, string? DifficultyFilter = null, string? SolvabilityFilter = null,
-    string? SizeFilter = null);
+    string? SizeFilter = null, string? Tiling = null, string? TilingFilter = null, string? Source = null, string? SourceFilter = null);
 
 public sealed record GameOfflineQueueResponse(IReadOnlyList<GamePuzzleDefinition> Puzzles, int Remaining);
 
@@ -33,8 +33,9 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
     public async Task<GameOfflineQueueResponse> TopUpAsync(GameOfflineQueueRequest request, CancellationToken cancellationToken)
     {
         var filter = PuzzleFilter.Parse(request.Game, request.Width, request.Height, request.Difficulty, request.Solvability,
-            request.WidthFilter, request.HeightFilter, request.DifficultyFilter, request.SolvabilityFilter, request.SizeFilter)
-            ?? throw new ArgumentException("Supply a supported game and valid dimension, difficulty, and solvability filters.");
+            request.WidthFilter, request.HeightFilter, request.DifficultyFilter, request.SolvabilityFilter, request.SizeFilter,
+            request.Tiling, request.TilingFilter, request.Source, request.SourceFilter)
+            ?? throw new ArgumentException("Supply a supported game and valid puzzle filters.");
         if (request.TargetCount is < 0 or > 100 || request.CachedUnstartedPuzzleIds is { Length: > 100 } ||
             request.ExcludedPuzzleIds is { Length: > 1000 })
             throw new ArgumentException("Use a targetCount of 0–100, at most 100 cached IDs, and at most 1000 excluded IDs.");

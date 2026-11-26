@@ -12,6 +12,8 @@ local InputDialog = require("ui/widget/inputdialog")
 local NetworkMgr = require("ui/network/manager")
 local Puzzle = require("kobologicpuzzles/puzzle")
 local PuzzleMenu = require("kobologicpuzzles/puzzlemenu")
+local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
+local SlitherlinkGame = require("kobologicpuzzles/slitherlinkgame")
 local Store = require("kobologicpuzzles/store")
 local Sync = require("kobologicpuzzles/sync")
 local Trapper = require("ui/trapper")
@@ -23,7 +25,7 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
 local LogicPuzzles = WidgetContainer:extend{ name = "kobologicpuzzles", is_doc_only = false }
-local gameWidgets = { nonogram = Game, hashi = HashiGame, ["fill-a-pix"] = FillAPixGame }
+local gameWidgets = { nonogram = Game, hashi = HashiGame, ["fill-a-pix"] = FillAPixGame, slitherlink = SlitherlinkGame }
 
 local function notice(text)
     UIManager:show(InfoMessage:new{ text = text })
@@ -113,6 +115,8 @@ function LogicPuzzles:libraryItems(game)
         local placed, total
         if game == "hashi" then
             placed, total = Puzzle.rules(puzzle.id).bridgeTotals(puzzle, marks)
+        elseif game == "slitherlink" then
+            placed, total = Slitherlink.progress(puzzle, marks)
         else
             local _, marked = marks:gsub("[#x]", "")
             placed, total = marked, puzzle.width * puzzle.height
@@ -124,7 +128,8 @@ function LogicPuzzles:libraryItems(game)
         items[#items + 1] = {
             text = Puzzle.title(puzzle),
             details = PuzzleMenu.details(puzzle.metadata, game, puzzle.author),
-            mandatory = string.format("%d×%d  %s", puzzle.width, puzzle.height, progressLabel),
+            mandatory = game == "slitherlink" and string.format("%d cells  %s", puzzle.metadata.faceCount, progressLabel)
+                or string.format("%d×%d  %s", puzzle.width, puzzle.height, progressLabel),
             preview = record.marks and record,
             callback = function() self:showGame(puzzle.id) end,
         }
@@ -211,7 +216,10 @@ function LogicPuzzles:editServer()
         if address == self.store.settings.server then return true end
         local ok, err = self.store:updateSettings({ server = address, restoredV2Server = false,
             restoredV2Games = false, lastBackup = false })
-        if ok then self:updateHome() end
+        if ok then
+            self.slitherlinkSources = nil
+            self:updateHome()
+        end
         return ok, err
     end)
 end
@@ -232,9 +240,30 @@ local function choose(title, choices, apply)
     UIManager:show(dialog)
 end
 
-local function filterOptions(game, key)
+function LogicPuzzles:filterOptions(game, key)
     local values, labels
-    if key == "difficulty" and game == "hashi" then
+    if game == "slitherlink" then
+        if key == "difficulty" then return Slitherlink.difficulties, Slitherlink.difficultyNames end
+        if key == "tiling" then return Slitherlink.tilings, Slitherlink.tilingNames end
+        if key == "source" then
+            labels = { loopy = "Loopy" }
+            local _, selected = Puzzle.filterSelection(game, key, self.store.settings.filters[game].source)
+            for source in pairs(selected or {}) do labels[source] = source end
+            for id, record in pairs(self.store.records) do
+                if Puzzle.game(id) == game then
+                    local metadata = record.puzzle.metadata
+                    labels[metadata.source] = metadata.sourceName
+                end
+            end
+            for source, name in pairs(self.slitherlinkSources or {}) do labels[source] = name end
+            values = {}
+            for source in pairs(labels) do values[#values + 1] = source end
+            table.sort(values, function(a, b)
+                if labels[a] == labels[b] then return a < b end
+                return labels[a] < labels[b]
+            end)
+        end
+    elseif key == "difficulty" and game == "hashi" then
         values, labels = Puzzle.difficulties, Puzzle.difficultyNames
     elseif key == "solvability" and game == "hashi" then
         values, labels = Puzzle.hashiSolvabilities, Puzzle.hashiSolvabilityNames
@@ -245,12 +274,18 @@ local function filterOptions(game, key)
     return values, labels
 end
 
-local function filterChecklist(title, values, labels, selected, save)
+local function filterChecklist(title, values, labels, selected, save, refresh)
     local dialog
     local buttons = {}
     for _, value in ipairs(values) do
         buttons[#buttons + 1] = {{ text = labels[value], checked_func = function() return selected[value] end,
             callback = function() selected[value] = not selected[value] end }}
+    end
+    if refresh then
+        buttons[#buttons + 1] = {{ text = "Refresh sources", callback = function()
+            UIManager:close(dialog)
+            refresh()
+        end }}
     end
     local function apply(expression)
         local ok, err = save(expression)
@@ -284,13 +319,17 @@ function LogicPuzzles:filterSettings(game, onChange)
     end
 
     local keys = game == "hashi" and { "size", "difficulty", "solvability" }
-        or game == "fill-a-pix" and { "width", "height" } or { "width", "difficulty", "height", "solvability" }
-    local titles = { size = "Grid size", width = "Width", height = "Height", difficulty = "Difficulty", solvability = "Solvability" }
+        or game == "fill-a-pix" and { "width", "height" }
+        or game == "slitherlink" and { "tiling", "source", "width", "height", "difficulty" }
+        or { "width", "difficulty", "height", "solvability" }
+    local titles = { size = "Grid size", width = "Width", height = "Height", difficulty = "Difficulty", solvability = "Solvability",
+        tiling = "Tiling", source = "Source" }
+    if game == "slitherlink" then titles.width, titles.height = "Nominal width", "Nominal height" end
     local choices = {}
     for _, key in ipairs(keys) do
         local value = filters[key]
         if key == "size" then value = value or filters.width or filters.height end
-        local values, labels = filterOptions(game, key)
+        local values, labels = self:filterOptions(game, key)
         local _, selected = Puzzle.filterSelection(game, key, value)
         local summary = value or "Any"
         if selected and values then
@@ -303,10 +342,22 @@ function LogicPuzzles:filterSettings(game, onChange)
         choices[#choices + 1] = { titles[key] .. "  ·  " .. summary, key }
     end
     choose(Puzzle.gameNames[game] .. " catalog and queue filters", choices, function(key)
-        local values, labels = filterOptions(game, key)
+        local values = self:filterOptions(game, key)
         if values then
             local _, selected = Puzzle.filterSelection(game, key, filters[key])
-            filterChecklist(titles[key], values, labels, selected or {}, function(expression) return save(key, expression) end)
+            local function showChecklist()
+                local choices, names = self:filterOptions(game, key)
+                filterChecklist(titles[key], choices, names, selected or {}, function(expression)
+                    return save(key, expression)
+                end, key == "source" and function()
+                    self:online(function(_, games)
+                        if not games.slitherlink then return notice("The home server does not currently offer Slitherlink.") end
+                        showChecklist()
+                    end)
+                end or nil)
+            end
+            selected = selected or {}
+            showChecklist()
             return
         end
 
@@ -455,6 +506,7 @@ function LogicPuzzles:online(operation)
                 end
                 local games, capabilityError = API.capabilities(request)
                 if not games then return notice(capabilityError) end
+                self.slitherlinkSources = games.slitherlinkSources
                 operation(request, games)
             end, debug.traceback)
             self.busy = false
@@ -533,10 +585,14 @@ function LogicPuzzles:browse(beforeId)
             local record = self.store.records[id]
             local status = record and (record.completed and "  Solved" or (record.marks and "  In progress" or "  Offline"))
                 or (puzzle.status == "solved" and "  Solved" or (puzzle.status == "started" and "  In progress" or ""))
+            local size = string.format("%d×%d", puzzle.width, puzzle.height)
+            if game == "slitherlink" and type(puzzle.metadata) == "table" and type(puzzle.metadata.faceCount) == "number" then
+                size = string.format("%d cells", puzzle.metadata.faceCount)
+            end
             items[#items + 1] = {
                 text = Puzzle.title(puzzle),
                 details = PuzzleMenu.details(puzzle.metadata, game, puzzle.author),
-                mandatory = string.format("%d×%d%s", puzzle.width, puzzle.height, status),
+                mandatory = size .. status,
                 callback = function() self:downloadAndPlay(id, matches) end,
             }
         end

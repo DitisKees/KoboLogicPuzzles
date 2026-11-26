@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
 using KoboLogicPuzzles.Server;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Slitherlink;
 
-var command = args.FirstOrDefault() is "refresh" or "refresh-fill-a-pix" or "hashi-generate" or "hashi-status" ? args[0] : null;
+var command = args.FirstOrDefault() is "refresh" or "refresh-fill-a-pix" or "hashi-generate" or "hashi-status"
+    or "slitherlink-generate" or "slitherlink-import" or "slitherlink-status" ? args[0] : null;
 var builder = WebApplication.CreateBuilder(command is null ? args : args[1..]);
 Server.AddServices(builder);
 await using var app = builder.Build();
@@ -34,6 +36,8 @@ try
         var results = await Task.WhenAll(Enum.GetValues<FillAPixSource>().Select(RefreshFillAPixAsync));
         return results.All(success => success) ? 0 : 1;
     }
+    if (command.StartsWith("slitherlink-", StringComparison.Ordinal))
+        return await SlitherlinkCli.RunAsync(command, app, cancellation.Token);
     if (command != "refresh")
         return await HashiCli.RunAsync(command, app, cancellation.Token);
     var count = await app.Services.GetRequiredService<PuzzleLibrary>().RefreshAsync(cancellation.Token);
@@ -47,6 +51,8 @@ catch (Exception exception) when (exception is HttpRequestException or InvalidDa
         app.Logger.LogError(exception, "WebPBN refresh failed. The previous catalog remains available.");
     else if (command == "refresh-fill-a-pix")
         app.Logger.LogError(exception, "Fill-a-Pix refresh stopped.");
+    else if (command.StartsWith("slitherlink-", StringComparison.Ordinal))
+        app.Logger.LogError(exception, "Slitherlink command stopped.");
     else
         app.Logger.LogError(exception, "Hashi command stopped.");
     return 1;

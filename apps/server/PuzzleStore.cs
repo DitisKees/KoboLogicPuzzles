@@ -6,7 +6,7 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -100,7 +100,9 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
-        command.CommandText = $"""
+        if (version < 2)
+        {
+            command.CommandText = """
             CREATE TABLE fill_a_pix_puzzles (
                 id TEXT NOT NULL PRIMARY KEY,
                 source TEXT NOT NULL,
@@ -123,6 +125,31 @@ public sealed partial class PuzzleStore(string databasePath)
             INSERT INTO fill_a_pix_refresh (source, revision) VALUES ('grandgames', 0);
             CREATE TABLE fill_a_pix_progress (
                 puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES fill_a_pix_puzzles(id),
+                marks TEXT NOT NULL,
+                completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                backed_up_at TEXT NOT NULL
+            );
+            """;
+            command.ExecuteNonQuery();
+        }
+
+        command.CommandText = $"""
+            CREATE TABLE slitherlink_puzzles (
+                id TEXT NOT NULL PRIMARY KEY,
+                width INTEGER NOT NULL CHECK (width > 0),
+                height INTEGER NOT NULL CHECK (height > 0),
+                tiling TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                difficulty TEXT,
+                title TEXT NOT NULL,
+                author TEXT,
+                metadata TEXT NOT NULL,
+                definition TEXT NOT NULL
+            );
+            CREATE INDEX slitherlink_inventory ON slitherlink_puzzles (source, width, height, tiling, difficulty);
+            CREATE TABLE slitherlink_progress (
+                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES slitherlink_puzzles(id),
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
                 backed_up_at TEXT NOT NULL

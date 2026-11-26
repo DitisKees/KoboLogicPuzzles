@@ -2,6 +2,8 @@ local BB = require("ffi/blitbuffer")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local HashiRender = require("kobologicpuzzles/hashirender")
 local RenderImage = require("ui/renderimage")
+local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
+local SlitherlinkRender = require("kobologicpuzzles/slitherlinkrender")
 local Widget = require("ui/widget/widget")
 
 local Thumbnail = Widget:extend{}
@@ -9,6 +11,14 @@ local colors = { [string.byte("#")] = BB.COLOR_BLACK, [string.byte("x")] = BB.CO
 
 function Thumbnail:render()
     local puzzle, marks = self.record.puzzle, self.record.marks
+    if puzzle.game == "slitherlink" then
+        local board = Slitherlink:new(puzzle, marks)
+        local scale = (self.dimen.w - 4) / math.max(1, board.width, board.height)
+        local width, height = math.ceil(board.width * scale) + 2, math.ceil(board.height * scale) + 2
+        self.preview = BB.new(width, height, BB.TYPE_BB8)
+        SlitherlinkRender.paint(self.preview, board, 1, 1, scale, nil, true)
+        return
+    end
     if puzzle.game == "hashi" then
         local size = self.dimen.w - 2
         local cell = math.max(1, math.floor(size / puzzle.width))

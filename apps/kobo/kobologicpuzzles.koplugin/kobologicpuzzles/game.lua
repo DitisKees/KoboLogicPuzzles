@@ -87,10 +87,14 @@ function Game:init()
     self:resize()
 end
 
+function Game:makeLayout(w, h)
+    return Viewport:new(w, h, self.board.puzzle, self.zoom, self.store.settings.clueLimit)
+end
+
 function Game:resize()
     self:freeBuffers()
     local w, h = screen:getWidth(), screen:getHeight()
-    local layout = Viewport:new(w, h, self.board.puzzle, self.zoom, self.store.settings.clueLimit)
+    local layout = self:makeLayout(w, h)
     self.layout = layout
     self.row, self.column = layout:origin(self.row, self.column)
     self.dimen = rectangle(0, 0, w, h)

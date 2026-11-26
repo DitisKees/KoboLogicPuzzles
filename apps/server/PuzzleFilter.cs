@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
 
@@ -21,6 +22,9 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
 
     internal DimensionRange[]? FillAPixWidths { get; init; }
     internal DimensionRange[]? FillAPixHeights { get; init; }
+    internal string[]? SlitherlinkDifficulties { get; init; }
+    internal string[]? Tilings { get; init; }
+    internal string[]? Sources { get; init; }
 
     public static bool TryParseGame(string? value, out PuzzleGame game)
     {
@@ -30,9 +34,13 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
 
     public static PuzzleFilter? Parse(string? game, int? width, int? height, string? difficulty, string? solvability,
         string? widthFilter = null, string? heightFilter = null, string? difficultyFilter = null,
-        string? solvabilityFilter = null, string? sizeFilter = null)
+        string? solvabilityFilter = null, string? sizeFilter = null, string? tiling = null, string? tilingFilter = null,
+        string? source = null, string? sourceFilter = null)
     {
         if (!TryParseGame(game, out var kind))
+            return null;
+        if (kind != PuzzleGame.Slitherlink && (tiling is not null || tilingFilter is not null ||
+            source is not null || sourceFilter is not null))
             return null;
         if (kind == PuzzleGame.FillAPix)
         {
@@ -48,10 +56,21 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
 
         if (sizeFilter is not null)
         {
-            if (kind != PuzzleGame.Hashi || widths is not null || heights is not null ||
-                !TrySelect(null, sizeFilter, HashiSizes, Integer, true, out widths))
+            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink) || widths is not null || heights is not null ||
+                !TrySelect(null, sizeFilter, kind == PuzzleGame.Hashi ? HashiSizes : Dimensions, Integer, true, out widths))
                 return null;
             heights = widths;
+        }
+
+        if (kind == PuzzleGame.Slitherlink)
+        {
+            if (solvability is not null || solvabilityFilter is not null ||
+                !TryChoices(difficulty, difficultyFilter, SlitherlinkOptions.Levels.Contains, out var levels) ||
+                !TryChoices(tiling, tilingFilter, SlitherlinkOptions.Tilings.Contains, out var tilings) ||
+                !TryChoices(source, sourceFilter, SlitherlinkOptions.ValidSource, out var sources))
+                return null;
+            return new PuzzleFilter(kind, widths, heights, null, null)
+            { SlitherlinkDifficulties = levels, Tilings = tilings, Sources = sources };
         }
 
         int[]? difficulties, solvabilities;
@@ -66,6 +85,26 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             return null;
 
         return new PuzzleFilter(kind, widths, heights, difficulties, solvabilities);
+    }
+
+    private static bool TryChoices(string? exact, string? expression, Func<string, bool> valid, out string[]? choices)
+    {
+        choices = null;
+        if (exact is not null)
+        {
+            if (expression is not null || !valid(exact))
+                return false;
+            choices = [exact];
+        }
+        if (expression is not null)
+        {
+            if (expression.Length is 0 or > 1024)
+                return false;
+            choices = expression.Split(',', StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal).ToArray();
+            if (!choices.All(valid))
+                return false;
+        }
+        return true;
     }
 
     private static bool TryDimensionRanges(int? exact, string? expression, out DimensionRange[]? ranges)
@@ -177,6 +216,10 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             Rating<HashiSolvability>(hashi.Metadata.Solvability)),
         FillAPixPuzzleDefinition fillAPix => (FillAPixWidths is null || FillAPixWidths.Any(range => range.Contains(fillAPix.Width))) &&
             (FillAPixHeights is null || FillAPixHeights.Any(range => range.Contains(fillAPix.Height))),
+        SlitherlinkDefinition slitherlink => Matches(slitherlink.Width, slitherlink.Height, null, null) &&
+            (SlitherlinkDifficulties is null || SlitherlinkDifficulties.Contains(slitherlink.Metadata.Difficulty)) &&
+            (Tilings is null || Tilings.Contains(slitherlink.Metadata.Tiling)) &&
+            (Sources is null || Sources.Contains(slitherlink.Metadata.Source)),
         _ => false,
     };
 }

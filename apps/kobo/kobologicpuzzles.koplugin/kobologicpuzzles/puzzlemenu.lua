@@ -8,6 +8,7 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local Menu = require("ui/widget/menu")
 local Puzzle = require("kobologicpuzzles/puzzle")
+local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local Thumbnail = require("kobologicpuzzles/thumbnail")
@@ -48,6 +49,14 @@ function PuzzleMenu.details(metadata, game, author)
         if type(metadata.complexity) == "number" then details[#details + 1] = "Complexity " .. metadata.complexity .. "%" end
         if #details == 0 then return end
         return table.concat(details, " · ")
+    end
+    if game == "slitherlink" then
+        local details = {}
+        if Slitherlink.tilingNames[metadata.tiling] then details[#details + 1] = Slitherlink.tilingNames[metadata.tiling] end
+        if Slitherlink.difficultyNames[metadata.difficulty] then details[#details + 1] = Slitherlink.difficultyNames[metadata.difficulty] end
+        if type(metadata.sourceName) == "string" then details[#details + 1] = metadata.sourceName end
+        if type(author) == "string" and author ~= "" then details[#details + 1] = author end
+        return #details > 0 and table.concat(details, " · ") or nil
     end
     return string.format("Difficulty %s · Quality %s · %s",
         rating(metadata.difficulty), rating(metadata.quality),

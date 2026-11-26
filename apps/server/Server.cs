@@ -1,4 +1,5 @@
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Slitherlink;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -19,6 +20,12 @@ public static class Server
         services.AddSingleton<IHashiCandidateGenerator, BridgesGenerator>();
         services.AddSingleton<HashiInventory>();
         services.AddHostedService<HashiInventoryWorker>();
+        services.AddOptions<SlitherlinkOptions>().BindConfiguration("SlitherlinkGeneration").ValidateDataAnnotations().ValidateOnStart();
+        services.AddSingleton(provider => provider.GetRequiredService<IOptions<SlitherlinkOptions>>().Value);
+        services.AddSingleton<LoopyGenerator>();
+        services.AddSingleton<SlitherlinkImporter>();
+        services.AddSingleton<SlitherlinkInventory>();
+        services.AddHostedService<SlitherlinkInventoryWorker>();
         services.AddSingleton(provider => new PuzzleStore(
             provider.GetRequiredService<IConfiguration>()["Storage:DatabasePath"] ?? "data/kobologicpuzzles.db"));
         services.AddSingleton(TimeProvider.System);
@@ -26,6 +33,7 @@ public static class Server
         services.AddSingleton<IPuzzleProvider, WebPbnPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, LocalHashiPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, FillAPixPuzzleProvider>();
+        services.AddSingleton<IPuzzleProvider, SlitherlinkPuzzleProvider>();
         services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<GameCatalog>();
         services.AddSingleton<GameProgressBackup>();

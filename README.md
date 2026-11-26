@@ -1,14 +1,15 @@
 # Kobo Logic Puzzles
 
-Kobo Logic Puzzles plays Nonogram, Hashi, and Fill-a-Pix offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi puzzles locally, and imports Fill-a-Pix from three catalogs.
+Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, and Slitherlink offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi and Slitherlink boards locally, and imports Fill-a-Pix and Slitherlink collections.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
 | [`apps/kobo/`](apps/kobo/README.md) | KOReader plugin, with [installation and play instructions](apps/kobo/README.md). |
-| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles puzzle imports, Hashi generation, the catalog, and progress in SQLite. |
+| [`apps/server/`](apps/server/) | ASP.NET Core app targeting .NET 10. It handles puzzle imports, generation, the catalog, and progress in SQLite. |
 | [`apps/server/Hashi/`](apps/server/Hashi/README.md) | Hashi generator, C# validation and rating, and feasibility results. |
+| [`apps/server/Slitherlink/`](apps/server/Slitherlink/README.md) | Loopy generation, structured collections, and inventory settings. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
 | [`KoboLogicPuzzles.slnx`](KoboLogicPuzzles.slnx) | Solution for the .NET projects. |
 | [`tests/server/`](tests/server/) | Server unit tests and HTTP integration tests. |
@@ -89,6 +90,10 @@ Configure the filters through the server configuration or environment variables 
 The server combines Janko’s Mosaik, GrandGames, and Fill-a-Pix.net under `game=fill-a-pix`. Each puzzle retains its source ID and link. The catalog accepts every valid board size supplied by the three sources. [Janko](https://www.janko.at/Raetsel/Mosaik/index.htm) · [GrandGames](https://en.grandgames.net/mosaic) · [Fill-a-Pix.net](https://fill-a-pix.net/collection/index.html)
 
 Each source refreshes independently at startup and seven days after its last success. Failed refreshes retry after one hour. GrandGames saves each catalog page as it arrives and resumes from the next page after an interruption. The server caches Janko and Fill-a-Pix.net definitions during refresh and GrandGames definitions when first requested. Cached puzzles with progress remain available if a source withdraws them.
+
+## Slitherlink catalog
+
+The server replenishes a separate queue of unique Loopy puzzles for each configured size, tiling, and difficulty. Structured PuzzleKit and Mindgames collections and JSON packs can be imported locally. The Kobo catalog and offline queue can filter by source, tiling, dimensions, or difficulty. [Generation and import instructions](apps/server/Slitherlink/README.md)
 
 Run `dotnet run --project apps/server -- refresh-fill-a-pix` to refresh manually, or pass `refresh-fill-a-pix` to the server DLL in Docker. `FillAPix__RefreshEnabled` controls the background import and defaults to the value of `CatalogRefresh__Enabled`. See the [API contract](contracts/README.md) for definitions, downloads, and progress.
 

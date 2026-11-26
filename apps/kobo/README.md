@@ -7,7 +7,7 @@
 3. Open **Tools → Kobo Logic Puzzles → Settings → Home server URL**. Enter the server’s HTTP address on your home network, for example `http://192.168.1.10:8080`.
 4. Choose **Sync now** on the home screen. On a fresh installation, the app restores any backed-up boards and then downloads puzzles. To download a specific puzzle, open its game and choose **Browse server catalog**.
 
-The home screen groups Nonogram and Fill-a-Pix under **Cell shading** and Hashi under **Line drawing**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
+The home screen groups Nonogram and Fill-a-Pix under **Cell shading** and Hashi and Slitherlink under **Line drawing**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
 
 Catalog browsing and sync require a home server with API v2. You can open any of the game libraries offline.
 
@@ -51,6 +51,12 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 - Tap or drag with **Fill**, **Cross**, **Clear**, or **Cycle**. Numbered cells turn gray when crossed. Hold a numbered cell or select it and tap **Clue** to inspect its counts. **Check** compares your marks with the source solution when available and checks clue conflicts otherwise.
 - Use **Pan**, two-finger panning, **Overview**, and **−** or **+** to navigate large grids. **Undo**, **Redo**, **Checkpoint**, and **Restart** work offline. Your marks and position save as you play.
 - The catalog and library show the puzzle’s source and any author credit supplied by the server. Fill-a-Pix has its own offline queue and width and height filters, including dimensions above 100.
+
+## Play Slitherlink
+
+- Tap a segment in **Draw** mode to draw it. **Cross** marks an edge as excluded and **Clear** removes a mark. A numbered cell counts the drawn segments on its own boundary. Draw one closed loop with no branches or crossings. Clues turn gray when the count matches, and a black background marks a conflict.
+- Use **Pan** or a two-finger drag to move the view. Use **−** or **+** to change scale. Tap a location in **Overview** to jump there. **Check** compares your marks with the saved solution. **Undo**, **Redo**, **Restart**, and **Checkpoint** work offline.
+- Choose **Game settings → Catalog and queue filters** to select tilings, sources, nominal dimensions, and difficulties. **Filters** in the server catalog opens the same settings. **Source → Refresh sources** loads collections currently available on the home server. The library and catalog show the number of cells, which varies by tiling at a given nominal size.
 
 ## Backup and offline puzzles
 
