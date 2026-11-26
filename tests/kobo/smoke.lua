@@ -956,6 +956,8 @@ local function testHashiUI()
         store = assert(Store.open(home .. "/hashi-ui")),
     }
     local small = hashiSquare("a")
+    small.solution[1] = 2
+    small.islands[1].clue, small.islands[2].clue = 3, 3
     local points = {}
     for x = 0, 49, 3 do
         for y = 0, 49, 3 do points[#points + 1] = { x, y } end
@@ -1114,8 +1116,31 @@ local function testHashiUI()
     assert(plugin.library.item_group[5].thumbnail.preview)
     plugin:showGame(small.id)
     game = assert(plugin.game)
-    tap(0, 0); tap(0, 4); tap(4, 0); tap(4, 4); tap(4, 0); tap(0, 4); tap(4, 4)
-    assert(game.board:marks() == "1111" and plugin.store.records[small.id].completed)
+    local function verifyLibraryProgress(expected)
+        for _, item in ipairs(plugin:libraryItems()) do
+            if item.text == Puzzle.title(small) then
+                assert(item.mandatory == "20×20  " .. expected)
+                return
+            end
+        end
+        error("The Hashi puzzle is missing from the library")
+    end
+    tap(0, 0)
+    game:onButton("noBridge")
+    tap(0, 4)
+    verifyLibraryProgress("0%")
+    game:onButton("bridge")
+    tap(0, 4)
+    verifyLibraryProgress("20%")
+    tap(0, 4)
+    verifyLibraryProgress("40%")
+    game:changed(game.board:restoreCheckpoint("222."), true)
+    verifyLibraryProgress("100%")
+    game:onButton("undo")
+
+    tap(4, 0); tap(4, 4); tap(4, 0); tap(0, 4); tap(4, 4)
+    assert(game.board:marks() == "2111" and plugin.store.records[small.id].completed)
+    verifyLibraryProgress("Solved")
     UI:close(UI:getTopmostVisibleWidget())
     UI:forceRePaint()
     device.screen.bb:writePNG(home .. "/hashi-20-solved.png")

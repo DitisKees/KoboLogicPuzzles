@@ -18,6 +18,14 @@ end
 local function index(puzzle, x, y) return y * puzzle.width + x end
 local function bridges(mark) return mark == "1" and 1 or mark == "2" and 2 or 0 end
 
+function Board.bridgeTotals(puzzle, marks)
+    local placed, clueTotal = 0, 0
+    for i = 1, #marks do placed = placed + bridges(marks:sub(i, i)) end
+    for _, island in ipairs(puzzle.islands) do clueTotal = clueTotal + island.clue end
+    -- Every bridge contributes to the clue at both ends.
+    return placed, clueTotal / 2
+end
+
 local function topology(puzzle)
     if type(puzzle) ~= "table" or puzzle.schemaVersion ~= 1 or puzzle.game ~= "hashi"
         or not integer(puzzle.width, 20, 50) or puzzle.width % 5 ~= 0 or puzzle.height ~= puzzle.width

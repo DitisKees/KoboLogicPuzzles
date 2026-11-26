@@ -56,10 +56,16 @@ function LogicPuzzles:libraryItems()
     }
     for _, record in ipairs(self.store:list(game)) do
         local puzzle = record.puzzle
-        local _, marked = (record.marks or ""):gsub(game == "hashi" and "[x12]" or "[#x]", "")
-        local total = game == "hashi" and #puzzle.edges or puzzle.width * puzzle.height
-        local progress = math.floor(100 * marked / total)
-        local progressLabel = marked > 0 and progress == 0 and "<1%" or progress .. "%"
+        local marks = record.marks or ""
+        local placed, total
+        if game == "hashi" then
+            placed, total = Puzzle.rules(puzzle.id).bridgeTotals(puzzle, marks)
+        else
+            local _, marked = marks:gsub("[#x]", "")
+            placed, total = marked, puzzle.width * puzzle.height
+        end
+        local progress = math.min(100, math.floor(100 * placed / total))
+        local progressLabel = placed > 0 and progress == 0 and "<1%" or progress .. "%"
         if record.completed then progressLabel = game == "hashi" and "Solved" or progressLabel .. "  Solved" end
         if game == "hashi" and not record.marks then progressLabel = "Not started" end
         items[#items + 1] = {
