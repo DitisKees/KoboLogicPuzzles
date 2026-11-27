@@ -9,15 +9,15 @@ internal readonly record struct NurikabeBucket(int Size, string Difficulty, stri
 public sealed class NurikabeOptions : IValidatableObject
 {
     public bool Enabled { get; init; }
-    private static readonly string[] PreferredDifficulties = ["hard", "expert"];
+    private static readonly string[] PreferredDifficulties = ["medium", "hard", "expert"];
 
     public int[]? Sizes { get; init; }
     public string[]? Difficulties { get; init; }
     public bool IncludeRequiresSearch { get; init; }
     [Range(1, 100)] public int TargetPerDifficulty { get; init; } = 5;
-    [Range(1, 30)] public int ProofTimeoutSeconds { get; init; } = 2;
-    [Range(1, 30)] public int AttemptsPerSize { get; init; } = 5;
-    [Range(1, 86400)] public int PollIntervalSeconds { get; init; } = 60;
+    [Range(1, 30)] public int ProofTimeoutSeconds { get; init; } = 60;
+    [Range(1, 30)] public int AttemptsPerSize { get; init; } = 10;
+    [Range(1, 86400)] public int PollIntervalSeconds { get; init; } = 300;
 
     internal int[] SelectedSizes => Sizes ?? NurikabeGenerator.Sizes;
     internal string[] SelectedDifficulties => Difficulties ?? PreferredDifficulties;
@@ -57,16 +57,23 @@ internal sealed class NurikabeInventory(PuzzleStore store, NurikabeOptions optio
             Sources = Sources(),
             Stock = options.SelectedSizes.SelectMany(size => options.SelectedDifficulties.Select(difficulty => new
             {
-                Size = size, Difficulty = difficulty,
-                Target = options.TargetPerDifficulty, Unstarted = counts.GetValueOrDefault((size, difficulty)),
+                Size = size,
+                Difficulty = difficulty,
+                Target = options.TargetPerDifficulty,
+                Unstarted = counts.GetValueOrDefault((size, difficulty)),
             })).ToArray(),
             ActualStock = stock.Select(pair => new
             {
-                pair.Key.Size, pair.Key.Difficulty, pair.Key.Solvability, Unstarted = pair.Value,
+                pair.Key.Size,
+                pair.Key.Difficulty,
+                pair.Key.Solvability,
+                Unstarted = pair.Value,
             }).ToArray(),
             Collection = new
             {
-                Source = "janko", Enabled = collections.RefreshEnabled, refresh.NextIndex,
+                Source = "janko",
+                Enabled = collections.RefreshEnabled,
+                refresh.NextIndex,
                 CheckedAt = refresh.CheckedAt == 0 ? (DateTimeOffset?)null : DateTimeOffset.FromUnixTimeSeconds(refresh.CheckedAt),
             },
             Activity = activity.Snapshot(),
