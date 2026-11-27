@@ -15,7 +15,7 @@ public sealed class NurikabeOptions : IValidatableObject
     public string[]? Difficulties { get; init; }
     public bool IncludeRequiresSearch { get; init; }
     [Range(1, 100)] public int TargetPerDifficulty { get; init; } = 5;
-    [Range(1, 60)] public int ProofTimeoutSeconds { get; init; } = 60;
+    [Range(1, 1800)] public int ProofTimeoutSeconds { get; init; } = 180;
     [Range(1, 30)] public int AttemptsPerSize { get; init; } = 10;
     [Range(1, 86400)] public int PollIntervalSeconds { get; init; } = 300;
 

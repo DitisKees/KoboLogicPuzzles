@@ -19,7 +19,7 @@ internal sealed partial class ExtraCollectionRefresh(PuzzleStore store, HttpClie
 {
     private static readonly Uri JankoRoot = new("https://www.janko.at/Raetsel/");
     private static readonly TimeSpan Interval = TimeSpan.FromDays(7);
-    private static readonly TimeSpan ProofTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ProofTimeout = TimeSpan.FromSeconds(30);
     private static readonly BundledPack[] Packs =
     [
         new("world-at-play", "The World at Play", PuzzleGame.Nonogram, "world-at-play-cc0",
