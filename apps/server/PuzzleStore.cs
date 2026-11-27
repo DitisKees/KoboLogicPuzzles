@@ -6,7 +6,7 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 6;
+    private const int SchemaVersion = 7;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -205,24 +205,65 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
+        if (version < 6)
+        {
+            command.CommandText = """
+                CREATE TABLE nonogram_collection_puzzles (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 100),
+                    height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 100),
+                    definition TEXT NOT NULL
+                );
+                CREATE INDEX nonogram_collection_source ON nonogram_collection_puzzles (source, width, height);
+                CREATE TABLE nonogram_collection_progress (
+                    puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES nonogram_collection_puzzles(id),
+                    marks TEXT NOT NULL,
+                    completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                    backed_up_at TEXT NOT NULL
+                );
+                CREATE TABLE extra_collection_refresh (
+                    resource TEXT NOT NULL PRIMARY KEY,
+                    cursor INTEGER NOT NULL,
+                    completed_at INTEGER NOT NULL
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
         command.CommandText = $"""
-            CREATE TABLE nonogram_collection_puzzles (
+            CREATE TABLE galaxies_puzzles (
                 id TEXT NOT NULL PRIMARY KEY,
+                content_hash TEXT NOT NULL UNIQUE,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
                 source TEXT NOT NULL,
-                width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 100),
-                height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 100),
+                source_name TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                picture INTEGER NOT NULL CHECK (picture IN (0, 1)),
+                catalog_rank INTEGER GENERATED ALWAYS AS (CASE
+                    WHEN picture = 0 THEN 0
+                    WHEN width >= 30 AND height >= 30 THEN 3
+                    WHEN width * height >= 400 THEN 2
+                    ELSE 1 END) VIRTUAL,
+                difficulty TEXT NOT NULL,
+                solvability TEXT NOT NULL,
+                title TEXT NOT NULL,
+                author TEXT NOT NULL,
+                metadata TEXT NOT NULL,
                 definition TEXT NOT NULL
             );
-            CREATE INDEX nonogram_collection_source ON nonogram_collection_puzzles (source, width, height);
-            CREATE TABLE nonogram_collection_progress (
-                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES nonogram_collection_puzzles(id),
+            CREATE INDEX galaxies_catalog_order ON galaxies_puzzles (catalog_rank DESC, id DESC);
+            CREATE INDEX galaxies_source ON galaxies_puzzles (source, width, height, difficulty, solvability);
+            CREATE TABLE galaxies_progress (
+                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES galaxies_puzzles(id),
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
                 backed_up_at TEXT NOT NULL
             );
-            CREATE TABLE extra_collection_refresh (
+            CREATE TABLE galaxies_collection_refresh (
                 resource TEXT NOT NULL PRIMARY KEY,
-                cursor INTEGER NOT NULL,
+                cursor TEXT NOT NULL,
                 completed_at INTEGER NOT NULL
             );
             PRAGMA user_version = {SchemaVersion};

@@ -56,6 +56,17 @@ function LoopGame:graphOrigin(overview)
     return origin(grid.w, board.width, self.column), origin(grid.h, board.height, self.row), scale
 end
 
+function LoopGame:graphLabel()
+    local metadata = self.board.puzzle.metadata
+    return self.overview and "Tap the overview to jump to a location"
+        or Slitherlink.tilingNames[metadata.tiling] .. "  ·  " .. metadata.faceCount .. " cells"
+        .. (metadata.difficulty and ("  ·  " .. (Slitherlink.difficultyNames[metadata.difficulty] or metadata.difficulty)) or "")
+end
+
+function LoopGame:paintGraph(graph, x, y, scale, face)
+    Render.paint(graph, self.board, x, y, scale, face)
+end
+
 function LoopGame:paintTo(bb)
     if not self.buffers then self:makeBuffers() end
     local canvas, layout, grid = self.buffers.screen, self.layout, self.grid
@@ -71,11 +82,7 @@ function LoopGame:paintTo(bb)
         local title = self.board.puzzle.title .. (complete and "  ·  Solved" or "")
         Game.paintText(canvas, title, self.titleFace, rect(layout.pad, layout.pad + layout.button,
             layout.width - 2 * layout.pad, layout.title), BB.COLOR_BLACK, true)
-        local metadata = self.board.puzzle.metadata
-        local label = self.overview and "Tap the overview to jump to a location"
-            or Slitherlink.tilingNames[metadata.tiling] .. "  ·  " .. metadata.faceCount .. " cells"
-            .. (metadata.difficulty and ("  ·  " .. (Slitherlink.difficultyNames[metadata.difficulty] or metadata.difficulty)) or "")
-        Game.paintText(canvas, label, self.clueFace, rect(grid.x, grid.y + grid.h, grid.w, layout.status), BB.COLOR_BLACK)
+        Game.paintText(canvas, self:graphLabel(), self.clueFace, rect(grid.x, grid.y + grid.h, grid.w, layout.status), BB.COLOR_BLACK)
     end
     if full or self.graphDirty then
         self.graphBuffer = self.graphBuffer or BB.new(grid.w, grid.h, BB.TYPE_BB8)
@@ -83,8 +90,8 @@ function LoopGame:paintTo(bb)
         graph:setInverse(inverse)
         local x, y, scale = self:graphOrigin(self.overview)
         local face = not self.overview and self.loopFace or nil
-        Render.paint(graph, self.board, x, y, scale, face)
-        if self.overview then
+        local picturePreview = self:paintGraph(graph, x, y, scale, face, full)
+        if self.overview and not picturePreview then
             local boardX, boardY = self:graphOrigin(false)
             local ratio = scale / self.edgeScale
             local left = math.max(x, x - boardX * ratio)

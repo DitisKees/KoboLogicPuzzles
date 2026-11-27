@@ -18,6 +18,7 @@ internal static class GameApi
             var nurikabeSources = nurikabe.Sources();
             var catalog = store.ReadDashboardCatalog();
             var hashiSources = Sources("hashi");
+            var galaxiesSources = Sources("galaxies");
             if (options.Enabled)
                 hashiSources.TryAdd("bridges", new("Bridges", "generated"));
             return new
@@ -26,7 +27,7 @@ internal static class GameApi
                 SchemaVersion = 1,
                 AdvancedFilters = true,
                 ExtraCollections = true,
-                Games = GetGames(options, store, sources.Count > 0, nurikabeSources.Count > 0),
+                Games = GetGames(options, store, sources.Count > 0, nurikabeSources.Count > 0, galaxiesSources.Count > 0),
                 SlitherlinkSources = sources,
                 PuzzleSources = new
                 {
@@ -35,6 +36,7 @@ internal static class GameApi
                     Slitherlink = sources.ToDictionary(pair => pair.Key,
                         pair => new PuzzleSource(pair.Value, pair.Key == LoopyGenerator.Source ? "generated" : "collection")),
                     Nurikabe = nurikabeSources,
+                    Galaxies = galaxiesSources,
                 },
             };
 
@@ -102,7 +104,7 @@ internal static class GameApi
             {
                 return Server.BadRequest(exception.Message);
             }
-        }).WithMetadata(new RequestSizeLimitAttribute(8 * 1024 * 1024));
+        }).WithMetadata(new RequestSizeLimitAttribute(16 * 1024 * 1024));
 
         api.MapGet("/restore", (PuzzleStore store, string? game, bool includeCollections = false) =>
         {
@@ -113,7 +115,7 @@ internal static class GameApi
         });
     }
 
-    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink, bool hasNurikabe)
+    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink, bool hasNurikabe, bool hasGalaxies)
     {
         var games = new List<string> { "nonogram" };
         if (options.Enabled || store.HasHashiPuzzles())
@@ -124,6 +126,8 @@ internal static class GameApi
             games.Add("slitherlink");
         if (hasNurikabe)
             games.Add("nurikabe");
+        if (hasGalaxies)
+            games.Add("galaxies");
         return games.ToArray();
     }
 }

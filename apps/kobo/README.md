@@ -7,7 +7,7 @@
 3. Open **Tools → Kobo Logic Puzzles → Settings → Home server URL**. Enter the server’s HTTP address on your home network, for example `http://192.168.1.10:8080`.
 4. Choose **Sync now** on the home screen. On a fresh installation, the app restores any backed-up boards and then downloads puzzles. To download a specific puzzle, open its game and choose **Browse server catalog**.
 
-The home screen groups Nonogram, Fill-a-Pix, and Nurikabe under **Cell shading** and Hashi and Slitherlink under **Line drawing**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
+The home screen groups Nonogram, Fill-a-Pix, and Nurikabe under **Cell shading** and Hashi and Slitherlink under **Line drawing**. Galaxies is under **Region partitioning**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
 
 Catalog browsing and sync require a home server with API v2. You can open any of the game libraries offline.
 
@@ -64,6 +64,10 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 - The sea must connect by sides and contain no black 2×2 block. Each white island must connect by sides and contain one clue equal to its area. A clue is struck through once the marked island matches its area. Outlined cells show conflicts.
 - Use **Check** for current rule conflicts and the remaining undecided count. **Rules** shows the rules offline. Use **Pan**, zoom, and **Overview** to move across large boards. **Restart** clears your marks and keeps the clues.
 - The catalog and offline library display the collection or generator beside the difficulty and solvability ratings. Use **Game settings → Catalog and queue filters** to choose a source, dimensions, difficulty or solvability.
+
+## Picture Galaxies
+
+Open **Region partitioning → Galaxies**. Tap an internal edge or drag along grid lines in **Wall** mode to draw boundaries. **Open** marks an edge you intend to leave open. **Clear** erases edge marks. Each region must contain one whole center and match itself when turned 180°. Closed regions with solid centers shade in. Use **Pan** or two fingers to move, **−** and **+** to zoom, and **Overview** to jump across large boards. Once solved, Overview displays the finished picture. **Check** reports disagreements with the saved solution without revealing where they are.
 
 ## Backup and offline puzzles
 

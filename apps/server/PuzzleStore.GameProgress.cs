@@ -10,7 +10,7 @@ public sealed partial class PuzzleStore
     internal void SaveMixedProgress(IReadOnlyList<ProgressUpdate> nonograms, IReadOnlyList<CellProgressUpdate> collectionNonograms,
         IReadOnlyList<HashiProgressUpdate> hashi,
         IReadOnlyList<FillAPixProgressUpdate> fillAPix, IReadOnlyList<CellProgressUpdate> slitherlink,
-        IReadOnlyList<CellProgressUpdate> nurikabe,
+        IReadOnlyList<CellProgressUpdate> nurikabe, IReadOnlyList<CellProgressUpdate> galaxies,
         DateTimeOffset backedUpAt, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -28,6 +28,8 @@ public sealed partial class PuzzleStore
             WriteCellProgress(connection, transaction, "slitherlink_progress", slitherlink, backedUpAt);
         if (nurikabe.Count > 0)
             WriteCellProgress(connection, transaction, "nurikabe_progress", nurikabe, backedUpAt);
+        if (galaxies.Count > 0)
+            WriteCellProgress(connection, transaction, "galaxies_progress", galaxies, backedUpAt);
         cancellationToken.ThrowIfCancellationRequested();
         transaction.Commit();
     }
@@ -85,6 +87,8 @@ public sealed partial class PuzzleStore
             RestoreSlitherlinkProgress(connection, transaction, boards);
         if (game is null or PuzzleGame.Nurikabe)
             RestoreNurikabeProgress(connection, transaction, boards);
+        if (game is null or PuzzleGame.Galaxies)
+            RestoreGalaxiesProgress(connection, transaction, boards);
         transaction.Commit();
         return boards;
     }

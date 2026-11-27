@@ -7,7 +7,7 @@ local logger = require("logger")
 
 local Store = {}
 Store.__index = Store
-Store.targetKeys = { nonogram = "target", hashi = "hashiTarget", ["fill-a-pix"] = "fillAPixTarget", slitherlink = "slitherlinkTarget", nurikabe = "nurikabeTarget" }
+Store.targetKeys = { nonogram = "target", hashi = "hashiTarget", ["fill-a-pix"] = "fillAPixTarget", slitherlink = "slitherlinkTarget", nurikabe = "nurikabeTarget", galaxies = "galaxiesTarget" }
 
 local function copy(record)
     local result = {}

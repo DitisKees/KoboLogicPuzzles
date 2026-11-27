@@ -1,4 +1,6 @@
 local BB = require("ffi/blitbuffer")
+local Galaxies = require("kobologicpuzzles/galaxiesboard")
+local GalaxiesRender = require("kobologicpuzzles/galaxiesrender")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local HashiRender = require("kobologicpuzzles/hashirender")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
@@ -12,6 +14,14 @@ local colors = { [string.byte("#")] = BB.COLOR_BLACK, [string.byte("x")] = BB.CO
 
 function Thumbnail:render()
     local puzzle, marks = self.record.puzzle, self.record.marks
+    if puzzle.game == "galaxies" then
+        local board = Galaxies:new(puzzle, marks)
+        local scale = (self.dimen.w - 4) / math.max(board.width, board.height)
+        self.preview = BB.new(math.ceil(board.width * scale) + 2, math.ceil(board.height * scale) + 2, BB.TYPE_BB8)
+        GalaxiesRender.paint(self.preview, board, 1, 1, scale, board:regions(),
+            self.record.completed and puzzle.metadata.picture)
+        return
+    end
     if puzzle.game == "slitherlink" then
         local board = Slitherlink:new(puzzle, marks)
         local scale = (self.dimen.w - 4) / math.max(1, board.width, board.height)

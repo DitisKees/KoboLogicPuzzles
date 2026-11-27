@@ -10,6 +10,7 @@ local Home = require("kobologicpuzzles/home")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local NetworkMgr = require("ui/network/manager")
+local GalaxiesGame = require("kobologicpuzzles/galaxiesgame")
 local NurikabeGame = require("kobologicpuzzles/nurikabegame")
 local Puzzle = require("kobologicpuzzles/puzzle")
 local PuzzleMenu = require("kobologicpuzzles/puzzlemenu")
@@ -26,7 +27,7 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local logger = require("logger")
 
 local LogicPuzzles = WidgetContainer:extend{ name = "kobologicpuzzles", is_doc_only = false }
-local gameWidgets = { nonogram = Game, hashi = HashiGame, ["fill-a-pix"] = FillAPixGame, slitherlink = SlitherlinkGame, nurikabe = NurikabeGame }
+local gameWidgets = { nonogram = Game, hashi = HashiGame, ["fill-a-pix"] = FillAPixGame, slitherlink = SlitherlinkGame, nurikabe = NurikabeGame, galaxies = GalaxiesGame }
 
 local function notice(text)
     UIManager:show(InfoMessage:new{ text = text })
@@ -116,8 +117,8 @@ function LogicPuzzles:libraryItems(game)
         local placed, total
         if game == "hashi" then
             placed, total = Puzzle.rules(puzzle.id).bridgeTotals(puzzle, marks)
-        elseif game == "slitherlink" then
-            placed, total = Slitherlink.progress(puzzle, marks)
+        elseif game == "slitherlink" or game == "galaxies" then
+            placed, total = Puzzle.rules(puzzle.id).progress(puzzle, marks)
         else
             local _, marked = marks:gsub("[#x]", "")
             placed, total = marked, puzzle.width * puzzle.height
@@ -131,7 +132,7 @@ function LogicPuzzles:libraryItems(game)
             details = PuzzleMenu.details(puzzle.metadata, game, puzzle.author),
             mandatory = game == "slitherlink" and string.format("%d cells  %s", puzzle.metadata.faceCount, progressLabel)
                 or string.format("%d×%d  %s", puzzle.width, puzzle.height, progressLabel),
-            preview = (record.marks or game == "nurikabe") and record,
+            preview = (record.marks or game == "nurikabe" or game == "galaxies") and record,
             callback = function() self:showGame(puzzle.id) end,
         }
     end
@@ -270,10 +271,10 @@ function LogicPuzzles:filterOptions(game, key)
             if labels[a] == labels[b] then return a < b end
             return labels[a] < labels[b]
         end)
-    elseif key == "difficulty" and (game == "hashi" or game == "nurikabe") then
+    elseif key == "difficulty" and (game == "hashi" or game == "nurikabe" or game == "galaxies") then
         values, labels = Puzzle.difficulties, Puzzle.difficultyNames
-    elseif key == "solvability" and (game == "hashi" or game == "nurikabe") then
-        values = game == "hashi" and Puzzle.hashiSolvabilities or Puzzle.nurikabeSolvabilities
+    elseif key == "solvability" and (game == "hashi" or game == "nurikabe" or game == "galaxies") then
+        values = game == "nurikabe" and Puzzle.nurikabeSolvabilities or Puzzle.hashiSolvabilities
         labels = Puzzle.hashiSolvabilityNames
     elseif key == "solvability" then
         values, labels = {}, Puzzle.nonogramSolvabilityNames
@@ -330,7 +331,7 @@ function LogicPuzzles:filterSettings(game, onChange)
     local keys = game == "hashi" and { "size", "difficulty", "solvability", "source", "width", "height" }
         or game == "fill-a-pix" and { "width", "height" }
         or game == "slitherlink" and { "tiling", "source", "width", "height", "difficulty" }
-        or game == "nurikabe" and { "source", "width", "height", "difficulty", "solvability" }
+        or (game == "nurikabe" or game == "galaxies") and { "source", "width", "height", "difficulty", "solvability" }
         or { "width", "difficulty", "height", "solvability", "source" }
     local titles = { size = "Grid size", width = "Width", height = "Height", difficulty = "Difficulty", solvability = "Solvability",
         tiling = "Tiling", source = "Source" }
@@ -375,6 +376,7 @@ function LogicPuzzles:filterSettings(game, onChange)
         if key == "size" and filters.width == filters.height then value = value or filters.width end
         local hint = "Use whole numbers from 1 to 100, e.g. 20-35 or 25,40."
         if game == "fill-a-pix" then hint = "Use positive whole numbers, e.g. 30-120 or 50,118." end
+        if game == "galaxies" then hint = "Use whole numbers from 1 to 250, e.g. 30-80 or 35,50." end
         if game == "nurikabe" or game == "hashi" then hint = "Use whole numbers from 1 to 50, e.g. 25-50 or 25,40." end
         if key == "size" then hint = "Use 20 to 50 in steps of 5, e.g. 20-30 or 25,40." end
         if key == "difficulty" then hint = "Use 1 to 5 in steps of 0.25, e.g. 3.5-4.25 or 2,4." end

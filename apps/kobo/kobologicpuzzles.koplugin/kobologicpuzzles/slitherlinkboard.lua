@@ -1,4 +1,6 @@
-local Slitherlink = {}
+local EdgeHistory = require("kobologicpuzzles/edgehistory")
+
+local Slitherlink = setmetatable({}, { __index = EdgeHistory })
 Slitherlink.__index = Slitherlink
 
 Slitherlink.tilings = {
@@ -132,67 +134,9 @@ function Slitherlink:new(puzzle, marks)
     return board
 end
 
-function Slitherlink:marks() return table.concat(self.state) end
-
 function Slitherlink:isComplete()
     if self.completed == nil then self.completed = complete(self.puzzle, self.state) end
     return self.completed
-end
-
-function Slitherlink:setMark(edge, mark)
-    local previous = self.state[edge]
-    if previous == mark then return end
-    return self:commit({ { edge = edge, before = previous, after = mark } })
-end
-
-function Slitherlink:commit(changes)
-    if #changes == 0 then return end
-    self.undo[#self.undo + 1] = changes
-    self.redo = {}
-    return self:apply(changes, "after")
-end
-
-function Slitherlink:apply(changes, key)
-    for _, change in ipairs(changes) do self.state[change.edge] = change[key] end
-    self.completed = nil
-    return changes
-end
-
-function Slitherlink:undoStroke()
-    local changes = table.remove(self.undo)
-    if not changes then return end
-    self.redo[#self.redo + 1] = changes
-    return self:apply(changes, "before")
-end
-
-function Slitherlink:redoStroke()
-    local changes = table.remove(self.redo)
-    if not changes then return end
-    self.undo[#self.undo + 1] = changes
-    return self:apply(changes, "after")
-end
-
-function Slitherlink:restoreCheckpoint(marks)
-    if not Slitherlink.validMarks(self.puzzle, marks) then return end
-    local changes = {}
-    for index, before in ipairs(self.state) do
-        local after = marks:sub(index, index)
-        if before ~= after then changes[#changes + 1] = { edge = index, before = before, after = after } end
-    end
-    return self:commit(changes)
-end
-
-function Slitherlink:checkSolution()
-    local errors, remaining = 0, 0
-    for i, actual in ipairs(self.state) do
-        local expected = self.solution:sub(i, i)
-        if actual == "#" and expected ~= "#" or actual == "x" and expected == "#" then
-            errors = errors + 1
-        elseif actual == "." and expected == "#" then
-            remaining = remaining + 1
-        end
-    end
-    return errors, remaining
 end
 
 function Slitherlink.progress(puzzle, marks)

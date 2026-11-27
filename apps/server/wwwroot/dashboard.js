@@ -8,6 +8,7 @@ const games = [
     { id: "fill-a-pix", name: "Fill-a-Pix" },
     { id: "slitherlink", name: "Slitherlink", generator: "Loopy" },
     { id: "nurikabe", name: "Nurikabe", generator: "KoboLogicPuzzles" },
+    { id: "galaxies", name: "Galaxies" },
 ];
 const generators = games.filter(game => game.generator);
 const state = { data: null, pending: false, online: false, game: "hashi", filters: {}, lastRefresh: 0 };

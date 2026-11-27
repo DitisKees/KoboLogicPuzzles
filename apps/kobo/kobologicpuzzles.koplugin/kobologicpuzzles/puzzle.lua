@@ -1,20 +1,21 @@
 local Board = require("kobologicpuzzles/board")
 local FillAPix = require("kobologicpuzzles/fillapixboard")
+local Galaxies = require("kobologicpuzzles/galaxiesboard")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
 local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 
 local Puzzle = {}
-Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink", "nurikabe" }
-Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink", nurikabe = "Nurikabe" }
+Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink", "nurikabe", "galaxies" }
+Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink", nurikabe = "Nurikabe", galaxies = "Galaxies" }
 Puzzle.families = {
     { title = "Cell shading", games = { "nonogram", "fill-a-pix", "nurikabe" } },
     { title = "Line drawing", games = { "hashi", "slitherlink" } },
-    { title = "Region partitioning", games = {} },
+    { title = "Region partitioning", games = { "galaxies" } },
     { title = "Object placement", games = {} },
 }
 Puzzle.fillAPixSources = { janko = "Janko", grandgames = "GrandGames", fillapixnet = "Fill-a-Pix.net" }
-local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink, nurikabe = Nurikabe }
+local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink, nurikabe = Nurikabe, galaxies = Galaxies }
 Puzzle.difficulties = { "easy", "medium", "hard", "expert" }
 Puzzle.difficultyNames = { easy = "Easy", medium = "Medium", hard = "Hard", expert = "Expert" }
 Puzzle.hashiSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahead", "requires_search", "unknown" }
@@ -34,6 +35,8 @@ function Puzzle.localId(value)
     hash = value:match("^slitherlink%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
     hash = value:match("^nurikabe%-([0-9a-f]+)$")
+    if hash and #hash == 64 then return value end
+    hash = value:match("^galaxies%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
     local source, upstreamId = value:match("^fill%-a%-pix%-([a-z0-9]+)%-([1-9]%d*)$")
     if Puzzle.fillAPixSources[source] and #upstreamId <= 10 and tonumber(upstreamId) <= 2147483647 then return value end
@@ -60,6 +63,7 @@ function Puzzle.game(id)
     if type(id) == "string" and id:sub(1, 11) == "fill-a-pix-" then return "fill-a-pix" end
     if type(id) == "string" and id:sub(1, 12) == "slitherlink-" then return "slitherlink" end
     if type(id) == "string" and id:sub(1, 9) == "nurikabe-" then return "nurikabe" end
+    if type(id) == "string" and id:sub(1, 9) == "galaxies-" then return "galaxies" end
     return "hashi"
 end
 
@@ -120,6 +124,7 @@ end
 local filterKeys = { "width", "height", "size", "difficulty", "solvability", "tiling", "source" }
 local dimension = { min = 1, max = 100, step = 1 }
 local nurikabeDimension = { min = 1, max = 50, step = 1 }
+local galaxiesDimension = { min = 1, max = 250, step = 1 }
 local hashiDimension = nurikabeDimension
 local fillDimension = { min = 1, max = 2147483647, step = 1 }
 local nurikabeLogic = { basic_logic = "Basic logic", advanced_logic = "Advanced logic",
@@ -138,6 +143,8 @@ local filterDomains = {
     },
     nurikabe = { width = nurikabeDimension, height = nurikabeDimension, difficulty = Puzzle.difficultyNames,
         solvability = nurikabeLogic, source = { valid = Slitherlink.validSource } },
+    galaxies = { width = galaxiesDimension, height = galaxiesDimension, difficulty = Puzzle.difficultyNames,
+        solvability = Puzzle.hashiSolvabilityNames, source = { valid = Slitherlink.validSource } },
     ["fill-a-pix"] = { width = fillDimension, height = fillDimension },
     slitherlink = { width = dimension, height = dimension, size = dimension, difficulty = Slitherlink.difficultyNames,
         tiling = Slitherlink.tilingNames, source = { valid = Slitherlink.validSource } },

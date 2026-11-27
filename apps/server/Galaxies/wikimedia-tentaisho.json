@@ -1,0 +1,3 @@
+[
+  {"id":"10x10-tentaisho","title":"Wikimedia Tentai Show","width":10,"height":10,"centers":[[2,1,false],[13,1,false],[1,3,true],[5,3,false],[17,3,false],[9,4,true],[12,4,false],[19,7,true],[11,8,false],[3,9,false],[5,9,true],[7,9,false],[14,10,false],[18,11,true],[12,13,true],[2,16,false],[7,16,true],[14,16,true],[19,16,false],[1,19,false],[5,19,true],[7,19,false],[11,19,false],[15,19,false],[17,19,true]],"solution":"##x##x#xxx##x#xxxxxxxx#x##x###x#x#xx####x#x#x#xx#x#x#xx###x#x#x####x#xxxxxxxxxxx#x##x#x##xx##xx##xx#xx##x#xxx####x#xxxxxx##xx#######xx#xxxx#xx#x###x#x###x#xx#xxx#x#xx#xxx##########","version":"2e0a4b36a476b906b5fd7f2131b0f4f038c4b52ec45ef73179a2e82ab80123cd"}
+]

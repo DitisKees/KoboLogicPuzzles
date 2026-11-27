@@ -14,7 +14,9 @@ services:
       HashiGeneration__Enabled: "true" # Replenish verified local Hashi stock in the background.
       SlitherlinkGeneration__Enabled: "true"
       NurikabeGeneration__Enabled: "true"
-      # For noncommercial use, uncomment both lines to include Janko BY-NC-SA boards.
+      # Enables Artist's Block and Janko Galaxies imports for noncommercial use.
+      # GalaxiesCollections__AllowNonCommercial: "true"
+      # For noncommercial use, uncomment both lines to include Janko Nonogram and Hashi boards.
       # ExtraCollections__JankoEnabled: "true"
       # ExtraCollections__AllowNonCommercial: "true"
 

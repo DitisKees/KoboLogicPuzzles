@@ -37,12 +37,13 @@ end
 function PuzzleMenu.details(metadata, game, author)
     metadata = type(metadata) == "table" and metadata or {}
     local source = Puzzle.sourceLabel(game, metadata.source, metadata.sourceName, metadata.sourceKind)
-    if game == "hashi" or game == "nurikabe" then
+    if game == "hashi" or game == "nurikabe" or game == "galaxies" then
         local details = {}
         if source then details[#details + 1] = source end
         if type(author) == "string" and author ~= "" and author ~= metadata.sourceName then
             details[#details + 1] = author
         end
+        if game == "galaxies" and metadata.picture == false then details[#details + 1] = "Classic" end
         details[#details + 1] = Puzzle.difficultyNames[metadata.difficulty] or "Difficulty unknown"
         details[#details + 1] = Puzzle.hashiSolvabilityNames[metadata.solvability] or "Solvability unknown"
         return table.concat(details, " · ")

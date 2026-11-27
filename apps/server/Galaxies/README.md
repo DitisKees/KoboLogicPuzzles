@@ -1,0 +1,24 @@
+# Picture Galaxies
+
+Galaxies appears under **Region partitioning** on Kobo. Draw walls between cells until every connected region contains exactly one center and has 180° rotational symmetry about it. A center on an edge or corner belongs to all cells it touches. A valid closed region with a solid center shades in as you play. Open centers stay white. Once the board is solved, **Overview** shows the finished image.
+
+## Automatic collection imports
+
+The server verifies and imports bundled collections on startup. They work without internet access. The catalog and offline queue put large pictures first, then smaller pictures, then classic boards. Source, width, height, difficulty, and solvability can be filtered on both the server and Kobo.
+
+| Source | Contents and terms |
+| --- | --- |
+| **Kobo Logic Puzzles Pictures** | Four original 30×30 to 80×80 puzzles constructed by partitioning monochrome pixel art into symmetric regions. The server compares the exact solution with the intended partition. MIT. |
+| **Simon Tatham’s Galaxies** | Three original 30×30, 32×32 and 36×36 pictures constructed with the upstream bitmap generator at commit `616da16f25da428ccda805536209095bd062676e`. The server imports the bundled boards and checks their intended partitions. [Generator documentation](https://www.chiark.greenend.org.uk/~sgtatham/puzzles/doc/galaxies.html) · [MIT notice](tatham-galaxies.LICENSE) |
+| **Spiral Galaxies Font** | 36 7×7 puzzles by Walker Anderson, Erik Demaine, and Martin Demaine. The bundled snapshot transcribes centers and published walls from commit `27dec3ab6d964e7d9ec66f4a5cb6dbbe7eba79c6`. The catalog uses numbered titles to keep the picture a surprise. [Source and MIT license](https://github.com/edemaine/font-spiralgalaxies/tree/27dec3ab6d964e7d9ec66f4a5cb6dbbe7eba79c6) |
+| **Wikimedia Commons** | A 10×10 puzzle by LightbulbMEOW, made with puzz.link. The snapshot transcribes the two published images into coordinates and walls and retains CC BY-SA 4.0. [Clues and attribution](https://commons.wikimedia.org/wiki/File:10x10_Tentaisho_unsolved.png) · [Published solution](https://commons.wikimedia.org/wiki/File:10x10_Tentaisho_solved.png) · [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+| **Artist’s Block** | Ten picture puzzles by Grant Fikes, including 20×36 and 31×45 boards. Their clue images are transcribed into center coordinates and classes under CC BY-NC 3.0 US. Each record retains its original post URL and image SHA-256. Imported automatically on noncommercial deployments. [Author’s collection and terms](https://mathgrant.blogspot.com/search/label/Artist%27s%20Block) · [CC BY-NC 3.0 US](https://creativecommons.org/licenses/by-nc/3.0/us/) |
+| **Janko** | Classic boards up to 36×20. On noncommercial deployments the server follows numbered catalog links and imports Otto Janko’s boards with the per-page CC BY-NC-SA 3.0 grant. It checks the supplied partition where present, saves its cursor after each page, and checks the archive weekly. [Galaxien archive](https://www.janko.at/Raetsel/Galaxien/index.htm) · [Otto Janko’s license](https://www.janko.at/Raetsel/Creative-Commons.htm) |
+
+Set `GalaxiesCollections__AllowNonCommercial=true` for a noncommercial deployment. The setting defaults to `ExtraCollections__AllowNonCommercial`, which defaults to false. `GalaxiesCollections__RefreshEnabled` defaults to `CatalogRefresh__Enabled`. A failed source retries in one hour. Each puzzle retains the author, source ID, source link, license, source version and the SHA-256 of its dimensions and sorted colored centers.
+
+Conceptis licenses purchased Sym-a-Pix puzzles for household use on its site. Any Puzzle Media sells PivotPix publication rights. Nikoli publishes Tentai Show samples. The puzz.link database points to author-owned puzzles, so permission comes from the original author. KrazyDad directs app publishers to contact the author. [Conceptis terms](https://www.conceptispuzzles.com/index.aspx?uri=info/doc/330) · [PivotPix](https://www.anypuzzle.com/PivotPix) · [Nikoli samples](https://www.nikoli.co.jp/en/puzzles/tentai_show/) · [puzz.link terms](https://puzz.link/#terms-privacy) · [KrazyDad terms](https://krazydad.com/about/)
+
+## Verification and ratings
+
+The verifier assigns cells to centers, propagates rotation and connectivity constraints, and branches as needed until it has ruled out alternatives or found a second solution. It rejects boards that are invalid, ambiguous, or unproven within its proof budget. Difficulty estimates use board size and proof effort. Solvability reports which approach established uniqueness. `basic_logic` means the initial reachability checks determine every cell, `advanced_logic` means further propagation was needed, and `requires_search` means the exact solver branched. The latter describes this verifier’s proof and can include boards humans solve deductively.

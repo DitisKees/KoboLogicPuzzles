@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.Galaxies;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
@@ -53,6 +54,14 @@ public static class Server
         services.AddSingleton<IPuzzleProvider, FillAPixPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, SlitherlinkPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, NurikabePuzzleProvider>();
+        services.AddSingleton<IPuzzleProvider, GalaxiesPuzzleProvider>();
+        services.AddHostedService<GalaxiesCollections>();
+        services.AddHttpClient("galaxies", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
         services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<GameCatalog>();
         services.AddSingleton<GameProgressBackup>();

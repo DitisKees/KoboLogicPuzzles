@@ -3,7 +3,7 @@ using System.Globalization;
 
 namespace KoboLogicPuzzles.Server;
 
-public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe }
+public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe, Galaxies }
 
 public sealed record PuzzleId
 {
@@ -11,6 +11,7 @@ public sealed record PuzzleId
     private const string WebPbnPrefix = "nonogram-webpbn-";
     private const string HashiPrefix = "hashi-local-";
     private const string FillAPixPrefix = "fill-a-pix-";
+    private const string GalaxiesPrefix = "galaxies-";
     private const string NurikabePrefix = "nurikabe-";
     private const string SlitherlinkPrefix = "slitherlink-";
 
@@ -66,6 +67,13 @@ public sealed record PuzzleId
         return new PuzzleId(PuzzleGame.Nurikabe, NurikabePrefix + contentHash, null, contentHash);
     }
 
+    public static PuzzleId FromGalaxies(string contentHash)
+    {
+        if (!IsContentHash(contentHash))
+            throw new ArgumentException("A Galaxies content hash must have 64 lowercase hexadecimal characters.", nameof(contentHash));
+        return new PuzzleId(PuzzleGame.Galaxies, GalaxiesPrefix + contentHash, null, contentHash);
+    }
+
     internal static PuzzleId FromFillAPix(FillAPixSource source, int number)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(number);
@@ -114,6 +122,12 @@ public sealed record PuzzleId
                  IsContentHash(value[NurikabePrefix.Length..]))
         {
             id = FromNurikabe(value[NurikabePrefix.Length..]);
+            return true;
+        }
+        else if (value?.StartsWith(GalaxiesPrefix, StringComparison.Ordinal) is true &&
+                 IsContentHash(value[GalaxiesPrefix.Length..]))
+        {
+            id = FromGalaxies(value[GalaxiesPrefix.Length..]);
             return true;
         }
         else if (value?.StartsWith(FillAPixPrefix, StringComparison.Ordinal) is true)

@@ -17,6 +17,7 @@ local FillAPix = require("kobologicpuzzles/fillapixboard")
 local API = require("kobologicpuzzles/api")
 local Event = require("ui/event")
 local Geom = require("ui/geometry")
+local Galaxies = require("kobologicpuzzles/galaxiesboard")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
 local Puzzle = require("kobologicpuzzles/puzzle")
@@ -198,7 +199,7 @@ local function testHashiSync()
     store = assert(Store.open(store.root))
     assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
     assert(store.records[fillAPix.id].completed and store.records[fillAPix.id].marks == "#xx#x#")
-    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink,nurikabe")
+    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink,nurikabe,galaxies")
 end
 
 local function testFillAPixRulesAndSync()
@@ -1751,6 +1752,135 @@ local function testNurikabe()
     assert(fresh.records[puzzle.id].completed)
 end
 
+local function testGalaxies()
+    local function id(symbol) return "galaxies-" .. string.rep(symbol, 64) end
+    local metadata = { picture = true, source = "galaxies-pictures", sourceName = "Kobo Logic Puzzles Pictures",
+        difficulty = "hard", solvability = "advanced_logic" }
+    local small = { id = id("a"), game = "galaxies", schemaVersion = 1, title = "Picture fixture",
+        width = 3, height = 2, metadata = metadata, solution = "xxx#x#x",
+        centers = { { x = 1, y = 2, black = true }, { x = 4, y = 2, black = false } } }
+    assert(Puzzle.fromWire(small))
+    assert(not Galaxies.validMarks(small, "x#x#x#x", true))
+    assert(not Galaxies.validMarks(small, ".......", true))
+    assert(Galaxies.validMarks(small, "...#.#.", true))
+
+    local file = assert(io.open((arg[0]:gsub("tests/kobo/smoke%.lua$", "apps/server/Galaxies/galaxies-pictures.json")), "rb"))
+    local entries = require("json").decode(file:read("*all"))
+    file:close()
+    local entry = entries[#entries]
+    local large = { id = id("b"), game = "galaxies", schemaVersion = 1, title = "Large picture",
+        width = entry.width, height = entry.height, metadata = metadata, solution = entry.solution, centers = {} }
+    for _, center in ipairs(entry.centers) do
+        large.centers[#large.centers + 1] = { x = center[1], y = center[2], black = center[3] }
+    end
+    assert(large.width == 80 and Puzzle.fromWire(large))
+    local shade = Galaxies:new(large, large.solution):regions()
+    assert(next(shade) and not shade[1])
+
+    local root = home .. "/galaxies-ui"
+    local store = assert(Store.open(root))
+    assert(store:updateSettings({ server = "http://example.test:8080", target = 0, galaxiesTarget = 2 }))
+    assert(store:setFilters("galaxies", { source = "galaxies-pictures", width = "3-80" }))
+    local result = Sync.run(store, function(method, path, payload)
+        if path == "/restore" then return {} end
+        assert(method == "POST" and path == "/offline-queue" and payload.game == "galaxies")
+        assert(payload.source == "galaxies-pictures" and payload.widthFilter == "3-80")
+        return { puzzles = { small, large }, remaining = 0 }
+    end, { galaxies = true, advancedFilters = true })
+    assert(result.added == 2)
+
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } }, store = store,
+    }
+    plugin.online = function() error("Offline Galaxies attempted to call the server") end
+    plugin:showHome()
+    tapWidget(plugin.home, homeButton(plugin, "galaxies"))
+    plugin:showGame(large.id)
+    local function pos(game, x, y)
+        local ox, oy, scale = game:graphOrigin(false)
+        return Geom:new{ x = game.grid.x + ox + x * scale, y = game.grid.y + oy + y * scale }
+    end
+    local game = assert(plugin.game)
+    UI:forceRePaint()
+    game:onTap(nil, { pos = pos(game, 1, 0.5) })
+    assert(game.graphClip and game.graphClip.w < game.grid.w)
+    UI:forceRePaint()
+    local initial = game.board:marks()
+    assert(initial:find("#", 1, true))
+    device.screen.bb:writePNG(home .. "/galaxies-large-grid.png")
+    game:onButton("overview")
+    UI:forceRePaint()
+    assert(game.overview)
+    game:onButton("overview")
+    game:onButton("plus")
+    game:moveViewport(19, 23)
+    game:onClose()
+    local reopened = assert(Store.open(root))
+    assert(reopened.records[large.id].marks == initial and reopened.records[large.id].zoom == 3)
+    assert(reopened.records[large.id].row == 19 and reopened.records[large.id].column == 23)
+
+    plugin:showGame(small.id)
+    game = assert(plugin.game)
+    UI:forceRePaint()
+    game:onButton("check")
+    assert(UI:getTopmostVisibleWidget().text:find("No mistakes", 1, true))
+    UI:close(UI:getTopmostVisibleWidget())
+    local start, finish = pos(game, 1, 0.5), pos(game, 1, 1.5)
+    game:onPan(nil, { start_pos = start, pos = finish })
+    game:onPanRelease(nil, { pos = finish })
+    assert(game.board:marks() == "...#.#." and store.records[small.id].completed)
+    UI:close(UI:getTopmostVisibleWidget())
+    assert(store:saveCheckpoint(game.board))
+    local pixels = game.board:regions()
+    assert(pixels[1] and pixels[4] and not pixels[2])
+    game:onButton("undo")
+    assert(game.board:marks() == ".......")
+    game:onButton("redo")
+    assert(game.board:isComplete())
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onButton("restart")
+    local dialog = UI:getTopmostVisibleWidget()
+    UI:close(dialog)
+    dialog.ok_callback()
+    assert(not game.board:isComplete())
+    game:changed(game.board:restoreCheckpoint(store.records[small.id].checkpoint), true)
+    assert(game.board:isComplete())
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onClose()
+    plugin.library:onClose()
+    plugin.home:onClose()
+
+    local backups
+    assert(store:updateSettings({ galaxiesTarget = 0 }))
+    result = Sync.run(store, function(method, path, payload)
+        assert(method == "POST" and path == "/progress")
+        backups = payload.boards
+        return { savedCount = #backups, backedUpAt = "2026-11-27T00:00:00Z" }
+    end, { galaxies = true, advancedFilters = true })
+    assert(result.backedUp == 2)
+    local fresh = assert(Store.open(home .. "/galaxies-restore"))
+    assert(Sync.restore(fresh, function(method, path)
+        assert(method == "GET" and path == "/restore")
+        local records = {}
+        for _, progress in ipairs(backups) do
+            progress.schemaVersion = 1
+            records[#records + 1] = { puzzle = progress.puzzleId == small.id and small or large, progress = progress }
+        end
+        return records
+    end) == 2)
+    assert(fresh.records[small.id].completed and fresh.records[large.id].marks == initial)
+
+    assert(store:saveGame(Galaxies:new(large, large.solution), { row = 19, column = 23, zoom = 3 }, true))
+    plugin:showGame(large.id)
+    game = assert(plugin.game)
+    assert(game.board:isComplete())
+    game:onButton("overview")
+    UI:forceRePaint()
+    device.screen.bb:writePNG(home .. "/galaxies-picture.png")
+    game:onClose()
+    if plugin.library then plugin.library:onClose() end
+end
+
 local function testExtraCollections()
     local nonogram = { id = "nonogram-collection-" .. string.rep("a", 64), game = "nonogram",
         schemaVersion = 1, width = 3, height = 2, title = "Small Nonogram", author = "Publisher",
@@ -1833,6 +1963,7 @@ testHashiUI()
 testFillAPixUI()
 testSlitherlinkUI()
 testNurikabe()
+testGalaxies()
 testExtraCollections()
 testHomeUI()
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

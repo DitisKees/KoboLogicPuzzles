@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Galaxies;
 using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
 
@@ -10,6 +11,7 @@ namespace KoboLogicPuzzles.Server;
 public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights, int[]? Difficulties, int[]? Solvabilities)
 {
     private static readonly int[] Dimensions = Enumerable.Range(1, 100).ToArray();
+    private static readonly int[] GalaxiesDimensions = Enumerable.Range(1, GalaxiesBoard.MaxDimension).ToArray();
     private static readonly int[] HashiSizes = Dimensions.Where(HashiGenerationOptions.IsSupportedSize).ToArray();
     private static readonly int[] StarRatings = Enumerable.Range(4, 17).ToArray();
     private static readonly int[] WebPbnSolvabilities = Enumerable.Range(1, 6).ToArray();
@@ -24,6 +26,8 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     internal DimensionRange[]? FillAPixWidths { get; init; }
     internal DimensionRange[]? FillAPixHeights { get; init; }
     internal string[]? SlitherlinkDifficulties { get; init; }
+    internal string[]? GalaxiesDifficulties { get; init; }
+    internal string[]? GalaxiesSolvabilities { get; init; }
     internal string[]? NurikabeDifficulties { get; init; }
     internal string[]? NurikabeSolvabilities { get; init; }
     internal string[]? Tilings { get; init; }
@@ -55,14 +59,19 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
                 return null;
             return new PuzzleFilter(kind, null, null, null, null) { FillAPixWidths = widthRanges, FillAPixHeights = heightRanges };
         }
-        var dimensions = kind == PuzzleGame.Nurikabe ? Dimensions[..50] : Dimensions;
+        var dimensions = kind switch
+        {
+            PuzzleGame.Nurikabe => Dimensions[..50],
+            PuzzleGame.Galaxies => GalaxiesDimensions,
+            _ => Dimensions,
+        };
         if (!TrySelect(width?.ToString(CultureInfo.InvariantCulture), widthFilter, dimensions, Integer, true, out var widths) ||
             !TrySelect(height?.ToString(CultureInfo.InvariantCulture), heightFilter, dimensions, Integer, true, out var heights))
             return null;
 
         if (sizeFilter is not null)
         {
-            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe) || widths is not null || heights is not null ||
+            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe or PuzzleGame.Galaxies) || widths is not null || heights is not null ||
                 !TrySelect(null, sizeFilter, kind == PuzzleGame.Hashi ? HashiSizes : dimensions, Integer, true, out widths))
                 return null;
             heights = widths;
@@ -85,6 +94,16 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
                 return null;
             return new PuzzleFilter(kind, widths, heights, null, null)
             { NurikabeDifficulties = levels, NurikabeSolvabilities = logic, Sources = sources };
+        }
+
+        if (kind == PuzzleGame.Galaxies)
+        {
+            if (!TryChoices(difficulty, difficultyFilter, value => value is "easy" or "medium" or "hard" or "expert", out var levels) ||
+                !TryChoices(solvability, solvabilityFilter, value => value is "basic_logic" or "advanced_logic" or
+                    "bounded_lookahead" or "requires_search" or "unknown", out var logic))
+                return null;
+            return new PuzzleFilter(kind, widths, heights, null, null)
+            { GalaxiesDifficulties = levels, GalaxiesSolvabilities = logic, Sources = sources, SquareOnly = sizeFilter is not null };
         }
 
         if (sources is null && !includeCollections)
@@ -245,6 +264,10 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             (SlitherlinkDifficulties is null || SlitherlinkDifficulties.Contains(slitherlink.Metadata.Difficulty)) &&
             (Tilings is null || Tilings.Contains(slitherlink.Metadata.Tiling)) &&
             (Sources is null || Sources.Contains(slitherlink.Metadata.Source)),
+        GalaxiesDefinition galaxies => Matches(galaxies.Width, galaxies.Height, null, null) &&
+            (GalaxiesDifficulties is null || GalaxiesDifficulties.Contains(galaxies.Metadata.Difficulty)) &&
+            (GalaxiesSolvabilities is null || GalaxiesSolvabilities.Contains(galaxies.Metadata.Solvability)) &&
+            IncludesSource(galaxies.Metadata.Source),
         NurikabeDefinition nurikabe => Matches(nurikabe.Width, nurikabe.Height, null, null) &&
             (NurikabeDifficulties is null || NurikabeDifficulties.Contains(nurikabe.Metadata.Difficulty)) &&
             (NurikabeSolvabilities is null || NurikabeSolvabilities.Contains(nurikabe.Metadata.Solvability)) &&
