@@ -20,7 +20,7 @@ internal sealed class NurikabeSolver(NurikabeBoard board, TimeSpan timeout, Canc
         if (!Propagate(cells, advanced: true))
             return new(0, null, null, null);
         if (!cells.Contains(Unknown))
-            return Result(cells, unresolved >= 12 ? "hard" : "medium", "advanced_logic");
+            return Result(cells, unresolved >= Math.Max(12, board.Size * 15 / 100) ? "hard" : "medium", "advanced_logic");
 
         // A contradiction after propagating one trial color is a sound deduction.
         // Bound the classification work. The exact search below still handles either remaining color.

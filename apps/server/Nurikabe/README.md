@@ -8,7 +8,7 @@ The managed generator grows a connected sea or builds a sea around rows of islan
 
 The verifier applies island, pool and connectivity deductions, then tries a bounded number of single-cell hypotheses. An exhaustive two-way search counts solutions up to two when deductions leave undecided cells. Sea reachability and cut vertices constrain the search, and the final flood-fill validates every island and the whole sea. The server stores only a unique solution confirmed by these rules. It also checks any supplied answer against the proof. Candidates that run out of time are discarded.
 
-Difficulty and solvability are separate fields. Basic rules yield **Easy**. Clue reachability and sea bottlenecks yield **Medium** or **Hard**, split by whether at least 12 cells were undecided after basic deductions. Up to four successful single-hypothesis deductions yield **Hard**, and further deductions or exhaustive search yield **Expert**. These thresholds estimate solver effort. They have no human or publisher calibration.
+Difficulty and solvability are separate fields. Basic rules yield **Easy**. Clue reachability and sea bottlenecks yield **Medium** or **Hard**, split at 15% of the board's cells undecided after basic deductions (with a 12-cell minimum). Up to four successful single-hypothesis deductions yield **Hard**, and further deductions or exhaustive search yield **Expert**. These thresholds estimate solver effort. They have no human or publisher calibration.
 
 The MIT-licensed [sdvx Java generator](https://github.com/3892myamya/sdvx/blob/master/src/main/java/myamya/other/solver/nurikabe/NurikabeSolver.java), [tbersez C generator](https://github.com/tbersez/nurikabe), and [sen-ltd TypeScript engine](https://github.com/sen-ltd/nurikabe) were source candidates. The managed implementation reuses the server runtime and provides its own exact verification. It includes no upstream generator code or runtime dependency.
 
@@ -29,7 +29,7 @@ This small seed sample covers the lower-density banded candidates and the sea-gr
 
 ## Inventory and commands
 
-The Docker image enables `NurikabeGeneration__Enabled`. The managed defaults target five unstarted boards per size and difficulty combination for Hard and Expert. The worker tries up to five candidates per size per pass and pauses 60 seconds between passes. API requests use the stored inventory.
+The Docker image enables `NurikabeGeneration__Enabled`. The managed defaults target five unstarted boards per size and difficulty combination for Easy, Medium, Hard, and Expert. The worker tries up to five candidates per size per pass and pauses 60 seconds between passes. API requests use the stored inventory.
 
 Set `NurikabeGeneration__Sizes__0`, `NurikabeGeneration__Difficulties__0`, and additional indexed values to configure the buckets. The other options are `TargetPerDifficulty`, `AttemptsPerSize`, `PollIntervalSeconds`, `ProofTimeoutSeconds` (default 2, maximum 30), and `IncludeRequiresSearch` (default false for automatic replenishment). Under Docker Compose use the same `NurikabeGeneration__` prefix for each option.
 

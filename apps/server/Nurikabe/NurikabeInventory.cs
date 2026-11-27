@@ -9,7 +9,7 @@ internal readonly record struct NurikabeBucket(int Size, string Difficulty, stri
 public sealed class NurikabeOptions : IValidatableObject
 {
     public bool Enabled { get; init; }
-    private static readonly string[] PreferredDifficulties = ["medium", "hard", "expert"];
+    private static readonly string[] PreferredDifficulties = ["easy", "medium", "hard", "expert"];
 
     public int[]? Sizes { get; init; }
     public string[]? Difficulties { get; init; }

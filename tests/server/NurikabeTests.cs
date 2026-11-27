@@ -62,6 +62,18 @@ public sealed class NurikabeTests
     }
 
     [Fact]
+    public void GeneratorCanProduceMediumDifficultyPuzzles()
+    {
+        var (board, solution) = NurikabeGenerator.Candidate(25, 1, default);
+        var proof = Prove(board);
+
+        Assert.Equal(1, proof.Count);
+        Assert.Equal(solution, proof.Solution);
+        Assert.Equal("medium", proof.Difficulty);
+        Assert.Equal("advanced_logic", proof.Solvability);
+    }
+
+    [Fact]
     public void CancellationAndTimeoutDoNotProduceAProof()
     {
         var board = new NurikabeBoard(2, 2, [1, 0, 0, 0]);
