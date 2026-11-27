@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
 using Microsoft.AspNetCore.TestHost;
 
@@ -44,7 +45,8 @@ public sealed class DashboardTests
         Assert.False(slitherlink.TryGetProperty("marks", out _));
 
         Assert.True(snapshot.GetProperty("hashi").GetProperty("targets").GetArrayLength() > 0);
-        Assert.Equal(18, snapshot.GetProperty("nurikabe").GetProperty("stock").GetArrayLength());
+        Assert.Equal(NurikabeGenerator.Sizes.Length * NurikabeGenerator.Difficulties.Length,
+            snapshot.GetProperty("nurikabe").GetProperty("stock").GetArrayLength());
         Assert.Equal(216, snapshot.GetProperty("slitherlink").GetProperty("stock").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, snapshot.GetProperty("hashi").GetProperty("activity").GetProperty("current").ValueKind);
         Assert.True(snapshot.GetProperty("sampledAt").TryGetDateTimeOffset(out _));
