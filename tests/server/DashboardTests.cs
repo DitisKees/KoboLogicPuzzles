@@ -17,7 +17,8 @@ public sealed class DashboardTests
         database.Store.SaveProgress([new ProgressUpdate(12, "#.....", false)], DateTimeOffset.UtcNow);
         Assert.True(database.Store.SaveHashiPuzzle(TestData.VerifyHashi(TestData.HashiPair())));
         var puzzle = NativeLoopBoard.Square([[4]]).ToDefinition(1, 1, new("square", "example", "Example collection", 0))
-            with { Solution = "####" };
+            with
+        { Solution = "####" };
         Assert.True(database.Store.SaveSlitherlink(puzzle));
 
         using var source = TestData.Source(_ => throw new InvalidOperationException("Unexpected upstream call."));
@@ -43,7 +44,7 @@ public sealed class DashboardTests
         Assert.False(slitherlink.TryGetProperty("marks", out _));
 
         Assert.True(snapshot.GetProperty("hashi").GetProperty("targets").GetArrayLength() > 0);
-        Assert.Equal(12, snapshot.GetProperty("nurikabe").GetProperty("stock").GetArrayLength());
+        Assert.Equal(18, snapshot.GetProperty("nurikabe").GetProperty("stock").GetArrayLength());
         Assert.Equal(216, snapshot.GetProperty("slitherlink").GetProperty("stock").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, snapshot.GetProperty("hashi").GetProperty("activity").GetProperty("current").ValueKind);
         Assert.True(snapshot.GetProperty("sampledAt").TryGetDateTimeOffset(out _));
