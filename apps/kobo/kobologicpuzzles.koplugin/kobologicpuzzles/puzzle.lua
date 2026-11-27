@@ -3,19 +3,20 @@ local FillAPix = require("kobologicpuzzles/fillapixboard")
 local Galaxies = require("kobologicpuzzles/galaxiesboard")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
+local Placement = require("kobologicpuzzles/placementboard")
 local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 
 local Puzzle = {}
-Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink", "nurikabe", "galaxies" }
-Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink", nurikabe = "Nurikabe", galaxies = "Galaxies" }
+Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink", "nurikabe", "galaxies", "tents", "battleships" }
+Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink", nurikabe = "Nurikabe", galaxies = "Galaxies", tents = "Tents and Trees", battleships = "Battleships" }
 Puzzle.families = {
     { title = "Cell shading", games = { "nonogram", "fill-a-pix", "nurikabe" } },
     { title = "Line drawing", games = { "hashi", "slitherlink" } },
     { title = "Region partitioning", games = { "galaxies" } },
-    { title = "Object placement", games = {} },
+    { title = "Object placement", games = { "tents", "battleships" } },
 }
 Puzzle.fillAPixSources = { janko = "Janko", grandgames = "GrandGames", fillapixnet = "Fill-a-Pix.net" }
-local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink, nurikabe = Nurikabe, galaxies = Galaxies }
+local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink, nurikabe = Nurikabe, galaxies = Galaxies, tents = Placement, battleships = Placement }
 Puzzle.difficulties = { "easy", "medium", "hard", "expert" }
 Puzzle.difficultyNames = { easy = "Easy", medium = "Medium", hard = "Hard", expert = "Expert" }
 Puzzle.hashiSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahead", "requires_search", "unknown" }
@@ -38,6 +39,8 @@ function Puzzle.localId(value)
     if hash and #hash == 64 then return value end
     hash = value:match("^galaxies%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
+    local placement, suffix = value:match("^([a-z]+)%-([0-9a-f]+)$")
+    if Placement == rules[placement] and #suffix == 64 then return value end
     local source, upstreamId = value:match("^fill%-a%-pix%-([a-z0-9]+)%-([1-9]%d*)$")
     if Puzzle.fillAPixSources[source] and #upstreamId <= 10 and tonumber(upstreamId) <= 2147483647 then return value end
 end
@@ -64,8 +67,12 @@ function Puzzle.game(id)
     if type(id) == "string" and id:sub(1, 12) == "slitherlink-" then return "slitherlink" end
     if type(id) == "string" and id:sub(1, 9) == "nurikabe-" then return "nurikabe" end
     if type(id) == "string" and id:sub(1, 9) == "galaxies-" then return "galaxies" end
+    if type(id) == "string" and id:sub(1, 6) == "tents-" then return "tents" end
+    if type(id) == "string" and id:sub(1, 12) == "battleships-" then return "battleships" end
     return "hashi"
 end
+
+function Puzzle.isPlacement(game) return rules[game] == Placement end
 
 function Puzzle.rules(id) return rules[Puzzle.game(id)] end
 
@@ -130,7 +137,12 @@ local fillDimension = { min = 1, max = 2147483647, step = 1 }
 local nurikabeLogic = { basic_logic = "Basic logic", advanced_logic = "Advanced logic",
     bounded_lookahead = "Bounded lookahead", requires_search = "Requires search" }
 Puzzle.nurikabeSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahead", "requires_search" }
+local placementFilters = { width = nurikabeDimension, height = nurikabeDimension,
+    difficulty = Puzzle.difficultyNames, solvability = Puzzle.hashiSolvabilityNames,
+    source = { valid = Slitherlink.validSource } }
 local filterDomains = {
+    tents = placementFilters,
+    battleships = placementFilters,
     nonogram = {
         width = dimension, height = dimension,
         difficulty = { min = 1, max = 5, step = 0.25 }, solvability = { min = 1, max = 6 },

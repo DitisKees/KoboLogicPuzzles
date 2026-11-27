@@ -1,9 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
+using KoboLogicPuzzles.Server.Placement;
+
 namespace KoboLogicPuzzles.Server;
 
-public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe, Galaxies }
+public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe, Galaxies, Tents, Battleships }
 
 public sealed record PuzzleId
 {
@@ -74,6 +76,13 @@ public sealed record PuzzleId
         return new PuzzleId(PuzzleGame.Galaxies, GalaxiesPrefix + contentHash, null, contentHash);
     }
 
+    internal static PuzzleId FromPlacement(PuzzleGame game, string contentHash)
+    {
+        if (!PlacementBoard.Games.Contains(game) || !IsContentHash(contentHash))
+            throw new ArgumentException("A placement ID needs a placement game and 64 lowercase hexadecimal characters.");
+        return new PuzzleId(game, PlacementBoard.Slug(game) + "-" + contentHash, null, contentHash);
+    }
+
     internal static PuzzleId FromFillAPix(FillAPixSource source, int number)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(number);
@@ -130,6 +139,8 @@ public sealed record PuzzleId
             id = FromGalaxies(value[GalaxiesPrefix.Length..]);
             return true;
         }
+        else if (value is not null && TryParsePlacement(value, out id))
+            return true;
         else if (value?.StartsWith(FillAPixPrefix, StringComparison.Ordinal) is true)
         {
             var separator = value.LastIndexOf('-');
@@ -149,6 +160,22 @@ public sealed record PuzzleId
             }
         }
 
+        id = null;
+        return false;
+    }
+
+    private static bool TryParsePlacement(string value, [NotNullWhen(true)] out PuzzleId? id)
+    {
+        foreach (var game in PlacementBoard.Games)
+        {
+            var prefix = PlacementBoard.Slug(game) + "-";
+            if (value.Length == prefix.Length + 64 && value.StartsWith(prefix, StringComparison.Ordinal) &&
+                IsContentHash(value[prefix.Length..]))
+            {
+                id = FromPlacement(game, value[prefix.Length..]);
+                return true;
+            }
+        }
         id = null;
         return false;
     }

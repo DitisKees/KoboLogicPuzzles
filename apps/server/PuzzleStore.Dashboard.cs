@@ -46,6 +46,10 @@ public sealed partial class PuzzleStore
             SELECT 'galaxies', p.source, min(p.source_name), count(*), count(*) - count(s.puzzle_id), p.source_kind
                 FROM galaxies_puzzles p LEFT JOIN galaxies_progress s ON s.puzzle_id = p.id
                 GROUP BY p.source, p.source_kind
+            UNION ALL
+            SELECT p.game, p.source, min(p.source_name), count(*), count(*) - count(s.puzzle_id), p.source_kind
+                FROM placement_puzzles p LEFT JOIN placement_progress s ON s.puzzle_id = p.id
+                GROUP BY p.game, p.source, p.source_kind
             ORDER BY 1, 3
             """;
         command.Parameters.AddWithValue("$loopy", LoopyGenerator.Source);

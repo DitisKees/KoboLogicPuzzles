@@ -9,6 +9,8 @@ const games = [
     { id: "slitherlink", name: "Slitherlink", generator: "Loopy" },
     { id: "nurikabe", name: "Nurikabe", generator: "KoboLogicPuzzles" },
     { id: "galaxies", name: "Galaxies" },
+    { id: "tents", name: "Tents and Trees", generator: "Simon Tatham's Tents" },
+    { id: "battleships", name: "Battleships", generator: "KoboLogicPuzzles" },
 ];
 const generators = games.filter(game => game.generator);
 const state = { data: null, pending: false, online: false, game: "hashi", filters: {}, lastRefresh: 0 };
@@ -19,6 +21,7 @@ const resultNames = {
     duplicate: "Duplicate puzzle",
     generation_timeout: "Generation timed out",
     generation_failed: "Generation failed",
+    generator_unavailable: "Generator unavailable",
     verification_timeout: "Uniqueness proof timed out",
     multiple_solutions: "Multiple solutions",
     invalid: "Invalid puzzle",
@@ -46,13 +49,13 @@ function sum(rows, field) {
 }
 
 function stockEntries(game, data) {
-    if (game === "nurikabe") {
+    if (["nurikabe", "tents", "battleships"].includes(game)) {
         const entries = new Map();
         const key = row => `${row.size}/${row.difficulty}`;
-        for (const row of data.nurikabe.stock) {
+        for (const row of data[game].stock) {
             entries.set(key(row), { ...row, ready: row.unstarted, unstarted: 0 });
         }
-        for (const row of data.nurikabe.actualStock) {
+        for (const row of data[game].actualStock) {
             const id = key(row);
             const entry = entries.get(id) ?? { ...row, ready: 0, target: 0, unstarted: 0 };
             entry.unstarted += row.unstarted;
@@ -167,7 +170,7 @@ function renderInventory() {
     }
     select.value = selection;
     select.disabled = categories.length === 0;
-    select.closest(".filter").hidden = game === "nurikabe";
+    select.closest(".filter").hidden = categories.length === 0;
 
     const selected = rows.filter(row => !selection || row.category === selection);
     if (selected.length === 0) {
@@ -279,8 +282,9 @@ function renderWorkers(data) {
         }
         article.append(latest);
         if (status.collection?.enabled || status.collection?.checkedAt) {
-            const { checkedAt, nextIndex } = status.collection;
+            const { checkedAt, nextIndex, cursor } = status.collection;
             const message = nextIndex > 0 ? `Janko refresh · ${number.format(nextIndex)} checked`
+                : cursor ? `Janko refresh · through puzzle ${cursor.split(".")[0]}`
                 : checkedAt ? `Janko checked ${new Date(checkedAt).toLocaleDateString()}`
                 : "Janko refresh pending";
             article.append(element("p", "worker-meta", message));

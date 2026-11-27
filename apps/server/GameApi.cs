@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
@@ -10,7 +11,7 @@ internal static class GameApi
     public static void MapEndpoints(WebApplication app)
     {
         var api = app.MapGroup("/api/v2");
-        api.MapGet("/capabilities", (HashiGenerationOptions options, SlitherlinkOptions slitherlink, NurikabeInventory nurikabe, PuzzleStore store) =>
+        api.MapGet("/capabilities", (HashiGenerationOptions options, SlitherlinkOptions slitherlink, NurikabeInventory nurikabe, PlacementInventory placement, PuzzleStore store) =>
         {
             var sources = store.ListSlitherlinkSources();
             if (slitherlink.Enabled)
@@ -19,6 +20,13 @@ internal static class GameApi
             var catalog = store.ReadDashboardCatalog();
             var hashiSources = Sources("hashi");
             var galaxiesSources = Sources("galaxies");
+            var tentsSources = placement.Sources(PuzzleGame.Tents, catalog);
+            var battleshipsSources = placement.Sources(PuzzleGame.Battleships, catalog);
+            var games = GetGames(options, store, sources.Count > 0, nurikabeSources.Count > 0, galaxiesSources.Count > 0);
+            if (tentsSources.Count > 0)
+                games.Add("tents");
+            if (battleshipsSources.Count > 0)
+                games.Add("battleships");
             if (options.Enabled)
                 hashiSources.TryAdd("bridges", new("Bridges", "generated"));
             return new
@@ -27,7 +35,7 @@ internal static class GameApi
                 SchemaVersion = 1,
                 AdvancedFilters = true,
                 ExtraCollections = true,
-                Games = GetGames(options, store, sources.Count > 0, nurikabeSources.Count > 0, galaxiesSources.Count > 0),
+                Games = games,
                 SlitherlinkSources = sources,
                 PuzzleSources = new
                 {
@@ -37,6 +45,8 @@ internal static class GameApi
                         pair => new PuzzleSource(pair.Value, pair.Key == LoopyGenerator.Source ? "generated" : "collection")),
                     Nurikabe = nurikabeSources,
                     Galaxies = galaxiesSources,
+                    Tents = tentsSources,
+                    Battleships = battleshipsSources,
                 },
             };
 
@@ -46,6 +56,8 @@ internal static class GameApi
         api.MapGet("/hashi/status", (HashiInventory inventory) => inventory.GetStatus());
         api.MapGet("/slitherlink/status", (SlitherlinkInventory inventory) => inventory.GetStatus());
         api.MapGet("/nurikabe/status", (NurikabeInventory inventory) => inventory.GetStatus());
+        api.MapGet("/tents/status", (PlacementInventory inventory) => inventory.GetStatus(PuzzleGame.Tents));
+        api.MapGet("/battleships/status", (PlacementInventory inventory) => inventory.GetStatus(PuzzleGame.Battleships));
 
         api.MapGet("/puzzles", (GameCatalog catalog, string? game, int? width, int? height, string? difficulty, string? solvability,
             string? widthFilter, string? heightFilter, string? difficultyFilter, string? solvabilityFilter, string? sizeFilter,
@@ -115,7 +127,7 @@ internal static class GameApi
         });
     }
 
-    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink, bool hasNurikabe, bool hasGalaxies)
+    private static List<string> GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink, bool hasNurikabe, bool hasGalaxies)
     {
         var games = new List<string> { "nonogram" };
         if (options.Enabled || store.HasHashiPuzzles())
@@ -128,6 +140,6 @@ internal static class GameApi
             games.Add("nurikabe");
         if (hasGalaxies)
             games.Add("galaxies");
-        return games.ToArray();
+        return games;
     }
 }

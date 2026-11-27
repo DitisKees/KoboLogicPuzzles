@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Galaxies;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Nurikabe;
@@ -55,6 +56,18 @@ public static class Server
         services.AddSingleton<IPuzzleProvider, SlitherlinkPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, NurikabePuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, GalaxiesPuzzleProvider>();
+        foreach (var game in PlacementBoard.Games)
+            services.AddSingleton<IPuzzleProvider>(provider => new PlacementPuzzleProvider(provider.GetRequiredService<PuzzleStore>(), game));
+        services.AddSingleton<PlacementCollections>();
+        services.AddSingleton<PlacementInventory>();
+        services.AddHostedService<PlacementInventoryWorker>();
+        services.AddHostedService<PlacementCollectionsWorker>();
+        services.AddHttpClient("placement-collections", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
         services.AddHostedService<GalaxiesCollections>();
         services.AddHttpClient("galaxies", http =>
         {

@@ -6,7 +6,7 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 7;
+    private const int SchemaVersion = 8;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -231,40 +231,76 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
+        if (version < 7)
+        {
+            command.CommandText = """
+                CREATE TABLE galaxies_puzzles (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    content_hash TEXT NOT NULL UNIQUE,
+                    width INTEGER NOT NULL,
+                    height INTEGER NOT NULL,
+                    source TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    picture INTEGER NOT NULL CHECK (picture IN (0, 1)),
+                    catalog_rank INTEGER GENERATED ALWAYS AS (CASE
+                        WHEN picture = 0 THEN 0
+                        WHEN width >= 30 AND height >= 30 THEN 3
+                        WHEN width * height >= 400 THEN 2
+                        ELSE 1 END) VIRTUAL,
+                    difficulty TEXT NOT NULL,
+                    solvability TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    author TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    definition TEXT NOT NULL
+                );
+                CREATE INDEX galaxies_catalog_order ON galaxies_puzzles (catalog_rank DESC, id DESC);
+                CREATE INDEX galaxies_source ON galaxies_puzzles (source, width, height, difficulty, solvability);
+                CREATE TABLE galaxies_progress (
+                    puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES galaxies_puzzles(id),
+                    marks TEXT NOT NULL,
+                    completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                    backed_up_at TEXT NOT NULL
+                );
+                CREATE TABLE galaxies_collection_refresh (
+                    resource TEXT NOT NULL PRIMARY KEY,
+                    cursor TEXT NOT NULL,
+                    completed_at INTEGER NOT NULL
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
         command.CommandText = $"""
-            CREATE TABLE galaxies_puzzles (
+            CREATE TABLE placement_puzzles (
                 id TEXT NOT NULL PRIMARY KEY,
+                game TEXT NOT NULL CHECK (game IN ('tents', 'battleships')),
                 content_hash TEXT NOT NULL UNIQUE,
-                width INTEGER NOT NULL,
-                height INTEGER NOT NULL,
+                width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 50),
+                height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 50),
                 source TEXT NOT NULL,
                 source_name TEXT NOT NULL,
                 source_kind TEXT NOT NULL,
-                picture INTEGER NOT NULL CHECK (picture IN (0, 1)),
-                catalog_rank INTEGER GENERATED ALWAYS AS (CASE
-                    WHEN picture = 0 THEN 0
-                    WHEN width >= 30 AND height >= 30 THEN 3
-                    WHEN width * height >= 400 THEN 2
-                    ELSE 1 END) VIRTUAL,
                 difficulty TEXT NOT NULL,
                 solvability TEXT NOT NULL,
                 title TEXT NOT NULL,
-                author TEXT NOT NULL,
+                author TEXT,
                 metadata TEXT NOT NULL,
                 definition TEXT NOT NULL
             );
-            CREATE INDEX galaxies_catalog_order ON galaxies_puzzles (catalog_rank DESC, id DESC);
-            CREATE INDEX galaxies_source ON galaxies_puzzles (source, width, height, difficulty, solvability);
-            CREATE TABLE galaxies_progress (
-                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES galaxies_puzzles(id),
+            CREATE INDEX placement_catalog ON placement_puzzles (game, id DESC);
+            CREATE INDEX placement_stock ON placement_puzzles (game, source, width, height, difficulty);
+            CREATE TABLE placement_progress (
+                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES placement_puzzles(id),
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
                 backed_up_at TEXT NOT NULL
             );
-            CREATE TABLE galaxies_collection_refresh (
-                resource TEXT NOT NULL PRIMARY KEY,
+            CREATE TABLE placement_collection_refresh (
+                game TEXT NOT NULL PRIMARY KEY,
                 cursor TEXT NOT NULL,
-                completed_at INTEGER NOT NULL
+                checked_at INTEGER NOT NULL
             );
             PRAGMA user_version = {SchemaVersion};
             """;

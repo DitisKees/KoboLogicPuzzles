@@ -65,9 +65,12 @@ jobs:
           container="$(docker run --detach --publish 127.0.0.1::8080 \
             --env CatalogRefresh__Enabled=false --env HashiGeneration__Enabled=false \
             --env SlitherlinkGeneration__Enabled=false --env NurikabeGeneration__Enabled=false \
+            --env TentsGeneration__Enabled=false --env BattleshipsGeneration__Enabled=false \
             --entrypoint bash "$image" -euc '
               dotnet KoboLogicPuzzles.Server.dll hashi-generate --size 20 --density 10 --seed 00000065
               dotnet KoboLogicPuzzles.Server.dll nurikabe-generate --size 50 --seed 2
+              dotnet KoboLogicPuzzles.Server.dll placement-generate --game tents --size 50 --seed 2 --require-difficulty true
+              dotnet KoboLogicPuzzles.Server.dll placement-generate --game battleships --size 30 --seed 2 --require-difficulty true
               dotnet KoboLogicPuzzles.Server.dll refresh-extra-collections --source world-at-play
               dotnet KoboLogicPuzzles.Server.dll refresh-extra-collections --source sen-ltd
               exec dotnet KoboLogicPuzzles.Server.dll
@@ -75,7 +78,7 @@ jobs:
           trap 'status=$?; if ((status)); then docker logs "$container"; fi; docker rm -f "$container" >/dev/null' EXIT
           base="http://$(docker port "$container" 8080/tcp)"
           curl -fsS --retry 15 --retry-delay 1 --retry-all-errors --max-time 5 "$base/api/v2/capabilities" \
-            | jq -e '.apiVersion == 2 and (.games | index("hashi") != null and index("nurikabe") != null)'
+            | jq -e '.apiVersion == 2 and (.games | index("hashi") != null and index("nurikabe") != null and index("tents") != null and index("battleships") != null)'
           id="$(curl -fsS "$base/api/v2/puzzles?game=hashi" | jq -er '.puzzles[] | select(.width == 20 and .height == 20) | .id')"
           jq -n --arg id "$id" '{schemaVersion:1,boards:[{puzzleId:$id,completed:false,marks:[{edge:0,count:1,noBridge:false}]}]}' \
             | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$base/api/v2/progress" \
@@ -84,6 +87,13 @@ jobs:
             | jq -e --arg id "$id" 'length == 1 and .[0].progress.puzzleId == $id and .[0].progress.marks[0].count == 1'
           curl -fsS -H 'Content-Type: application/json' --data '{"game":"nurikabe","width":50,"targetCount":1}' "$base/api/v2/offline-queue" \
             | jq -e '.remaining == 0 and .puzzles[0].metadata.sourceKind == "generated" and .puzzles[0].metadata.unique and (.puzzles[0].solution | length == 2500)'
+          for spec in 'tents 50' 'battleships 30'; do
+            read -r game size <<< "$spec"
+            jq -n --arg game "$game" --argjson size "$size" '{game:$game,targetCount:1,width:$size}' \
+              | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$base/api/v2/offline-queue" \
+              | jq -e --arg game "$game" --argjson area "$((size * size))" \
+                  '.remaining == 0 and (.puzzles[0] | .game == $game and .metadata.unique and (.solution | length == $area))'
+          done
           curl -fsS "$base/api/v2/puzzles?game=hashi&source=sen-ltd" \
             | jq -e '(.puzzles | length) == 6 and .puzzles[0].metadata.sourceKind == "generated"'
           curl -fsS "$base/api/v2/puzzles?game=nonogram&source=world-at-play" \

@@ -4,13 +4,14 @@ local GalaxiesRender = require("kobologicpuzzles/galaxiesrender")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local HashiRender = require("kobologicpuzzles/hashirender")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
+local Placement = require("kobologicpuzzles/placementboard")
 local RenderImage = require("ui/renderimage")
 local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 local SlitherlinkRender = require("kobologicpuzzles/slitherlinkrender")
 local Widget = require("ui/widget/widget")
 
 local Thumbnail = Widget:extend{}
-local colors = { [string.byte("#")] = BB.COLOR_BLACK, [string.byte("x")] = BB.COLOR_GRAY_B }
+local colors = { [string.byte("t")] = BB.COLOR_GRAY_5, [string.byte("#")] = BB.COLOR_BLACK, [string.byte("x")] = BB.COLOR_GRAY_B }
 
 function Thumbnail:render()
     local puzzle, marks = self.record.puzzle, self.record.marks
@@ -46,6 +47,14 @@ function Thumbnail:render()
         return
     end
     if puzzle.game == "nurikabe" and not marks then marks = Nurikabe.initialMarks(puzzle) end
+    if puzzle.game == "tents" or puzzle.game == "battleships" then
+        marks = marks or Placement.initialMarks(puzzle)
+        if puzzle.game == "tents" then
+            local visible = {}
+            for i = 1, #marks do visible[i] = puzzle.givens:sub(i, i) == "t" and "t" or marks:sub(i, i) end
+            marks = table.concat(visible)
+        end
+    end
     local source = BB.new(puzzle.width, puzzle.height, BB.TYPE_BB8)
     source:fill(BB.COLOR_WHITE)
     for index = 0, #marks - 1 do

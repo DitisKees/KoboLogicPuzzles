@@ -1,6 +1,6 @@
 # Kobo Logic Puzzles
 
-Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, Slitherlink, Nurikabe, and Picture Galaxies offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi, Slitherlink, and Nurikabe boards locally, and imports playable collections for all six games.
+Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, Slitherlink, Nurikabe, Picture Galaxies, Tents and Trees, and Battleships offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi, Slitherlink, Nurikabe, Tents and Trees, and Battleships boards locally, and imports playable collections.
 
 ## Repository layout
 
@@ -13,6 +13,7 @@ Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, Slitherlink, Nurikabe, and
 | [`apps/server/Slitherlink/`](apps/server/Slitherlink/README.md) | Loopy generation, structured collections, and inventory settings. |
 | [`apps/server/Nurikabe/`](apps/server/Nurikabe/README.md) | Nurikabe generation, uniqueness proof, collection imports, and benchmarks. |
 | [`apps/server/Galaxies/`](apps/server/Galaxies/README.md) | Galaxies picture collections, automatic imports, and verification. |
+| [`apps/server/Placement/`](apps/server/Placement/README.md) | Tents and Trees and Battleships generation, Janko collections, and benchmarks. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
 | [`KoboLogicPuzzles.slnx`](KoboLogicPuzzles.slnx) | Solution for the .NET projects. |
 | [`tests/server/`](tests/server/) | Server unit tests and HTTP integration tests. |
@@ -62,7 +63,7 @@ The API is intended for a trusted home LAN. See the [API and client sync formats
 
 ## Server dashboard
 
-Open the home server address in a browser to see the dashboard. It shows the puzzle catalog by source, Hashi, Slitherlink, and Nurikabe stock against generation targets, and each generator’s current attempt and recent outcomes. Use the inventory tabs and the solvability or tiling filter to inspect an individual group. The dashboard refreshes every 30 seconds while visible.
+Open the home server address in a browser to see the dashboard. It shows the puzzle catalog by source, stock for each local generator against generation targets, and each generator’s current attempt and recent outcomes. Use the inventory tabs and the solvability or tiling filter to inspect an individual group. The dashboard refreshes every 30 seconds while visible.
 
 Generation activity and attempt counts cover the server session. Catalog and stock counts come from the database and survive a restart.
 
@@ -139,3 +140,7 @@ From **Region partitioning** in the Kobo plugin, download a Galaxies puzzle and 
 ## Extra Nonogram and Hashi sources
 
 The server bundles 36 distinct Nonograms from The World at Play and Sen Ltd, and six generated Hashi puzzles from Sen Ltd. Home servers can also enable the Janko archive refresh for eligible puzzles. Kobo and the dashboard show the source, and Kobo can filter the catalog and offline queue by source. [Source list and setup](apps/server/Collections/README.md)
+
+## Tents and Trees and Battleships
+
+Open **Object placement** in the Kobo plugin. Both games use row and column totals, with fixed trees or ship clues. The server can generate unique large boards in the background and import the authorized Janko collections on noncommercial deployments. [Sizes, settings, collections, and benchmarks](apps/server/Placement/README.md)

@@ -199,7 +199,7 @@ local function testHashiSync()
     store = assert(Store.open(store.root))
     assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
     assert(store.records[fillAPix.id].completed and store.records[fillAPix.id].marks == "#xx#x#")
-    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink,nurikabe,galaxies")
+    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink,nurikabe,galaxies,tents,battleships")
 end
 
 local function testFillAPixRulesAndSync()
@@ -2028,4 +2028,171 @@ testGalaxiesRendering()
 testGalaxies()
 testExtraCollections()
 testHomeUI()
+-- Compare placement redraws on KOReader's real blitbuffer at the Aura H2O resolution.
+do
+    local BB = require("ffi/blitbuffer")
+    local Placement = require("kobologicpuzzles/placementboard")
+    local function fixture(game)
+        local tents = game == "tents"
+        local width, height = 50, tents and 50 or 30
+        local givens = {}
+        local rows, cols = {}, {}
+        for row = 1, height do rows[row] = { 0 } end
+        for col = 1, width do cols[col] = { 0 } end
+        for i = 1, width * height do givens[i] = "." end
+        if tents then
+            givens[2], givens[(height - 2) * width + width] = "t", "t"
+            rows[1][1], rows[height][1], cols[1][1], cols[width][1] = 1, 1, 1, 1
+        else
+            givens[1], givens[2], givens[3] = "w", "e", "x"
+            rows[1][1], rows[height][1], cols[1][1], cols[2][1], cols[width][1] = 2, 1, 1, 1, 1
+        end
+        local puzzle = { id = game .. "-" .. string.rep("a", 64), game = game, schemaVersion = 1,
+            width = width, height = height, title = game .. " smoke", givens = table.concat(givens),
+            rowClues = rows, columnClues = cols, fleet = not tents and { 1, 1 } or nil,
+            metadata = { difficulty = "hard", solvability = "advanced_logic", source = "janko",
+                sourceName = "Janko", sourceKind = "collection", unique = true } }
+        local answer = {}
+        for i = 1, #givens do
+            local clue = givens[i]
+            local occupied = i == #givens or i == 1 or clue == "e"
+            answer[i] = clue == "t" and "." or occupied and "#" or "x"
+        end
+        puzzle.solution = table.concat(answer)
+        return puzzle
+    end
+
+    local root = home .. "/placement-ui"
+    local store = assert(Store.open(root))
+    assert(store:updateSettings({ target = 0, tentsTarget = 1, battleshipsTarget = 1 }))
+    local puzzles = { tents = fixture("tents"), battleships = fixture("battleships") }
+    for game, puzzle in pairs(puzzles) do
+        assert(Puzzle.fromWire(puzzle), game .. " fixture")
+        assert(Puzzle.isId(puzzle.id) and Puzzle.game(puzzle.id) == game)
+        assert(store:setFilters(game, { width = "20-50", difficulty = "hard", source = "janko" }))
+    end
+    local available = { tents = true, battleships = true, advancedFilters = true }
+    local results = Sync.run(store, function(method, path, payload)
+        if path == "/restore" then return {} end
+        assert(method == "POST" and path == "/offline-queue")
+        assert(payload.widthFilter == "20-50" and payload.difficulty == "hard" and payload.source == "janko")
+        return { puzzles = { assert(puzzles[payload.game]) }, remaining = 0 }
+    end, available)
+    assert(results.added == 2)
+
+    for _, slug in ipairs{ "tents", "battleships" } do
+        local puzzle = puzzles[slug]
+        local plugin = dofile(pluginRoot .. "/main.lua"):new{
+            ui = { menu = { registerToMainMenu = function() end } }, store = store,
+        }
+        plugin.online = function() error("Placement offline play attempted a network request") end
+        plugin:showHome()
+        UI:forceRePaint()
+        plugin.home.cropping_widget:scrollToRatio(nil, 1)
+        UI:setDirty(plugin.home, "ui")
+        tapWidget(plugin.home, homeButton(plugin, slug))
+        UI:forceRePaint()
+        assert(plugin.library.item_table[3].preview)
+        plugin:showGame(puzzle.id)
+        local game = assert(plugin.game)
+        local function pos(row, col)
+            local l = game.layout
+            return Geom:new{ x = l.gridX + l.cell * (col - game.column + 0.5),
+                y = l.gridY + l.cell * (row - game.row + 0.5) }
+        end
+        local function compare(action)
+            UI:forceRePaint()
+            local before = BB.tostring(device.screen.bb)
+            game.frame = nil
+            UI:setDirty(game, "ui")
+            UI:forceRePaint()
+            assert(before == BB.tostring(device.screen.bb), slug .. " " .. action .. " differs from a full redraw")
+        end
+        UI:forceRePaint()
+        assert(game.layout.leftSlots == 1 and game.layout.topSlots == 1)
+        local initial = game.board:marks()
+        game:onTap(nil, { pos = pos(1, slug == "tents" and 2 or 1) })
+        assert(game.board:marks() == initial, "Fixed placement clue must be immutable")
+        game:onButton("check")
+        assert(UI:getTopmostVisibleWidget().text:find("No rule conflicts", 1, true))
+        UI:close(UI:getTopmostVisibleWidget())
+        if slug == "battleships" then
+            game:onButton("clues")
+            assert(UI:getTopmostVisibleWidget().text:find("Fleet remaining", 1, true))
+            UI:close(UI:getTopmostVisibleWidget())
+            assert(game.board:remainingFleet()[2] == 0)
+        end
+        game:onTap(nil, { pos = pos(3, 4) })
+        compare("single placement")
+        device.screen.bb:writePNG(home .. "/" .. slug .. "-large-grid.png")
+        game:onButton("undo")
+        assert(game.board:marks() == initial)
+
+        game:onButton("plus")
+        game:onButton("overview")
+        UI:forceRePaint()
+        assert(game.overview)
+        game:onButton("overview")
+        game:moveViewport(18, 13)
+        local viewRow, viewCol = game.layout:origin(18, 13)
+        UI:forceRePaint()
+        local start, finish = pos(19, 13), pos(19, 17)
+        game:onPan(nil, { start_pos = start, pos = finish })
+        compare("drag preview after panning")
+        game:onPanRelease(nil, { pos = finish })
+        compare("drag commit")
+        assert(game.board:get(19, 13) == "#" and not game.board:isComplete())
+        if slug == "battleships" then assert(game.board:shipShape((19 - 1) * 50 + 14) == "=") end
+        assert(store:saveCheckpoint(game.board))
+        local marked = game.board:marks()
+        game:onButton("undo")
+        compare("undo")
+        assert(game.board:marks() == initial)
+        game:onButton("redo")
+        compare("redo")
+        assert(game.board:marks() == marked)
+
+        game:onButton("restart")
+        local confirm = UI:getTopmostVisibleWidget()
+        UI:close(confirm)
+        confirm.ok_callback()
+        assert(game.board:marks() == initial)
+        game:changed(game.board:restoreCheckpoint(store.records[puzzle.id].checkpoint), true)
+        assert(game.board:marks() == marked)
+        game:moveViewport(puzzle.height, puzzle.width)
+        UI:forceRePaint()
+        game:onTap(nil, { pos = pos(puzzle.height, puzzle.width) })
+        compare("last cell redraw")
+        game:onButton("undo")
+        compare("last cell undo")
+        game:moveViewport(viewRow, viewCol)
+        game:onClose()
+        plugin.library:onClose()
+        plugin.home:onClose()
+        local saved = assert(Store.open(root)).records[puzzle.id]
+        assert(saved.marks == marked and saved.row == viewRow and saved.column == viewCol and saved.zoom == 3)
+        assert(Placement:new(puzzle, puzzle.solution):isComplete())
+    end
+
+    local backups
+    assert(store:updateSettings({ tentsTarget = 0, battleshipsTarget = 0 }))
+    results = Sync.run(store, function(method, path, payload)
+        assert(method == "POST" and path == "/progress")
+        backups = payload.boards
+        return { savedCount = #backups, backedUpAt = "2026-11-27T00:00:00Z" }
+    end, available)
+    assert(results.backedUp == 2)
+    local fresh = assert(Store.open(home .. "/placement-restore"))
+    assert(Sync.restore(fresh, function(method, path)
+        assert(method == "GET" and path == "/restore")
+        local records = {}
+        for _, progress in ipairs(backups) do
+            progress.schemaVersion = 1
+            records[#records + 1] = { puzzle = puzzles[Puzzle.game(progress.puzzleId)], progress = progress }
+        end
+        return records
+    end) == 2)
+    for id, record in pairs(fresh.records) do assert(record.marks == store.records[id].marks) end
+end
+
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

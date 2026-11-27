@@ -307,11 +307,11 @@ function Game:paintOverview(bb)
         local top, bottom = edge(row - 1), edge(row)
         if bottom > top then
             for column = 1, board.width do
-                local mark = board:get(row, column)
+                local mark = board.getOverviewMark and board:getOverviewMark(row, column) or board:get(row, column)
                 local left, right = edge(column - 1), edge(column)
                 if mark ~= "." and right > left then
                     bb:paintRect(x + left, y + top, right - left, bottom - top,
-                        mark == "#" and BB.COLOR_BLACK or BB.COLOR_LIGHT_GRAY)
+                        mark == "#" and BB.COLOR_BLACK or mark == "t" and BB.COLOR_GRAY_5 or BB.COLOR_LIGHT_GRAY)
                 end
             end
         end
@@ -322,6 +322,13 @@ function Game:paintOverview(bb)
     local height = math.max(1, edge(self.row + l.rows - 1) - top)
     if width >= 8 and height >= 8 then bb:paintBorder(x + left, y + top, width, height, 4, BB.COLOR_WHITE) end
     bb:paintBorder(x + left, y + top, width, height, math.min(2, width, height), BB.COLOR_BLACK)
+end
+
+function Game:statusText()
+    local l = self.layout
+    return self.overview and "Tap the overview to jump to a location" or string.format(
+        "Rows %d–%d of %d   ·   Columns %d–%d of %d", self.row, self.row + l.rows - 1, self.board.height,
+        self.column, self.column + l.columns - 1, self.board.width)
 end
 
 function Game:paintTo(bb)
@@ -346,11 +353,14 @@ function Game:paintTo(bb)
         if complete then title = title .. "  ·  Solved" end
         text(canvas, title, self.titleFace, rectangle(l.pad, l.pad + l.button, l.width - 2 * l.pad, l.title),
             BB.COLOR_BLACK, true)
-        local status = self.overview and "Tap the overview to jump to a location" or string.format(
-            "Rows %d–%d of %d   ·   Columns %d–%d of %d", self.row, self.row + l.rows - 1, self.board.height,
-            self.column, self.column + l.columns - 1, self.board.width)
-        text(canvas, status, self.clueFace, rectangle(l.pad, l.footerY - l.status, l.width - 2 * l.pad, l.status),
-            BB.COLOR_BLACK)
+    end
+    local status = self:statusText()
+    if full or status ~= frame.status then
+        local region = rectangle(l.pad, l.footerY - l.status, l.width - 2 * l.pad, l.status)
+        if not full then canvas:paintRect(region.x, region.y, region.w, region.h, BB.COLOR_WHITE) end
+        text(canvas, status, self.clueFace, region, BB.COLOR_BLACK)
+        frame.status = status
+        if not full then UIManager:setDirty(nil, "ui", region) end
     end
     self:paintButtons(canvas, frame, full)
     if self.overview then self:paintOverview(canvas) else self:paintGrid(canvas, frame, full) end

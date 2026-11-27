@@ -3,6 +3,7 @@ using System.Text.Json;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Galaxies;
 using KoboLogicPuzzles.Server.Nurikabe;
+using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
@@ -30,6 +31,8 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     internal string[]? GalaxiesSolvabilities { get; init; }
     internal string[]? NurikabeDifficulties { get; init; }
     internal string[]? NurikabeSolvabilities { get; init; }
+    internal string[]? PlacementDifficulties { get; init; }
+    internal string[]? PlacementSolvabilities { get; init; }
     internal string[]? Tilings { get; init; }
     internal string[]? Sources { get; init; }
     internal bool SquareOnly { get; init; }
@@ -62,6 +65,7 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
         var dimensions = kind switch
         {
             PuzzleGame.Nurikabe => Dimensions[..50],
+            PuzzleGame.Tents or PuzzleGame.Battleships => Dimensions[..PlacementBoard.MaxDimension],
             PuzzleGame.Galaxies => GalaxiesDimensions,
             _ => Dimensions,
         };
@@ -71,7 +75,7 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
 
         if (sizeFilter is not null)
         {
-            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe or PuzzleGame.Galaxies) || widths is not null || heights is not null ||
+            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe or PuzzleGame.Galaxies or PuzzleGame.Tents or PuzzleGame.Battleships) || widths is not null || heights is not null ||
                 !TrySelect(null, sizeFilter, kind == PuzzleGame.Hashi ? HashiSizes : dimensions, Integer, true, out widths))
                 return null;
             heights = widths;
@@ -104,6 +108,15 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
                 return null;
             return new PuzzleFilter(kind, widths, heights, null, null)
             { GalaxiesDifficulties = levels, GalaxiesSolvabilities = logic, Sources = sources, SquareOnly = sizeFilter is not null };
+        }
+
+        if (PlacementBoard.Games.Contains(kind))
+        {
+            if (!TryChoices(difficulty, difficultyFilter, PlacementBoard.Difficulties.Contains, out var levels) ||
+                !TryChoices(solvability, solvabilityFilter, PlacementBoard.Solvabilities.Contains, out var logic))
+                return null;
+            return new PuzzleFilter(kind, widths, heights, null, null)
+            { PlacementDifficulties = levels, PlacementSolvabilities = logic, Sources = sources, SquareOnly = sizeFilter is not null };
         }
 
         if (sources is null && !includeCollections)
@@ -272,6 +285,10 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             (NurikabeDifficulties is null || NurikabeDifficulties.Contains(nurikabe.Metadata.Difficulty)) &&
             (NurikabeSolvabilities is null || NurikabeSolvabilities.Contains(nurikabe.Metadata.Solvability)) &&
             (Sources is null || Sources.Contains(nurikabe.Metadata.Source)),
+        PlacementDefinition placement => Matches(placement.Width, placement.Height, null, null) &&
+            (PlacementDifficulties is null || PlacementDifficulties.Contains(placement.Metadata.Difficulty)) &&
+            (PlacementSolvabilities is null || PlacementSolvabilities.Contains(placement.Metadata.Solvability)) &&
+            IncludesSource(placement.Metadata.Source),
         _ => false,
     };
 }

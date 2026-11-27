@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.Placement;
 using System.Runtime.InteropServices;
 using KoboLogicPuzzles.Server;
 using KoboLogicPuzzles.Server.Hashi;
@@ -6,7 +7,8 @@ using KoboLogicPuzzles.Server.Slitherlink;
 
 var command = args.FirstOrDefault() is "refresh" or "refresh-fill-a-pix" or "hashi-generate" or "hashi-status"
     or "slitherlink-generate" or "slitherlink-import" or "slitherlink-status"
-    or "refresh-extra-collections" or "nurikabe-generate" or "nurikabe-import" or "nurikabe-refresh" or "nurikabe-status" ? args[0] : null;
+    or "refresh-extra-collections" or "nurikabe-generate" or "nurikabe-import" or "nurikabe-refresh" or "nurikabe-status"
+    or "placement-generate" or "placement-refresh" or "placement-status" ? args[0] : null;
 var builder = WebApplication.CreateBuilder(command is null ? args : args[1..]);
 Server.AddServices(builder);
 await using var app = builder.Build();
@@ -74,6 +76,8 @@ try
         return await SlitherlinkCli.RunAsync(command, app, cancellation.Token);
     if (command.StartsWith("nurikabe-", StringComparison.Ordinal))
         return await NurikabeCli.RunAsync(command, app, cancellation.Token);
+    if (command.StartsWith("placement-", StringComparison.Ordinal))
+        return await PlacementCli.RunAsync(command, app, cancellation.Token);
     if (command != "refresh")
         return await HashiCli.RunAsync(command, app, cancellation.Token);
     var count = await app.Services.GetRequiredService<PuzzleLibrary>().RefreshAsync(cancellation.Token);
@@ -93,6 +97,8 @@ catch (Exception exception) when (exception is HttpRequestException or InvalidDa
         app.Logger.LogError(exception, "Slitherlink command stopped.");
     else if (command.StartsWith("nurikabe-", StringComparison.Ordinal))
         app.Logger.LogError(exception, "Nurikabe command stopped.");
+    else if (command.StartsWith("placement-", StringComparison.Ordinal))
+        app.Logger.LogError(exception, "Placement command stopped.");
     else
         app.Logger.LogError(exception, "Hashi command stopped.");
     return 1;

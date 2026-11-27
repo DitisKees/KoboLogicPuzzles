@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Galaxies;
 using KoboLogicPuzzles.Server.Nurikabe;
+using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Slitherlink;
 
@@ -13,6 +14,8 @@ namespace KoboLogicPuzzles.Server;
 [JsonDerivedType(typeof(SlitherlinkDefinition), "slitherlink")]
 [JsonDerivedType(typeof(NurikabeDefinition), "nurikabe")]
 [JsonDerivedType(typeof(GalaxiesDefinition), "galaxies")]
+[JsonDerivedType(typeof(TentsDefinition), "tents")]
+[JsonDerivedType(typeof(BattleshipsDefinition), "battleships")]
 public abstract record GamePuzzleDefinition(string Id, int Width, int Height)
 {
     public int SchemaVersion => 1;

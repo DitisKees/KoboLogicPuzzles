@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Placement;
 
 namespace KoboLogicPuzzles.Server;
 
@@ -71,6 +72,22 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
             if (filter.Widths is null && filter.Heights is null)
             {
                 var large = Enumerable.Range(25, 26).ToArray();
+                await FillAsync(provider, preferred with { Widths = large, Heights = large }, needed, excluded, puzzles, cancellationToken);
+            }
+            if (puzzles.Count < needed)
+                await FillAsync(provider, preferred, needed, excluded, puzzles, cancellationToken);
+        }
+        if (PlacementBoard.Games.Contains(filter.Game) && filter.PlacementDifficulties is null && filter.PlacementSolvabilities is null)
+        {
+            var preferred = filter with
+            {
+                PlacementDifficulties = ["hard", "expert"],
+                PlacementSolvabilities = ["basic_logic", "advanced_logic", "bounded_lookahead"],
+            };
+            if (filter.Widths is null && filter.Heights is null)
+            {
+                var min = filter.Game == PuzzleGame.Tents ? 25 : 20;
+                var large = Enumerable.Range(min, PlacementBoard.MaxDimension - min + 1).ToArray();
                 await FillAsync(provider, preferred with { Widths = large, Heights = large }, needed, excluded, puzzles, cancellationToken);
             }
             if (puzzles.Count < needed)

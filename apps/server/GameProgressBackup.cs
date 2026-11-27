@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Galaxies;
 using KoboLogicPuzzles.Server.Nurikabe;
+using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
@@ -35,6 +36,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
         var slitherlink = new List<CellProgressUpdate>();
         var nurikabe = new List<CellProgressUpdate>();
         var galaxies = new List<CellProgressUpdate>();
+        var placements = new List<CellProgressUpdate>();
         var seen = new HashSet<PuzzleId>();
         foreach (var board in boards)
         {
@@ -86,6 +88,17 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                     throw new ArgumentException($"Puzzle {id} has invalid edge marks or an invalid galaxy partition.");
                 galaxies.Add(new(id, marks, board.Completed));
             }
+            else if (PlacementBoard.Games.Contains(id.Game))
+            {
+                if (board.Marks.ValueKind != JsonValueKind.String ||
+                    await providers.GetDefinitionAsync(id, false, cancellationToken) is not PlacementDefinition puzzle)
+                    throw new ArgumentException($"Puzzle {id} is unavailable or has invalid placement marks.");
+                var marks = board.Marks.GetString()!;
+                var rules = puzzle.ToBoard();
+                if (!rules.ValidMarks(marks) || board.Completed && !rules.IsSolved(marks))
+                    throw new ArgumentException($"Puzzle {id} has invalid marks or does not satisfy the placement rules.");
+                placements.Add(new(id, marks, board.Completed));
+            }
             else if (id.Game == PuzzleGame.Nurikabe)
             {
                 if (board.Marks.ValueKind != JsonValueKind.String)
@@ -125,7 +138,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 throw new ArgumentException($"The filled cells for puzzle {board.Id} do not satisfy its clues.");
         }
         var backedUpAt = time.GetUtcNow();
-        store.SaveMixedProgress(nonograms, collectionNonograms, hashes, fillAPix, slitherlink, nurikabe, galaxies, backedUpAt, cancellationToken);
+        store.SaveMixedProgress(nonograms, collectionNonograms, hashes, fillAPix, slitherlink, nurikabe, galaxies, placements, backedUpAt, cancellationToken);
         return new ProgressReceipt(boards.Length, backedUpAt);
     }
 }

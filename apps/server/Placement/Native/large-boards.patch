@@ -1,0 +1,34 @@
+diff --git a/tents.c b/tents.c
+index e0d5356..03664c7 100644
+--- a/tents.c
++++ b/tents.c
+@@ -245,7 +245,8 @@ static bool verbose = false;
+  */
+ #define DIFFLIST(A) \
+     A(EASY,Easy,e) \
+-    A(TRICKY,Tricky,t)
++    A(TRICKY,Tricky,t) \
++    A(RAW,Raw,r)
+ #define ENUM(upper,title,lower) DIFF_ ## upper,
+ #define TITLE(upper,title,lower) #title,
+ #define ENCODE(upper,title,lower) #lower
+@@ -911,7 +912,8 @@ static char *new_game_desc(const game_params *params_in, random_state *rs,
+     game_params params_copy = *params_in; /* structure copy */
+     game_params *params = &params_copy;
+     int w = params->w, h = params->h;
+-    int ntrees = w * h / 5;
++    /* Large grids need slightly more room for random greedy placement. */
++    int ntrees = w * h / (params->diff == DIFF_RAW ? 6 : 5);
+     char *grid = snewn(w*h, char);
+     char *puzzle = snewn(w*h, char);
+     int *numbers = snewn(w+h, int);
+@@ -1129,6 +1131,9 @@ static char *new_game_desc(const game_params *params_in, random_state *rs,
+ 	 * And now actually solve the puzzle, to see whether it's
+ 	 * unique and has the required difficulty.
+ 	 */
++        /* The headless caller independently proves and rates this candidate. */
++        if (params->diff == DIFF_RAW)
++            break;
+         for (i = 0; i < w*h; i++)
+             puzzle[i] = grid[i] == TREE ? TREE : BLANK;
+ 	i = tents_solve(w, h, puzzle, numbers, soln, sc, params->diff-1);
