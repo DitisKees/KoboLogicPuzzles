@@ -24,19 +24,15 @@ end
 
 function GalaxiesGame:paintGraph(graph, x, y, scale, _, full)
     local shade = self.board:regions()
-    local clip = not full and self.graphClip
-    if clip then
-        graph = graph:viewport(clip.x, clip.y, clip.w, clip.h)
-        x, y = x - clip.x, y - clip.y
-    end
     local picturePreview = self.overview and self.board:isComplete() and self.board.puzzle.metadata.picture
-    Render.paint(graph, self.board, x, y, scale, shade, picturePreview)
+    Render.paint(graph, self.board, x, y, scale, shade, picturePreview, not full and self.graphClip)
     self.graphClip, self.drawnShade = nil, shade
     return picturePreview
 end
 
 function GalaxiesGame:refreshStroke(changes)
-    if not self.frame or not self.drawnShade then
+    if not self.frame or not self.drawnShade or self.frame.complete ~= self.board:isComplete() then
+        self.frame = nil
         UIManager:setDirty(self, "ui")
         return
     end

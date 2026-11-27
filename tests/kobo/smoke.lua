@@ -1752,7 +1752,52 @@ local function testNurikabe()
     assert(fresh.records[puzzle.id].completed)
 end
 
+local function testGalaxiesRendering()
+    local BB = require("ffi/blitbuffer")
+    local Render = require("kobologicpuzzles/galaxiesrender")
+    local board = Galaxies:new({ width = 8, height = 8, centers = { { x = 3, y = 3, black = true } } })
+    local shade = { [10] = true }
+    local incremental = BB.new(208, 208, BB.TYPE_BB8)
+    local full = BB.new(208, 208, BB.TYPE_BB8)
+    local clip = { x = 46, y = 28, w = 54, h = 62 }
+    local wall = board:vertical(2, 3)
+    local function paint(buffer, dirty)
+        Render.paint(buffer, board, 4.5, 5.5, 24, shade, false, dirty)
+    end
+
+    board.state[board:horizontal(2, 2)] = "#"
+    paint(full)
+    assert(full:getPixel(77, 54) == BB.COLOR_BLACK, "A grid guide covered a wall endpoint")
+    assert(full:getPixel(17, 30).a <= 0x88 and full:getPixel(17, 31).a <= 0x88,
+        "Unmarked edges need a visible two-pixel guide at the playing scale")
+    assert(full:getPixel(34, 30).a - full:getPixel(31, 33).a >= 0x50,
+        "Grid guides need contrast inside shaded regions")
+
+    local function checkClipping(inverse)
+        incremental:setInverse(inverse)
+        full:setInverse(inverse)
+        board.state[wall] = "."
+        paint(incremental)
+        for _, mark in ipairs({ "#", "x", "." }) do
+            board.state[wall] = mark
+            paint(incremental, clip)
+            paint(full)
+            assert(BB.tostring(incremental) == BB.tostring(full), "Clipped Galaxies repaint differs for mark " .. mark)
+        end
+    end
+
+    local useCBB = BB:getUseCBB()
+    checkClipping(0)
+    BB:enableCBB(false)
+    checkClipping(0)
+    checkClipping(1)
+    BB:enableCBB(useCBB)
+    incremental:free()
+    full:free()
+end
+
 local function testGalaxies()
+    local BB = require("ffi/blitbuffer")
     local function id(symbol) return "galaxies-" .. string.rep(symbol, 64) end
     local metadata = { picture = true, source = "galaxies-pictures", sourceName = "Kobo Logic Puzzles Pictures",
         difficulty = "hard", solvability = "advanced_logic" }
@@ -1801,10 +1846,18 @@ local function testGalaxies()
         return Geom:new{ x = game.grid.x + ox + x * scale, y = game.grid.y + oy + y * scale }
     end
     local game = assert(plugin.game)
+    local function verifyRedraw(action)
+        UI:forceRePaint()
+        local pixels = BB.tostring(device.screen.bb)
+        game.frame = nil
+        UI:setDirty(game, "ui")
+        UI:forceRePaint()
+        assert(BB.tostring(device.screen.bb) == pixels, action .. " differs from a full redraw")
+    end
     UI:forceRePaint()
     game:onTap(nil, { pos = pos(game, 1, 0.5) })
     assert(game.graphClip and game.graphClip.w < game.grid.w)
-    UI:forceRePaint()
+    verifyRedraw("Galaxies tap")
     local initial = game.board:marks()
     assert(initial:find("#", 1, true))
     device.screen.bb:writePNG(home .. "/galaxies-large-grid.png")
@@ -1814,6 +1867,14 @@ local function testGalaxies()
     game:onButton("overview")
     game:onButton("plus")
     game:moveViewport(19, 23)
+    UI:forceRePaint()
+    local dragStart, dragEnd = pos(game, 23.5, 20), pos(game, 26.5, 20)
+    game:onPan(nil, { start_pos = dragStart, pos = dragEnd })
+    verifyRedraw("Galaxies drag preview after panning")
+    game:onPanRelease(nil, { pos = dragEnd })
+    verifyRedraw("Galaxies drag commit")
+    game:onButton("undo")
+    verifyRedraw("Galaxies undo")
     game:onClose()
     local reopened = assert(Store.open(root))
     assert(reopened.records[large.id].marks == initial and reopened.records[large.id].zoom == 3)
@@ -1963,6 +2024,7 @@ testHashiUI()
 testFillAPixUI()
 testSlitherlinkUI()
 testNurikabe()
+testGalaxiesRendering()
 testGalaxies()
 testExtraCollections()
 testHomeUI()
