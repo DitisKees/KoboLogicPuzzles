@@ -38,6 +38,7 @@ COPY --from=puzzles-build /out/ ./
 ENV Storage__DatabasePath=/data/kobologicpuzzles.db
 ENV HashiGeneration__Enabled=true
 ENV SlitherlinkGeneration__Enabled=true
+ENV NurikabeGeneration__Enabled=true
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 USER $APP_UID

@@ -5,7 +5,13 @@ namespace KoboLogicPuzzles.Server;
 public sealed record PuzzleMetadata(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Difficulty,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Quality,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Solvability);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Solvability,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourceName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourceKind = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourceId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SourceUrl = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? License = null);
 
 public sealed record PuzzleSummary(int Id, string Title, string Author, int Width, int Height,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PuzzleMetadata? Metadata = null);

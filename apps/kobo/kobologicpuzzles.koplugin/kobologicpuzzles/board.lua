@@ -22,7 +22,9 @@ local function clueTotal(lines, lineCount, lineLength)
 end
 
 function Board.validPuzzle(puzzle)
-    if type(puzzle) ~= "table" or not positiveInteger(puzzle.id, 2147483647)
+    if type(puzzle) ~= "table" then return false end
+    local hash = type(puzzle.id) == "string" and puzzle.id:match("^nonogram%-collection%-([0-9a-f]+)$")
+    if not (positiveInteger(puzzle.id, 2147483647) or hash and #hash == 64)
         or not positiveInteger(puzzle.width, 100) or not positiveInteger(puzzle.height, 100)
         or type(puzzle.title) ~= "string" or type(puzzle.author) ~= "string" then
         return false

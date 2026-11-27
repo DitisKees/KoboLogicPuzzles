@@ -1,4 +1,5 @@
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -22,6 +23,23 @@ public static class Server
         services.AddHostedService<HashiInventoryWorker>();
         services.AddOptions<SlitherlinkOptions>().BindConfiguration("SlitherlinkGeneration").ValidateDataAnnotations().ValidateOnStart();
         services.AddSingleton(provider => provider.GetRequiredService<IOptions<SlitherlinkOptions>>().Value);
+        services.AddOptions<NurikabeOptions>().BindConfiguration("NurikabeGeneration").ValidateDataAnnotations().ValidateOnStart();
+        services.AddSingleton(provider => provider.GetRequiredService<IOptions<NurikabeOptions>>().Value);
+        services.AddSingleton<NurikabeInventory>();
+        services.AddHostedService<NurikabeInventoryWorker>();
+        services.AddSingleton<NurikabeImporter>();
+        services.AddSingleton(new NurikabeCollectionOptions
+        {
+            RefreshEnabled = builder.Configuration.GetValue("NurikabeCollections:RefreshEnabled",
+                builder.Configuration.GetValue("CatalogRefresh:Enabled", true)),
+        });
+        services.AddHostedService<NurikabeCollectionsWorker>();
+        services.AddHttpClient<NurikabeCollections>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
         services.AddSingleton<LoopyGenerator>();
         services.AddSingleton<SlitherlinkImporter>();
         services.AddSingleton<SlitherlinkInventory>();
@@ -34,6 +52,7 @@ public static class Server
         services.AddSingleton<IPuzzleProvider, LocalHashiPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, FillAPixPuzzleProvider>();
         services.AddSingleton<IPuzzleProvider, SlitherlinkPuzzleProvider>();
+        services.AddSingleton<IPuzzleProvider, NurikabePuzzleProvider>();
         services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<GameCatalog>();
         services.AddSingleton<GameProgressBackup>();
@@ -43,6 +62,20 @@ public static class Server
             services.AddHostedService<FillAPixRefreshWorker>();
         if (builder.Configuration.GetValue("SlitherlinkCollections:RefreshEnabled", builder.Configuration.GetValue("CatalogRefresh:Enabled", true)))
             services.AddHostedService<SlitherlinkCollectionRefreshWorker>();
+        services.AddSingleton(new ExtraCollectionOptions
+        {
+            BundledEnabled = builder.Configuration.GetValue("ExtraCollections:BundledEnabled",
+                builder.Configuration.GetValue("CatalogRefresh:Enabled", true)),
+            JankoEnabled = builder.Configuration.GetValue("ExtraCollections:JankoEnabled", false),
+            AllowNonCommercial = builder.Configuration.GetValue("ExtraCollections:AllowNonCommercial", false),
+        });
+        services.AddHostedService<ExtraCollectionWorker>();
+        services.AddHttpClient<ExtraCollectionRefresh>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
         services.AddHttpClient<SlitherlinkCollectionRefresh>(http =>
         {
             http.Timeout = TimeSpan.FromSeconds(45);

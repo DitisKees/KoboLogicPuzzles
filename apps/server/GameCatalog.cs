@@ -4,6 +4,8 @@ using KoboLogicPuzzles.Server.Hashi;
 
 namespace KoboLogicPuzzles.Server;
 
+internal sealed record PuzzleSource(string Name, string Kind);
+
 public sealed record GamePuzzleSummary(string Id, string Game, int Width, int Height, string Status,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? Metadata,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Title = null,
@@ -17,7 +19,7 @@ public sealed record GameCatalogPage(IReadOnlyList<GamePuzzleSummary> Puzzles, s
 public sealed record GameOfflineQueueRequest(string? Game, [property: JsonRequired] int TargetCount,
     string[]? CachedUnstartedPuzzleIds, string[]? ExcludedPuzzleIds, int? Width, int? Height, string? Difficulty, string? Solvability,
     string? WidthFilter = null, string? HeightFilter = null, string? DifficultyFilter = null, string? SolvabilityFilter = null,
-    string? SizeFilter = null, string? Tiling = null, string? TilingFilter = null, string? Source = null, string? SourceFilter = null);
+    string? SizeFilter = null, string? Tiling = null, string? TilingFilter = null, string? Source = null, string? SourceFilter = null, bool IncludeCollections = false);
 
 public sealed record GameOfflineQueueResponse(IReadOnlyList<GamePuzzleDefinition> Puzzles, int Remaining);
 
@@ -34,7 +36,7 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
     {
         var filter = PuzzleFilter.Parse(request.Game, request.Width, request.Height, request.Difficulty, request.Solvability,
             request.WidthFilter, request.HeightFilter, request.DifficultyFilter, request.SolvabilityFilter, request.SizeFilter,
-            request.Tiling, request.TilingFilter, request.Source, request.SourceFilter)
+            request.Tiling, request.TilingFilter, request.Source, request.SourceFilter, request.IncludeCollections)
             ?? throw new ArgumentException("Supply a supported game and valid puzzle filters.");
         if (request.TargetCount is < 0 or > 100 || request.CachedUnstartedPuzzleIds is { Length: > 100 } ||
             request.ExcludedPuzzleIds is { Length: > 1000 })
@@ -58,6 +60,21 @@ public sealed class GameCatalog(PuzzleProviders providers, HashiGenerationOption
                 Solvabilities = hashiOptions.SelectedSolvabilities.Select(level => (int)level).ToArray(),
             };
             await FillAsync(provider, preferred, needed, excluded, puzzles, cancellationToken);
+        }
+        if (filter.Game == PuzzleGame.Nurikabe && filter.NurikabeDifficulties is null && filter.NurikabeSolvabilities is null)
+        {
+            var preferred = filter with
+            {
+                NurikabeDifficulties = ["hard", "expert"],
+                NurikabeSolvabilities = ["basic_logic", "advanced_logic", "bounded_lookahead"],
+            };
+            if (filter.Widths is null && filter.Heights is null)
+            {
+                var large = Enumerable.Range(25, 26).ToArray();
+                await FillAsync(provider, preferred with { Widths = large, Heights = large }, needed, excluded, puzzles, cancellationToken);
+            }
+            if (puzzles.Count < needed)
+                await FillAsync(provider, preferred, needed, excluded, puzzles, cancellationToken);
         }
         if (puzzles.Count < needed)
             await FillAsync(provider, filter, needed, excluded, puzzles, cancellationToken);

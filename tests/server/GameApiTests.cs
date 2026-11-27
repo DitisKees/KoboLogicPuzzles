@@ -43,6 +43,7 @@ public sealed class GameApiTests
         Assert.Equal(2, ratings!.Count);
         Assert.Equal(3.75m, ratings["nonogram-webpbn-12"].GetProperty("difficulty").GetDecimal());
         Assert.Equal("easy", ratings[hashi.Value].GetProperty("difficulty").GetString());
+        Assert.Equal("generated", ratings[hashi.Value].GetProperty("sourceKind").GetString());
         using var invalid = await http.GetAsync($"/api/v2/puzzles?game=nonogram&beforeId={hashi}");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
     }

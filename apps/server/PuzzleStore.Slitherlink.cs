@@ -171,28 +171,6 @@ public sealed partial class PuzzleStore
         }
     }
 
-    private static void WriteSlitherlinkProgress(SqliteConnection connection, SqliteTransaction transaction,
-        IReadOnlyList<SlitherlinkProgressUpdate> boards, DateTimeOffset backedUpAt)
-    {
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = """
-            INSERT INTO slitherlink_progress (puzzle_id, marks, completed, backed_up_at) VALUES ($id, $marks, $completed, $backedUpAt)
-            ON CONFLICT(puzzle_id) DO UPDATE SET marks = excluded.marks, completed = excluded.completed, backed_up_at = excluded.backed_up_at
-            """;
-        var id = command.Parameters.Add("$id", SqliteType.Text);
-        var marks = command.Parameters.Add("$marks", SqliteType.Text);
-        var completed = command.Parameters.Add("$completed", SqliteType.Integer);
-        command.Parameters.AddWithValue("$backedUpAt", backedUpAt.ToString("O", CultureInfo.InvariantCulture));
-        foreach (var board in boards)
-        {
-            id.Value = board.Id.Value;
-            marks.Value = board.Marks;
-            completed.Value = board.Completed;
-            command.ExecuteNonQuery();
-        }
-    }
-
     private static void RestoreSlitherlinkProgress(SqliteConnection connection, SqliteTransaction transaction, List<GameSavedBoard> boards)
     {
         using var command = connection.CreateCommand();

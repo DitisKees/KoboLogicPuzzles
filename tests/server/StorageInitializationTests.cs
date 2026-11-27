@@ -12,7 +12,7 @@ public sealed class StorageInitializationTests
 
         await Task.WhenAll(Task.Run(database.Store.Initialize), Task.Run(new PuzzleStore(database.Path).Initialize));
 
-        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(6L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Empty(database.Store.RestoreProgress());
         Assert.Empty(database.Store.RestoreHashiProgress());
     }
@@ -29,12 +29,18 @@ public sealed class StorageInitializationTests
             DROP TABLE slitherlink_progress;
             DROP TABLE slitherlink_puzzles;
             DROP TABLE slitherlink_collection_refresh;
+            DROP TABLE nurikabe_progress;
+            DROP TABLE nurikabe_puzzles;
+            DROP TABLE nurikabe_collection_refresh;
+            DROP TABLE nonogram_collection_progress;
+            DROP TABLE nonogram_collection_puzzles;
+            DROP TABLE extra_collection_refresh;
             PRAGMA user_version = 1;
             """);
 
         database.Store.Initialize();
 
-        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(6L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(12, database.Store.FindPuzzle(12)!.Id);
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.FillAPix));
     }
@@ -48,11 +54,17 @@ public sealed class StorageInitializationTests
             DROP TABLE slitherlink_progress;
             DROP TABLE slitherlink_puzzles;
             DROP TABLE slitherlink_collection_refresh;
+            DROP TABLE nurikabe_progress;
+            DROP TABLE nurikabe_puzzles;
+            DROP TABLE nurikabe_collection_refresh;
+            DROP TABLE nonogram_collection_progress;
+            DROP TABLE nonogram_collection_puzzles;
+            DROP TABLE extra_collection_refresh;
             PRAGMA user_version = 2;
             """);
         database.Store.Initialize();
 
-        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(6L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(7L, Execute(database.Path, "SELECT revision FROM fill_a_pix_refresh WHERE source = 'grandgames'"));
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.Slitherlink));
     }
@@ -64,11 +76,20 @@ public sealed class StorageInitializationTests
         var puzzle = NativeLoopBoard.Square([[4]]).ToDefinition(1, 1, new("square", "example", "Example", 0))
             with { Solution = "####" };
         Assert.True(database.Store.SaveSlitherlink(puzzle));
-        Execute(database.Path, "DROP TABLE slitherlink_collection_refresh; PRAGMA user_version = 3;");
+        Execute(database.Path, """
+            DROP TABLE slitherlink_collection_refresh;
+            DROP TABLE nurikabe_progress;
+            DROP TABLE nurikabe_puzzles;
+            DROP TABLE nurikabe_collection_refresh;
+            DROP TABLE nonogram_collection_progress;
+            DROP TABLE nonogram_collection_puzzles;
+            DROP TABLE extra_collection_refresh;
+            PRAGMA user_version = 3;
+            """);
 
         database.Store.Initialize();
 
-        Assert.Equal(4L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(6L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal("####", database.Store.FindSlitherlink(puzzle.Id)!.Solution);
         Assert.Null(database.Store.GetSlitherlinkCollectionRefreshState(SlitherlinkCollectionRefresh.PuzzleKit));
     }

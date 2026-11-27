@@ -7,7 +7,7 @@
 3. Open **Tools → Kobo Logic Puzzles → Settings → Home server URL**. Enter the server’s HTTP address on your home network, for example `http://192.168.1.10:8080`.
 4. Choose **Sync now** on the home screen. On a fresh installation, the app restores any backed-up boards and then downloads puzzles. To download a specific puzzle, open its game and choose **Browse server catalog**.
 
-The home screen groups Nonogram and Fill-a-Pix under **Cell shading** and Hashi and Slitherlink under **Line drawing**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
+The home screen groups Nonogram, Fill-a-Pix, and Nurikabe under **Cell shading** and Hashi and Slitherlink under **Line drawing**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
 
 Catalog browsing and sync require a home server with API v2. You can open any of the game libraries offline.
 
@@ -58,6 +58,13 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 - Use **Pan** or a two-finger drag to move the view. Use **−** or **+** to change scale. Tap a location in **Overview** to jump there. **Check** compares your marks with the saved solution. **Undo**, **Redo**, **Restart**, and **Checkpoint** work offline.
 - Choose **Game settings → Catalog and queue filters** to select tilings, sources, nominal dimensions, and difficulties. **Filters** in the server catalog opens the same settings. **Source → Refresh sources** loads collections currently available on the home server. The library and catalog show the number of cells, which varies by tiling at a given nominal size.
 
+## Play Nurikabe
+
+- Open **Nurikabe** under **Cell shading**. Tap or drag with **Fill** to mark the sea or **White** to mark island cells. Numbered cells stay white.
+- The sea must connect by sides and contain no black 2×2 block. Each white island must connect by sides and contain one clue equal to its area. A clue is struck through once the marked island matches its area. Outlined cells show conflicts.
+- Use **Check** for current rule conflicts and the remaining undecided count. **Rules** shows the rules offline. Use **Pan**, zoom, and **Overview** to move across large boards. **Restart** clears your marks and keeps the clues.
+- The catalog and offline library display the collection or generator beside the difficulty and solvability ratings. Use **Game settings → Catalog and queue filters** to choose a source, dimensions, difficulty or solvability.
+
 ## Backup and offline puzzles
 
 **Sync now** backs up changed boards and tops up each available game. Set each game's target under **Game settings → Offline queue size** in its library. **Catalog and queue filters** apply to browsing and downloads. Sync reports open queue slots when the server has fewer matching puzzles available. Downloaded boards remain playable offline. The home screen shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
@@ -65,6 +72,9 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 For Nonogram width, height, and difficulty, Hashi grid size, or Fill-a-Pix width and height, type one value, an inclusive range such as `20-30`, or comma-separated values such as `20,30,50`. You can combine ranges and values in one field, for example `20-30,50`. Hashi sizes use steps of 5 and Nonogram difficulty uses quarter-star steps. For Nonogram or Hashi solvability and Hashi difficulty, select the entries you want and tap **Save**. A puzzle must match one choice in every configured field. Use **Any** or leave a numeric field blank to clear it. Ranges and multiple selections require a home server that supports them.
 
 On a clean KOReader installation, install the plugin, enter the same server URL, and choose **Sync now** to restore your boards. Local settings and board files live in the `kobologicpuzzles/` folder in KOReader’s data directory.
+
+
+Nonogram and Hashi also offer a **Source** filter. Hashi has individual width and height filters for rectangular boards. The catalog and offline library display the publisher or generator. [Collection availability](../server/Collections/README.md)
 
 ## Rehearse the update on Kobo
 

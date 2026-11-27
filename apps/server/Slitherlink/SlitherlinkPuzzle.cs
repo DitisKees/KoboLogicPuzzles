@@ -12,6 +12,8 @@ public sealed record LoopFace(int X, int Y, int[] Edges,
 public sealed record SlitherlinkMetadata(string Tiling, string Source, string SourceName, int FaceCount,
     string? Difficulty = null, string? SourceUrl = null, string? License = null, string? Seed = null)
 {
+    public string SourceKind => Source == LoopyGenerator.Source ? "generated" : "collection";
+
     private static readonly string[] ImportedTilings = ["altair", "snowflake", "laves", "rhombille", "septistar"];
 
     internal static bool ValidTiling(string value) => SlitherlinkOptions.Tilings.Contains(value) || ImportedTilings.Contains(value);

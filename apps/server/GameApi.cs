@@ -1,4 +1,5 @@
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,29 +10,47 @@ internal static class GameApi
     public static void MapEndpoints(WebApplication app)
     {
         var api = app.MapGroup("/api/v2");
-        api.MapGet("/capabilities", (HashiGenerationOptions options, SlitherlinkOptions slitherlink, PuzzleStore store) =>
+        api.MapGet("/capabilities", (HashiGenerationOptions options, SlitherlinkOptions slitherlink, NurikabeInventory nurikabe, PuzzleStore store) =>
         {
             var sources = store.ListSlitherlinkSources();
             if (slitherlink.Enabled)
                 sources.TryAdd(LoopyGenerator.Source, LoopyGenerator.SourceName);
+            var nurikabeSources = nurikabe.Sources();
+            var catalog = store.ReadDashboardCatalog();
+            var hashiSources = Sources("hashi");
+            if (options.Enabled)
+                hashiSources.TryAdd("bridges", new("Bridges", "generated"));
             return new
             {
                 ApiVersion = 2,
                 SchemaVersion = 1,
                 AdvancedFilters = true,
-                Games = GetGames(options, store, sources.Count > 0),
+                ExtraCollections = true,
+                Games = GetGames(options, store, sources.Count > 0, nurikabeSources.Count > 0),
                 SlitherlinkSources = sources,
+                PuzzleSources = new
+                {
+                    Hashi = hashiSources,
+                    Nonogram = Sources("nonogram"),
+                    Slitherlink = sources.ToDictionary(pair => pair.Key,
+                        pair => new PuzzleSource(pair.Value, pair.Key == LoopyGenerator.Source ? "generated" : "collection")),
+                    Nurikabe = nurikabeSources,
+                },
             };
+
+            Dictionary<string, PuzzleSource> Sources(string game) => catalog.Where(row => row.Game == game && (row.Total > 0 || row.Source == "webpbn"))
+                .ToDictionary(row => row.Source, row => new PuzzleSource(row.SourceName, row.SourceKind), StringComparer.Ordinal);
         });
         api.MapGet("/hashi/status", (HashiInventory inventory) => inventory.GetStatus());
         api.MapGet("/slitherlink/status", (SlitherlinkInventory inventory) => inventory.GetStatus());
+        api.MapGet("/nurikabe/status", (NurikabeInventory inventory) => inventory.GetStatus());
 
         api.MapGet("/puzzles", (GameCatalog catalog, string? game, int? width, int? height, string? difficulty, string? solvability,
             string? widthFilter, string? heightFilter, string? difficultyFilter, string? solvabilityFilter, string? sizeFilter,
-            string? beforeId, string? tiling, string? tilingFilter, string? source, string? sourceFilter, int limit = 50) =>
+            string? beforeId, string? tiling, string? tilingFilter, string? source, string? sourceFilter, int limit = 50, bool includeCollections = false) =>
         {
             var filter = PuzzleFilter.Parse(game, width, height, difficulty, solvability,
-                widthFilter, heightFilter, difficultyFilter, solvabilityFilter, sizeFilter, tiling, tilingFilter, source, sourceFilter);
+                widthFilter, heightFilter, difficultyFilter, solvabilityFilter, sizeFilter, tiling, tilingFilter, source, sourceFilter, includeCollections);
             if (filter is null || limit is < 1 or > 100)
                 return Server.BadRequest("Supply a supported game, valid filters, and a limit of 1–100.");
             PuzzleId? before = null;
@@ -85,16 +104,16 @@ internal static class GameApi
             }
         }).WithMetadata(new RequestSizeLimitAttribute(8 * 1024 * 1024));
 
-        api.MapGet("/restore", (PuzzleStore store, string? game) =>
+        api.MapGet("/restore", (PuzzleStore store, string? game, bool includeCollections = false) =>
         {
             if (game is null)
-                return Results.Ok(store.RestoreGameProgress(null));
-            return PuzzleFilter.TryParseGame(game, out var kind) ? Results.Ok(store.RestoreGameProgress(kind)) :
+                return Results.Ok(store.RestoreGameProgress(null, includeCollections));
+            return PuzzleFilter.TryParseGame(game, out var kind) ? Results.Ok(store.RestoreGameProgress(kind, includeCollections)) :
                 Server.BadRequest("Supply a supported game.");
         });
     }
 
-    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink)
+    private static string[] GetGames(HashiGenerationOptions options, PuzzleStore store, bool hasSlitherlink, bool hasNurikabe)
     {
         var games = new List<string> { "nonogram" };
         if (options.Enabled || store.HasHashiPuzzles())
@@ -103,6 +122,8 @@ internal static class GameApi
             games.Add(FillAPixSources.Game);
         if (hasSlitherlink)
             games.Add("slitherlink");
+        if (hasNurikabe)
+            games.Add("nurikabe");
         return games.ToArray();
     }
 }

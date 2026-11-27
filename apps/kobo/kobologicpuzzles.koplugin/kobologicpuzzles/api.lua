@@ -68,7 +68,7 @@ local function request(server, method, path, payload)
         return nil, "Server returned HTTP " .. status .. (type(detail) == "string" and (". " .. detail) or ""), code
     end
     if not decoded or type(reply) ~= "table" then return nil, "The server did not return a valid JSON response." end
-    if path == "/restore" and not JSON.util.IsArray(reply) then
+    if (path == "/restore" or path:match("^/restore%?")) and not JSON.util.IsArray(reply) then
         return nil, "The server did not return an array."
     end
     if (path == "/offline-queue" or path:match("^/puzzles%?")) and
@@ -85,7 +85,7 @@ function API.capabilities(request)
     if not reply or reply.apiVersion ~= 2 or reply.schemaVersion ~= 1 or type(reply.games) ~= "table" then
         return nil, unsupportedServer
     end
-    local games = { advancedFilters = reply.advancedFilters == true }
+    local games = { advancedFilters = reply.advancedFilters == true, extraCollections = reply.extraCollections == true }
     for _, game in ipairs(reply.games) do
         if Puzzle.gameNames[game] then games[game] = true end
     end
@@ -94,6 +94,20 @@ function API.capabilities(request)
         for source, name in pairs(reply.slitherlinkSources) do
             if Slitherlink.validSource(source) and type(name) == "string" and #name > 0 and #name <= 320 then
                 games.slitherlinkSources[source] = name
+            end
+        end
+    end
+    games.puzzleSources = {}
+    if type(reply.puzzleSources) == "table" then
+        for game, sources in pairs(reply.puzzleSources) do
+            if games[game] and type(sources) == "table" then
+                games.puzzleSources[game] = {}
+                for source, info in pairs(sources) do
+                    if Slitherlink.validSource(source) and type(info) == "table" and type(info.name) == "string"
+                        and #info.name > 0 and #info.name <= 320 then
+                        games.puzzleSources[game][source] = Puzzle.sourceLabel(game, source, info.name, info.kind)
+                    end
+                end
             end
         end
     end

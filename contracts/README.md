@@ -6,8 +6,8 @@ Kobo Logic Puzzles uses `/api/v2`. Nonogram definitions and saves use their WebP
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /api/v2/capabilities` | Return `apiVersion`, `schemaVersion`, the supported `games`, and `advancedFilters: true` when ranges and multiple values are available. Hashi and Slitherlink are advertised when generation is enabled or puzzles are available. Fill-a-Pix is advertised when its first puzzles are imported. `slitherlinkSources` maps available source IDs to display names. |
-| `GET /api/v2/puzzles` | Browse one game. Supply `game=nonogram`, `game=hashi`, `game=fill-a-pix`, or `game=slitherlink` and optional filters and `limit` (1–100, default 50). Returns `{ puzzles, nextBeforeId }`. Repeat the filters and pass `nextBeforeId` as `beforeId` for the next page. |
+| `GET /api/v2/capabilities` | Return `apiVersion`, `schemaVersion`, the supported `games`, and `advancedFilters: true` when ranges and multiple values are available. Hashi, Slitherlink, and Nurikabe are advertised when generation is enabled or puzzles are available. Fill-a-Pix is advertised when its first puzzles are imported. `slitherlinkSources` maps available source IDs to display names. `puzzleSources` provides a map from game and source ID to `{ name, kind }`, where `kind` is `generated` or `collection`. `extraCollections: true` advertises support for additional Nonogram and Hashi IDs or board sizes. |
+| `GET /api/v2/puzzles` | Browse one game. Supply `game=nonogram`, `game=hashi`, `game=fill-a-pix`, `game=slitherlink`, or `game=nurikabe` and optional filters and `limit` (1–100, default 50). Returns `{ puzzles, nextBeforeId }`. Repeat the filters and pass `nextBeforeId` as `beforeId` for the next page. |
 | `GET /api/v2/puzzles/{id}` | Retrieve a puzzle definition. Set `includeSolution=true` to request its solution. |
 | `GET /api/v2/puzzles/metadata` | Look up source metadata or ratings for up to 100 typed IDs supplied as repeated `id` parameters. Returns an object keyed by puzzle ID. |
 | `POST /api/v2/offline-queue` | Top up one game’s unstarted cache. Returns `{ puzzles, remaining }`. |
@@ -15,7 +15,8 @@ Kobo Logic Puzzles uses `/api/v2`. Nonogram definitions and saves use their WebP
 | `GET /api/v2/restore` | Return `{ puzzle, progress }` records for all games. Supply `game` to restore one game. |
 | `GET /api/v2/hashi/status` | Show Hashi stock, unstarted counts and targets by size, difficulty, and solvability, and generation outcomes for the running server. |
 | `GET /api/v2/slitherlink/status` | Show available sources, generation timeout, and unstarted counts and targets by size, tiling, and difficulty. |
-| `GET /api/v2/dashboard` | Read catalog totals and unstarted counts by source, both generation statuses, and the server's sampling time. The read-only web dashboard at `/` uses this endpoint. |
+| `GET /api/v2/nurikabe/status` | Show available sources, stock by size and difficulty, proof and generation outcomes, and Janko refresh progress. |
+| `GET /api/v2/dashboard` | Read catalog totals and unstarted counts by source, source kinds, generation statuses, and the server's sampling time. The read-only web dashboard at `/` uses this endpoint. |
 
 Catalog order is descending WebPBN ID for Nonogram and descending content hash for Hashi. Summaries carry `id`, `game`, dimensions, available metadata, and a `status` of `unstarted`, `started`, or `solved`. Nonogram filters use difficulty on a 1–5 scale in quarter-star increments and numeric WebPBN solvability levels 1–6. Metadata may also include quality on the same star scale. Hashi filters use `easy`, `medium`, `hard`, or `expert` and `basic_logic`, `advanced_logic`, `bounded_lookahead`, `requires_search`, or `unknown`. Malformed filters and cursors from the other game return `400`.
 
@@ -29,6 +30,13 @@ Fill-a-Pix accepts `width`, `height`, `widthFilter`, and `heightFilter` with any
 
 Slitherlink supports nominal dimensions 1–100, `sizeFilter` for equal nominal width and height, and difficulty levels `easy`, `normal`, `tricky`, and `hard`. The `tiling` and `source` filters accept a single key. `tilingFilter` and `sourceFilter` accept comma-separated keys. For example, `game=slitherlink&tilingFilter=triangular,kagome&source=loopy`. Entries are ordered by descending namespaced ID. The metadata's `faceCount` gives the actual number of cells on the board.
 
+Nurikabe accepts dimensions from 1 to 50 and filters on source, difficulty, and solvability. The difficulty tiers are `easy`, `medium`, `hard`, and `expert`. Solvability uses `basic_logic`, `advanced_logic`, `bounded_lookahead`, or `requires_search`. For example, `game=nurikabe&widthFilter=25-50&sourceFilter=local,janko&difficultyFilter=hard,expert`. Entries are ordered by descending namespaced ID.
+
+
+With `extraCollections`, pass `includeCollections=true` to open the full Nonogram or Hashi catalog and restore additional saved boards. Send `includeCollections: true` in the offline-queue JSON for those games. An explicit `source` or `sourceFilter` also selects the requested collections for catalog and queue calls. Older clients get WebPBN and local Bridges boards on these endpoints by default. The Nonogram catalog orders additional boards by descending namespaced ID and then lists WebPBN boards by descending numeric ID.
+
+Known Nonogram source IDs are `webpbn`, `world-at-play`, `sen-ltd`, and `janko`. Known Hashi source IDs are `bridges`, `sen-ltd`, and `janko`. For additional Nonograms, `nonogram-collection-` is followed by a 64-character SHA-256 of the row and column clue layout. These definitions use the same marks and clue schema and add source, authorship and license metadata. Imported Hashi definitions use the existing content-based IDs and may have smaller or rectangular dimensions up to 50×50. Their added metadata identifies the original source, including whether the publisher generated the board.
+
 ### Definitions
 
 `GET /api/v2/puzzles/{id}` returns `game`, `schemaVersion` (currently 1), `id`, `width`, `height`, and game-specific fields. IDs are canonical and case-sensitive. A malformed ID returns `400`. An unavailable puzzle returns `404`. Pass `includeSolution=true` to request a solution.
@@ -39,6 +47,7 @@ Slitherlink supports nominal dimensions 1–100, `sizeFilter` for equal nominal 
 | `hashi` | `hashi-local-` followed by the 64-character lowercase SHA-256 of the canonical clue layout | `islands` contains `{ x, y, clue }` objects. `edges` contains `{ first, second }` pairs of island indices. The requested `solution` is an array of counts aligned with `edges`. |
 | `fill-a-pix` | `fill-a-pix-janko-12`, `fill-a-pix-grandgames-7178`, or `fill-a-pix-fillapixnet-1`, using the source’s numeric ID | `title`, optional `author`, and a flat row-major `clues` array with `null` for a cell without a clue and 0–9 for numbered cells. Metadata carries `source`, `sourceUrl`, and any available `license`, `quality`, or `complexity`. The requested `solution`, when available, is a row-major string with `#` for filled and `.` for empty. |
 | `slitherlink` | `slitherlink-` followed by a 64-character lowercase SHA-256 of the source and canonical board | `title`, optional `author`, `vertices` as `{ x, y }`, `edges` as `{ first, second }` vertex indices, and `faces` as `{ x, y, edges, clue }` with a clue position, edge indices, and nullable clue. Metadata carries `tiling`, `source`, `sourceName`, `faceCount`, and optional difficulty, source URL, license, and seed. The requested `solution` uses one character per edge. |
+| `nurikabe` | `nurikabe-` followed by a 64-character lowercase SHA-256 of the canonical clue layout | `title`, optional `author`, and flat row-major `clues` with zero for a cell without a clue. `metadata` contains `source`, `sourceName`, `sourceKind`, `sourceId`, `unique`, difficulty and solvability. It may include a source URL, license, seed, generator version or original rating. A solution is included on request. |
 
 Hashi coordinates and array indices start at zero. Island indices follow `(x, y)` order and edges follow `(first, second)` order. An edge joins the nearest islands in one row or column. Hashi `metadata` carries `islandCount`, `actualDensity` as a percentage, `solvability`, and `difficulty` and `difficultyScore` when rated.
 
@@ -64,3 +73,5 @@ Slitherlink queue results include the verified solution. The marks string uses `
 Each restored progress object carries `puzzleId`, `schemaVersion`, `marks`, `completed`, and `backedUpAt`. Restore uses one consistent database snapshot. Restore before the first upload, and keep local edits pending until the server acknowledges the batch. Top up after sending changes so the server can exclude played boards.
 
 The KOReader plugin checks v2 capabilities before catalog browsing or sync. It restores games supported by the installed plugin from the combined response. Retriable upstream fetch failures return `502` or `504`.
+
+Nurikabe uses a row-major marks and solution string with `.` for undecided, `#` for sea, and `x` for white. Clues always have the mark `x`. Complete boards have one connected sea, no 2×2 pool, and correctly sized islands with exactly one clue each. Queue and restore responses include the verified solution. Hashi metadata identifies `bridges` as generated, and Slitherlink metadata identifies `loopy` as generated.

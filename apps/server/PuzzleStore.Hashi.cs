@@ -44,6 +44,7 @@ public sealed partial class PuzzleStore
                 sum(s.content_hash IS NULL AND json_extract(p.metadata, '$.islandCount') >= $minIslands
                     AND json_extract(p.metadata, '$.actualDensity') >= $minDensity) AS eligible
             FROM hashi_puzzles p LEFT JOIN hashi_progress s USING (content_hash)
+            WHERE json_extract(p.metadata, '$.attribution') IS NULL
             GROUP BY p.width, difficulty, solvability ORDER BY p.width, difficulty, solvability
             """;
         command.Parameters.AddWithValue("$minIslands", minIslands);

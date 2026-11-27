@@ -6,7 +6,7 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 6;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -160,11 +160,70 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
+        if (version < 4)
+        {
+            command.CommandText = """
+                CREATE TABLE slitherlink_collection_refresh (
+                    resource TEXT NOT NULL PRIMARY KEY,
+                    completed_at INTEGER NOT NULL,
+                    version TEXT
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        if (version < 5)
+        {
+            command.CommandText = """
+                CREATE TABLE nurikabe_puzzles (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 50),
+                    height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 50),
+                    source TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_kind TEXT NOT NULL CHECK (source_kind IN ('generated', 'collection')),
+                    difficulty TEXT NOT NULL,
+                    solvability TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    author TEXT,
+                    metadata TEXT NOT NULL,
+                    definition TEXT NOT NULL
+                );
+                CREATE INDEX nurikabe_inventory ON nurikabe_puzzles (source, width, height, difficulty, solvability);
+                CREATE TABLE nurikabe_progress (
+                    puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES nurikabe_puzzles(id),
+                    marks TEXT NOT NULL,
+                    completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                    backed_up_at TEXT NOT NULL
+                );
+                CREATE TABLE nurikabe_collection_refresh (
+                    resource TEXT NOT NULL PRIMARY KEY,
+                    checked_at INTEGER NOT NULL,
+                    next_index INTEGER NOT NULL
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
         command.CommandText = $"""
-            CREATE TABLE slitherlink_collection_refresh (
+            CREATE TABLE nonogram_collection_puzzles (
+                id TEXT NOT NULL PRIMARY KEY,
+                source TEXT NOT NULL,
+                width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 100),
+                height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 100),
+                definition TEXT NOT NULL
+            );
+            CREATE INDEX nonogram_collection_source ON nonogram_collection_puzzles (source, width, height);
+            CREATE TABLE nonogram_collection_progress (
+                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES nonogram_collection_puzzles(id),
+                marks TEXT NOT NULL,
+                completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                backed_up_at TEXT NOT NULL
+            );
+            CREATE TABLE extra_collection_refresh (
                 resource TEXT NOT NULL PRIMARY KEY,
-                completed_at INTEGER NOT NULL,
-                version TEXT
+                cursor INTEGER NOT NULL,
+                completed_at INTEGER NOT NULL
             );
             PRAGMA user_version = {SchemaVersion};
             """;

@@ -2,11 +2,22 @@ local Puzzle = require("kobologicpuzzles/puzzle")
 
 local Sync = {}
 
-function Sync.restore(store, request)
-    local supportedGames = table.concat(Puzzle.games, ",")
+local function serverSupports(record, games)
+    local puzzle = record.puzzle
+    local game = Puzzle.game(puzzle.id)
+    if not games[game] then return false end
+    if games.extraCollections then return true end
+    if game == "nonogram" then return type(puzzle.id) == "number" end
+    local metadata = puzzle.metadata
+    return game ~= "hashi" or type(metadata) ~= "table"
+        or metadata.sourceKind ~= "collection" and (metadata.source == nil or metadata.source == "bridges")
+end
+
+function Sync.restore(store, request, extraCollections)
+    local supportedGames = table.concat(Puzzle.games, ",") .. (extraCollections and ":collections" or "")
     if store.settings.restoredV2Server == store.settings.server
         and store.settings.restoredV2Games == supportedGames then return 0 end
-    local saved, err = request("GET", "/restore")
+    local saved, err = request("GET", extraCollections and "/restore?includeCollections=true" or "/restore")
     if not saved then return nil, err end
     local records, seen = {}, {}
     for _, entry in ipairs(saved) do
@@ -41,7 +52,7 @@ function Sync.restore(store, request)
     return restored
 end
 
-local function topUp(store, request, game, result, advancedFilters)
+local function topUp(store, request, game, result, games)
     local target = store:target(game)
     if target == 0 then
         result.shortfalls[game] = 0
@@ -49,7 +60,7 @@ local function topUp(store, request, game, result, advancedFilters)
     end
     local filters = store.settings.filters[game]
     local parameters, advanced = Puzzle.filterParameters(filters)
-    if advanced and not advancedFilters then return nil, Puzzle.advancedFilterMessage end
+    if advanced and not games.advancedFilters then return nil, Puzzle.advancedFilterMessage end
 
     local cached, excluded, matching = {}, {}, 0
     local records = store:list(game)
@@ -57,7 +68,7 @@ local function topUp(store, request, game, result, advancedFilters)
         -- WebPBN ratings can change between downloads.
         local unstarted = {}
         for _, record in ipairs(records) do
-            if not record.marks then unstarted[#unstarted + 1] = record end
+            if not record.marks and serverSupports(record, games) then unstarted[#unstarted + 1] = record end
         end
         local ok, err = Sync.refreshMetadata(store, request, unstarted)
         if not ok then return nil, err end
@@ -66,17 +77,20 @@ local function topUp(store, request, game, result, advancedFilters)
     local matches = Puzzle.filterMatcher(game, filters)
     for _, record in ipairs(records) do
         local puzzle = record.puzzle
-        if not record.marks and matches(puzzle) then
-            matching = matching + 1
-            if #cached < 100 then cached[#cached + 1] = Puzzle.wireId(puzzle.id) end
-        elseif #excluded < 1000 then
-            excluded[#excluded + 1] = Puzzle.wireId(puzzle.id)
+        if serverSupports(record, games) then
+            if not record.marks and matches(puzzle) then
+                matching = matching + 1
+                if #cached < 100 then cached[#cached + 1] = Puzzle.wireId(puzzle.id) end
+            elseif #excluded < 1000 then
+                excluded[#excluded + 1] = Puzzle.wireId(puzzle.id)
+            end
         end
     end
 
     while matching < target do
         local payload = { game = game, targetCount = math.min(target, matching + 15),
             cachedUnstartedPuzzleIds = cached, excludedPuzzleIds = excluded }
+        if games.extraCollections and (game == "nonogram" or game == "hashi") then payload.includeCollections = true end
         for key, value in pairs(parameters) do payload[key] = value end
         local reply, err = request("POST", "/offline-queue", payload, "Downloading " .. Puzzle.gameNames[game] .. " puzzles…")
         if not reply then return nil, err end
@@ -114,14 +128,14 @@ end
 
 function Sync.run(store, request, games)
     local result = { restored = 0, backedUp = 0, added = 0, pending = 0, shortfalls = {} }
-    local restored, restoreError = Sync.restore(store, request)
+    local restored, restoreError = Sync.restore(store, request, games.extraCollections)
     if not restored then return result, restoreError end
     result.restored = restored
 
     local dirty = {}
     for _, record in ipairs(store:list()) do
         if record.marks and record.dirty then
-            if games[Puzzle.game(record.puzzle.id)] then
+            if serverSupports(record, games) then
                 dirty[#dirty + 1] = { puzzleId = record.puzzle.id, marks = record.marks, completed = record.completed }
             else
                 result.pending = result.pending + 1
@@ -152,7 +166,7 @@ function Sync.run(store, request, games)
     local queueError
     for _, game in ipairs(Puzzle.games) do
         if games[game] then
-            local _, err = topUp(store, request, game, result, games.advancedFilters)
+            local _, err = topUp(store, request, game, result, games)
             if err and not queueError then queueError = err end
         end
     end

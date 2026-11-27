@@ -16,16 +16,16 @@ public sealed record HashiPuzzleRating(HashiDifficulty? Difficulty, int? Difficu
     HashiTechnique? HardestTechnique, IReadOnlyDictionary<HashiTechnique, int> Deductions, int LookaheadDepth,
     int LookaheadTrials, string? Reason);
 
-public sealed record HashiPuzzleMetadata(HashiGenerationParameters Generation, string GeneratorVersion, string ValidatorVersion,
+public sealed record HashiPuzzleMetadata(HashiGenerationParameters? Generation, string? GeneratorVersion, string ValidatorVersion,
     int ExactNodes, string ClassifierVersion, HashiPuzzleRating Rating, DateTimeOffset GeneratedAt, int IslandCount,
-    double ActualDensity);
+    double ActualDensity, PublishedPuzzle? Attribution = null);
 
 public sealed class VerifiedHashiPuzzle
 {
-    private VerifiedHashiPuzzle(HashiCandidate candidate, HashiPuzzleMetadata metadata)
+    private VerifiedHashiPuzzle(HashiPuzzle puzzle, IReadOnlyList<byte> solution, HashiPuzzleMetadata metadata)
     {
-        Puzzle = candidate.Puzzle;
-        Solution = candidate.Solution;
+        Puzzle = puzzle;
+        Solution = solution;
         Metadata = metadata;
     }
 
@@ -44,20 +44,36 @@ public sealed class VerifiedHashiPuzzle
         if (validation.Status != HashiValidationStatus.Unique)
             return (validation, null);
 
-        var classification = new HashiDifficultyClassifier().Classify(candidate.Puzzle, timeout,
-            cancellationToken: cancellationToken);
-        if (classification.Solution is { } classifiedSolution && !classifiedSolution.SequenceEqual(candidate.Solution))
+        return Classify(candidate.Puzzle, validation, generation, null, timeout, generatedAt, cancellationToken);
+    }
+
+    internal static (HashiValidationResult Validation, VerifiedHashiPuzzle? Puzzle) VerifyCollection(
+        HashiPuzzle puzzle, PublishedPuzzle attribution, TimeSpan timeout, DateTimeOffset verifiedAt,
+        CancellationToken cancellationToken)
+    {
+        var validation = new HashiExactSolver().CountSolutions(puzzle, timeout, cancellationToken);
+        return validation.Status == HashiValidationStatus.Unique
+            ? Classify(puzzle, validation, null, attribution, timeout, verifiedAt, cancellationToken)
+            : (validation, null);
+    }
+
+    private static (HashiValidationResult Validation, VerifiedHashiPuzzle? Puzzle) Classify(
+        HashiPuzzle puzzle, HashiValidationResult validation, HashiGenerationParameters? generation,
+        PublishedPuzzle? attribution, TimeSpan timeout, DateTimeOffset verifiedAt, CancellationToken cancellationToken)
+    {
+        var solution = validation.Solution!;
+        var classification = new HashiDifficultyClassifier().Classify(puzzle, timeout, cancellationToken: cancellationToken);
+        if (classification.Solution is { } classifiedSolution && !classifiedSolution.SequenceEqual(solution))
             return (validation with { Status = HashiValidationStatus.SolutionMismatch, Solution = null }, null);
 
         var rating = new HashiPuzzleRating(classification.Difficulty, classification.Score, classification.Solvability,
             classification.HardestTechnique, new ReadOnlyDictionary<HashiTechnique, int>(
                 classification.Deductions.ToDictionary(pair => pair.Key, pair => pair.Value)),
             classification.LookaheadDepth, classification.LookaheadTrials, classification.Reason);
-        var puzzle = candidate.Puzzle;
-        var metadata = new HashiPuzzleMetadata(generation, HashiGenerationParameters.BridgesRevision, HashiExactSolver.Version,
-            validation.Nodes, HashiDifficultyClassifier.Version, rating, generatedAt, puzzle.Islands.Count,
-            100.0 * puzzle.Islands.Count / (puzzle.Width * puzzle.Height));
-        return (validation, new VerifiedHashiPuzzle(candidate, metadata));
+        var metadata = new HashiPuzzleMetadata(generation, generation is null ? null : HashiGenerationParameters.BridgesRevision,
+            HashiExactSolver.Version, validation.Nodes, HashiDifficultyClassifier.Version, rating, verifiedAt, puzzle.Islands.Count,
+            100.0 * puzzle.Islands.Count / (puzzle.Width * puzzle.Height), attribution);
+        return (validation, new VerifiedHashiPuzzle(puzzle, solution, metadata));
     }
 }
 

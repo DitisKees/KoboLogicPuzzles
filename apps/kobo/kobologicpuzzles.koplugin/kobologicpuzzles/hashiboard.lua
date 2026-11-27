@@ -28,9 +28,13 @@ end
 
 local function topology(puzzle)
     if type(puzzle) ~= "table" or puzzle.schemaVersion ~= 1 or puzzle.game ~= "hashi"
-        or not integer(puzzle.width, 20, 50) or puzzle.width % 5 ~= 0 or puzzle.height ~= puzzle.width
-        or not array(puzzle.islands, 2, math.floor(puzzle.width * puzzle.height * 0.3))
-        or not array(puzzle.edges, 1, 2 * #puzzle.islands) then return end
+        or not integer(puzzle.width, 1, 50) or not integer(puzzle.height, 1, 50) then return end
+    local metadata = puzzle.metadata
+    local collection = type(metadata) == "table" and (metadata.sourceKind == "collection"
+        or metadata.source ~= nil and metadata.source ~= "bridges")
+    if not collection and (puzzle.width < 20 or puzzle.width % 5 ~= 0 or puzzle.height ~= puzzle.width) then return end
+    local maxIslands = math.floor(puzzle.width * puzzle.height * (collection and 1 or 0.3))
+    if not array(puzzle.islands, 2, maxIslands) or not array(puzzle.edges, 1, 2 * #puzzle.islands) then return end
 
     local graph = { cells = {}, neighbors = {}, edges = {} }
     local rows, columns, expected = {}, {}, {}

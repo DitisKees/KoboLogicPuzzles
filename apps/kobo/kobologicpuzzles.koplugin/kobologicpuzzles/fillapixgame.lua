@@ -61,7 +61,9 @@ function FillAPixGame:onButton(action)
             text = "Clear all marks on this board?",
             ok_text = "Restart",
             ok_callback = function()
-                self:changed(self.board:restoreCheckpoint(string.rep(".", #self.board.cells)), true)
+                local board = self.board
+                local marks = board.initialMarks and board.initialMarks(board.puzzle) or string.rep(".", #board.cells)
+                self:changed(board:restoreCheckpoint(marks), true)
             end,
         })
         return true

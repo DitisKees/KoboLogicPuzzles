@@ -4,11 +4,12 @@ const refreshInterval = 30_000;
 const byId = id => document.getElementById(id);
 const games = [
     { id: "nonogram", name: "Nonogram" },
-    { id: "hashi", name: "Hashi" },
+    { id: "hashi", name: "Hashi", generator: "Bridges" },
     { id: "fill-a-pix", name: "Fill-a-Pix" },
-    { id: "slitherlink", name: "Slitherlink" },
+    { id: "slitherlink", name: "Slitherlink", generator: "Loopy" },
+    { id: "nurikabe", name: "Nurikabe", generator: "KoboLogicPuzzles" },
 ];
-const generators = games.filter(({ id }) => id === "hashi" || id === "slitherlink");
+const generators = games.filter(game => game.generator);
 const state = { data: null, pending: false, online: false, game: "hashi", filters: {}, lastRefresh: 0 };
 
 const resultNames = {
@@ -17,6 +18,10 @@ const resultNames = {
     duplicate: "Duplicate puzzle",
     generation_timeout: "Generation timed out",
     generation_failed: "Generation failed",
+    verification_timeout: "Uniqueness proof timed out",
+    multiple_solutions: "Multiple solutions",
+    invalid: "Invalid puzzle",
+    outside_target: "Rating outside stock targets",
     validation_rejected: "Validation rejected",
     density_rejected: "Below density requirement",
     rating_rejected: "Rating outside stock targets",
@@ -40,6 +45,20 @@ function sum(rows, field) {
 }
 
 function stockEntries(game, data) {
+    if (game === "nurikabe") {
+        const entries = new Map();
+        const key = row => `${row.size}/${row.difficulty}`;
+        for (const row of data.nurikabe.stock) {
+            entries.set(key(row), { ...row, ready: row.unstarted, unstarted: 0 });
+        }
+        for (const row of data.nurikabe.actualStock) {
+            const id = key(row);
+            const entry = entries.get(id) ?? { ...row, ready: 0, target: 0, unstarted: 0 };
+            entry.unstarted += row.unstarted;
+            entries.set(id, entry);
+        }
+        return Array.from(entries.values());
+    }
     if (game === "slitherlink") {
         return [
             ...data.slitherlink.stock.map(row => ({
@@ -131,12 +150,12 @@ function renderInventory() {
     const note = byId("stock-note");
     const select = byId("stock-filter");
     const game = state.game;
-    const isHashi = game === "hashi";
+    const isSlitherlink = game === "slitherlink";
     const rows = state.data ? stockEntries(game, state.data) : [];
-    const categories = [...new Set(rows.map(row => row.category))].sort((a, b) => label(a).localeCompare(label(b)));
+    const categories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort((a, b) => label(a).localeCompare(label(b)));
     const selection = categories.includes(state.filters[game]) ? state.filters[game] : "";
-    byId("stock-filter-label").textContent = isHashi ? "Solvability" : "Tiling";
-    const options = [new Option(isHashi ? "All levels" : "All tilings", "")];
+    byId("stock-filter-label").textContent = isSlitherlink ? "Tiling" : "Solvability";
+    const options = [new Option(isSlitherlink ? "All tilings" : "All levels", "")];
     for (const category of categories) {
         options.push(new Option(label(category), category));
     }
@@ -147,6 +166,7 @@ function renderInventory() {
     }
     select.value = selection;
     select.disabled = categories.length === 0;
+    select.closest(".filter").hidden = game === "nurikabe";
 
     const selected = rows.filter(row => !selection || row.category === selection);
     if (selected.length === 0) {
@@ -157,11 +177,11 @@ function renderInventory() {
         return;
     }
 
-    const levels = isHashi ? ["easy", "medium", "hard", "expert"] : ["easy", "normal", "tricky", "hard"];
+    const levels = isSlitherlink ? ["easy", "normal", "tricky", "hard"] : ["easy", "medium", "hard", "expert"];
     if (selected.some(row => row.difficulty == null)) levels.push(null);
     const sizes = [...new Set(selected.map(row => row.size))].sort((a, b) => a - b);
     const table = element("table", "stock-table");
-    table.setAttribute("aria-label", `${isHashi ? "Hashi" : "Slitherlink"} unstarted inventory`);
+    table.setAttribute("aria-label", `${games.find(item => item.id === game).name} unstarted inventory`);
     const thead = table.createTHead();
     const headers = thead.insertRow();
     for (const name of ["Board size", ...levels.map(level => level == null ? "Unrated" : label(level))]) {
@@ -223,7 +243,7 @@ function renderWorkers(data) {
     const expanded = new Set(
         Array.from(target.querySelectorAll("details[open]"), detail => detail.closest(".worker").dataset.game),
     );
-    const cards = generators.map(({ id, name }) => {
+    const cards = generators.map(({ id, name, generator }) => {
         const status = data[id];
         const activity = status.activity ?? {};
         const current = activity.current;
@@ -238,7 +258,7 @@ function renderWorkers(data) {
         const pill = element("span", "pill", current ? (verifying ? "Verifying" : "Generating") : status.enabled ? "Idle" : "Disabled");
         pill.dataset.state = current ? (verifying ? "verifying" : "active") : "idle";
         head.append(nameplate, pill);
-        article.append(head);
+        article.append(head, element("p", "worker-meta", `Generated by ${generator}`));
         if (current) {
             const elapsed = element("p", "worker-meta");
             elapsed.dataset.startedAt = current.startedAt;
@@ -257,6 +277,13 @@ function renderWorkers(data) {
             latest.append(element("p", "worker-meta", "No completed attempts in this session"));
         }
         article.append(latest);
+        if (status.collection?.enabled || status.collection?.checkedAt) {
+            const { checkedAt, nextIndex } = status.collection;
+            const message = nextIndex > 0 ? `Janko refresh · ${number.format(nextIndex)} checked`
+                : checkedAt ? `Janko checked ${new Date(checkedAt).toLocaleDateString()}`
+                : "Janko refresh pending";
+            article.append(element("p", "worker-meta", message));
+        }
 
         const outcomes = Object.entries(activity.outcomes ?? {});
         if (outcomes.length > 0) {
@@ -295,7 +322,8 @@ function renderCatalog(catalog) {
         if (sources.length > 0) {
             const breakdown = element("dl", "sources");
             for (const source of sources) {
-                breakdown.append(element("dt", "", source.sourceName), element("dd", "", number.format(source.total)));
+                const name = source.sourceKind === "generated" ? `Generated by ${source.sourceName}` : source.sourceName;
+                breakdown.append(element("dt", "", name), element("dd", "", number.format(source.total)));
             }
             card.append(breakdown);
         }
@@ -361,8 +389,11 @@ for (const tab of document.querySelectorAll(".tabs [role='tab']")) {
     tab.addEventListener("keydown", event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
-        const next = event.key === "Home" ? "hashi" : event.key === "End" ? "slitherlink" :
-            state.game === "hashi" ? "slitherlink" : "hashi";
+        const index = generators.findIndex(game => game.id === state.game);
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? generators.length - 1
+            : (index + direction + generators.length) % generators.length;
+        const next = generators[nextIndex].id;
         selectGame(next);
         byId(`tab-${next}`).focus();
     });

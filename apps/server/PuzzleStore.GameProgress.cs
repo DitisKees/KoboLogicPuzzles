@@ -1,12 +1,16 @@
+using System.Globalization;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using KoboLogicPuzzles.Server.Hashi;
 
 namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore
 {
-    internal void SaveMixedProgress(IReadOnlyList<ProgressUpdate> nonograms, IReadOnlyList<HashiProgressUpdate> hashi,
-        IReadOnlyList<FillAPixProgressUpdate> fillAPix, IReadOnlyList<SlitherlinkProgressUpdate> slitherlink,
+    internal void SaveMixedProgress(IReadOnlyList<ProgressUpdate> nonograms, IReadOnlyList<CellProgressUpdate> collectionNonograms,
+        IReadOnlyList<HashiProgressUpdate> hashi,
+        IReadOnlyList<FillAPixProgressUpdate> fillAPix, IReadOnlyList<CellProgressUpdate> slitherlink,
+        IReadOnlyList<CellProgressUpdate> nurikabe,
         DateTimeOffset backedUpAt, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -14,17 +18,43 @@ public sealed partial class PuzzleStore
         using var transaction = connection.BeginTransaction();
         if (nonograms.Count > 0)
             WriteNonogramProgress(connection, transaction, nonograms, backedUpAt);
+        if (collectionNonograms.Count > 0)
+            WriteCellProgress(connection, transaction, "nonogram_collection_progress", collectionNonograms, backedUpAt);
         if (hashi.Count > 0)
             WriteHashiProgress(connection, transaction, hashi, backedUpAt);
         if (fillAPix.Count > 0)
             WriteFillAPixProgress(connection, transaction, fillAPix, backedUpAt);
         if (slitherlink.Count > 0)
-            WriteSlitherlinkProgress(connection, transaction, slitherlink, backedUpAt);
+            WriteCellProgress(connection, transaction, "slitherlink_progress", slitherlink, backedUpAt);
+        if (nurikabe.Count > 0)
+            WriteCellProgress(connection, transaction, "nurikabe_progress", nurikabe, backedUpAt);
         cancellationToken.ThrowIfCancellationRequested();
         transaction.Commit();
     }
 
-    public IReadOnlyList<GameSavedBoard> RestoreGameProgress(PuzzleGame? game)
+    private static void WriteCellProgress(SqliteConnection connection, SqliteTransaction transaction, string table,
+        IReadOnlyList<CellProgressUpdate> boards, DateTimeOffset backedUpAt)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"""
+            INSERT INTO {table} (puzzle_id, marks, completed, backed_up_at) VALUES ($id, $marks, $completed, $backedUpAt)
+            ON CONFLICT(puzzle_id) DO UPDATE SET marks = excluded.marks, completed = excluded.completed, backed_up_at = excluded.backed_up_at
+            """;
+        var id = command.Parameters.Add("$id", SqliteType.Text);
+        var marks = command.Parameters.Add("$marks", SqliteType.Text);
+        var completed = command.Parameters.Add("$completed", SqliteType.Integer);
+        command.Parameters.AddWithValue("$backedUpAt", backedUpAt.ToString("O", CultureInfo.InvariantCulture));
+        foreach (var board in boards)
+        {
+            id.Value = board.Id.Value;
+            marks.Value = board.Marks;
+            completed.Value = board.Completed;
+            command.ExecuteNonQuery();
+        }
+    }
+
+    public IReadOnlyList<GameSavedBoard> RestoreGameProgress(PuzzleGame? game, bool includeCollections = true)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction(deferred: true);
@@ -36,11 +66,15 @@ public sealed partial class PuzzleStore
                 var definition = WebPbnPuzzleProvider.ToDefinition(puzzle, includeSolution: true);
                 boards.Add(ToSavedBoard(definition, progress.Marks, progress.Completed, progress.BackedUpAt));
             }
+            if (includeCollections)
+                RestoreCollectionNonograms(connection, transaction, boards);
         }
         if (game is null or PuzzleGame.Hashi)
         {
             foreach (var (puzzle, progress) in ReadHashiProgress(connection, transaction))
             {
+                if (!includeCollections && puzzle.Metadata.Attribution is not null)
+                    continue;
                 var definition = LocalHashiPuzzleProvider.ToDefinition(puzzle, includeSolution: true);
                 boards.Add(ToSavedBoard(definition, progress.Marks, progress.Completed, progress.BackedUpAt));
             }
@@ -49,6 +83,8 @@ public sealed partial class PuzzleStore
             RestoreFillAPixProgress(connection, transaction, boards);
         if (game is null or PuzzleGame.Slitherlink)
             RestoreSlitherlinkProgress(connection, transaction, boards);
+        if (game is null or PuzzleGame.Nurikabe)
+            RestoreNurikabeProgress(connection, transaction, boards);
         transaction.Commit();
         return boards;
     }

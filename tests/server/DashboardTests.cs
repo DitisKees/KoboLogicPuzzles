@@ -9,7 +9,7 @@ namespace KoboLogicPuzzles.Server.Tests;
 public sealed class DashboardTests
 {
     [Fact]
-    public async Task SnapshotReportsCatalogCountsAndBothGeneratorsWithoutPuzzleDefinitions()
+    public async Task SnapshotReportsCatalogCountsAndGeneratorsWithoutPuzzleDefinitions()
     {
         using var database = new TestDatabase();
         database.SeedCatalog([TestData.Summary(12), TestData.Summary(13)]);
@@ -34,13 +34,16 @@ public sealed class DashboardTests
         Assert.Equal(1, nonogram.GetProperty("unstarted").GetInt32());
         var hashi = Assert.Single(catalog, row => row.GetProperty("game").GetString() == "hashi");
         Assert.Equal(1, hashi.GetProperty("unstarted").GetInt32());
+        Assert.Equal("generated", hashi.GetProperty("sourceKind").GetString());
         var slitherlink = Assert.Single(catalog, row => row.GetProperty("game").GetString() == "slitherlink");
         Assert.Equal("Example collection", slitherlink.GetProperty("sourceName").GetString());
+        Assert.Equal("collection", slitherlink.GetProperty("sourceKind").GetString());
         Assert.Equal(1, slitherlink.GetProperty("total").GetInt32());
         Assert.False(slitherlink.TryGetProperty("solution", out _));
         Assert.False(slitherlink.TryGetProperty("marks", out _));
 
         Assert.True(snapshot.GetProperty("hashi").GetProperty("targets").GetArrayLength() > 0);
+        Assert.Equal(12, snapshot.GetProperty("nurikabe").GetProperty("stock").GetArrayLength());
         Assert.Equal(216, snapshot.GetProperty("slitherlink").GetProperty("stock").GetArrayLength());
         Assert.Equal(JsonValueKind.Null, snapshot.GetProperty("hashi").GetProperty("activity").GetProperty("current").ValueKind);
         Assert.True(snapshot.GetProperty("sampledAt").TryGetDateTimeOffset(out _));

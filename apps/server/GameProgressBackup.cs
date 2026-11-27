@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
@@ -15,7 +16,7 @@ public sealed record GameSavedProgress(string PuzzleId, int SchemaVersion, JsonE
 public sealed record GameSavedBoard(GamePuzzleDefinition Puzzle, GameSavedProgress Progress);
 
 internal sealed record FillAPixProgressUpdate(PuzzleId Id, string Marks, bool Completed);
-internal sealed record SlitherlinkProgressUpdate(PuzzleId Id, string Marks, bool Completed);
+internal sealed record CellProgressUpdate(PuzzleId Id, string Marks, bool Completed);
 
 public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library, PuzzleProviders providers, TimeProvider time)
 {
@@ -27,9 +28,11 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
             return new ProgressReceipt(0, null);
 
         var nonograms = new List<ProgressUpdate>();
+        var collectionNonograms = new List<CellProgressUpdate>();
         var hashes = new List<HashiProgressUpdate>();
         var fillAPix = new List<FillAPixProgressUpdate>();
-        var slitherlink = new List<SlitherlinkProgressUpdate>();
+        var slitherlink = new List<CellProgressUpdate>();
+        var nurikabe = new List<CellProgressUpdate>();
         var seen = new HashSet<PuzzleId>();
         foreach (var board in boards)
         {
@@ -40,6 +43,17 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 if (board.Marks.ValueKind != JsonValueKind.String)
                     throw new ArgumentException("Nonogram marks must be a string.");
                 nonograms.Add(new ProgressUpdate(number, board.Marks.GetString()!, board.Completed));
+            }
+            else if (id.Game == PuzzleGame.Nonogram)
+            {
+                if (board.Marks.ValueKind != JsonValueKind.String || store.FindCollectionNonogram(id.Value) is not { } puzzle)
+                    throw new ArgumentException($"Puzzle {id} is unavailable or has invalid marks.");
+                var marks = board.Marks.GetString()!;
+                var rules = new PuzzleDefinition(0, puzzle.Title, puzzle.Author, puzzle.Width, puzzle.Height, puzzle.RowClues, puzzle.ColumnClues);
+                if (marks.Length != puzzle.Width * puzzle.Height || marks.Any(mark => mark is not ('.' or '#' or 'x')) ||
+                    board.Completed && !rules.MatchesClues(marks))
+                    throw new ArgumentException($"Puzzle {id} has invalid marks or does not satisfy its clues.");
+                collectionNonograms.Add(new(id, marks, board.Completed));
             }
             else if (id.Game == PuzzleGame.FillAPix)
             {
@@ -58,6 +72,18 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 if (!puzzle.ValidMarks(marks) || board.Completed && !puzzle.IsComplete(marks))
                     throw new ArgumentException($"Puzzle {id} has invalid edge marks or an invalid completed loop.");
                 slitherlink.Add(new(id, marks, board.Completed));
+            }
+            else if (id.Game == PuzzleGame.Nurikabe)
+            {
+                if (board.Marks.ValueKind != JsonValueKind.String)
+                    throw new ArgumentException("Nurikabe marks must be a string.");
+                if (await providers.GetDefinitionAsync(id, false, cancellationToken) is not NurikabeDefinition puzzle)
+                    throw new ArgumentException($"Puzzle {id} is unavailable and its progress could not be backed up.");
+                var marks = board.Marks.GetString()!;
+                var rules = new NurikabeBoard(puzzle.Width, puzzle.Height, puzzle.Clues);
+                if (!rules.ValidMarks(marks) || board.Completed && !rules.IsSolved(marks))
+                    throw new ArgumentException($"Puzzle {id} has invalid cell marks or does not satisfy the Nurikabe rules.");
+                nurikabe.Add(new(id, marks, board.Completed));
             }
             else
             {
@@ -86,7 +112,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 throw new ArgumentException($"The filled cells for puzzle {board.Id} do not satisfy its clues.");
         }
         var backedUpAt = time.GetUtcNow();
-        store.SaveMixedProgress(nonograms, hashes, fillAPix, slitherlink, backedUpAt, cancellationToken);
+        store.SaveMixedProgress(nonograms, collectionNonograms, hashes, fillAPix, slitherlink, nurikabe, backedUpAt, cancellationToken);
         return new ProgressReceipt(boards.Length, backedUpAt);
     }
 }

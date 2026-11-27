@@ -36,9 +36,16 @@ end
 
 function PuzzleMenu.details(metadata, game, author)
     metadata = type(metadata) == "table" and metadata or {}
-    if game == "hashi" then
-        return (Puzzle.difficultyNames[metadata.difficulty] or "Difficulty unknown") .. " · "
-            .. (Puzzle.hashiSolvabilityNames[metadata.solvability] or "Solvability unknown")
+    local source = Puzzle.sourceLabel(game, metadata.source, metadata.sourceName, metadata.sourceKind)
+    if game == "hashi" or game == "nurikabe" then
+        local details = {}
+        if source then details[#details + 1] = source end
+        if type(author) == "string" and author ~= "" and author ~= metadata.sourceName then
+            details[#details + 1] = author
+        end
+        details[#details + 1] = Puzzle.difficultyNames[metadata.difficulty] or "Difficulty unknown"
+        details[#details + 1] = Puzzle.hashiSolvabilityNames[metadata.solvability] or "Solvability unknown"
+        return table.concat(details, " · ")
     end
     if game == "fill-a-pix" then
         local details = {}
@@ -54,13 +61,21 @@ function PuzzleMenu.details(metadata, game, author)
         local details = {}
         if Slitherlink.tilingNames[metadata.tiling] then details[#details + 1] = Slitherlink.tilingNames[metadata.tiling] end
         if Slitherlink.difficultyNames[metadata.difficulty] then details[#details + 1] = Slitherlink.difficultyNames[metadata.difficulty] end
-        if type(metadata.sourceName) == "string" then details[#details + 1] = metadata.sourceName end
+        if source then
+            if metadata.sourceKind == "generated" or metadata.source == "loopy" then table.insert(details, 1, source)
+            else details[#details + 1] = source end
+        end
         if type(author) == "string" and author ~= "" then details[#details + 1] = author end
         return #details > 0 and table.concat(details, " · ") or nil
     end
-    return string.format("Difficulty %s · Quality %s · %s",
-        rating(metadata.difficulty), rating(metadata.quality),
-        Puzzle.nonogramSolvabilityNames[metadata.solvability] or "Solvability unknown")
+    local details = { source or "WebPBN" }
+    if source and metadata.source ~= "webpbn" and type(author) == "string" and author ~= "" and author ~= source then
+        details[#details + 1] = author
+    end
+    if metadata.difficulty ~= nil then details[#details + 1] = "Difficulty " .. rating(metadata.difficulty) end
+    if metadata.quality ~= nil then details[#details + 1] = "Quality " .. rating(metadata.quality) end
+    details[#details + 1] = Puzzle.nonogramSolvabilityNames[metadata.solvability] or "Solvability unknown"
+    return table.concat(details, " · ")
 end
 
 function PuzzleMenu:onMenuSelect(item)

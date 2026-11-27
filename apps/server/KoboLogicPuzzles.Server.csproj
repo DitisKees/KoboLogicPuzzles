@@ -6,6 +6,10 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KoboLogicPuzzles.Server.Tests" />
+    <EmbeddedResource Include="Collections/world-at-play-cc0.json" LogicalName="world-at-play-cc0.json" />
+    <EmbeddedResource Include="Collections/sen-ltd-nonogram.json" LogicalName="sen-ltd-nonogram.json" />
+    <EmbeddedResource Include="Collections/sen-ltd-hashiwokakero.json" LogicalName="sen-ltd-hashiwokakero.json" />
+    <None Update="Collections/sen-ltd.LICENSE" CopyToPublishDirectory="PreserveNewest" />
     <None Update="LICENSE" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="AngleSharp" Version="1.10.5" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />

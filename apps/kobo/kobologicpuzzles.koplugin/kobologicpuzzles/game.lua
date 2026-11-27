@@ -111,7 +111,7 @@ function Game:resize()
     self.titleFace = Font:getFace("tfont", 21)
     self.buttonFace = Font:getFace("cfont", 17)
     self.clueFace = Font:getFace("cfont", 16)
-    local sample = self.board.clueStates and "0"
+    local sample = self.clueSample or self.board.clueStates and "0"
         or (math.max(layout.puzzle.width, layout.puzzle.height) == 100 and "100" or "00")
     local sampleWidth = RenderText:sizeUtf8Text(0, false, self.clueFace, sample, true).x
     local gridFontSize = math.max(5, math.min(16, math.floor(16 * (layout.cell - 2) / sampleWidth)))

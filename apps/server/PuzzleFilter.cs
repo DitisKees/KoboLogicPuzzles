@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using KoboLogicPuzzles.Server.Hashi;
+using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
 
 namespace KoboLogicPuzzles.Server;
@@ -23,8 +24,11 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     internal DimensionRange[]? FillAPixWidths { get; init; }
     internal DimensionRange[]? FillAPixHeights { get; init; }
     internal string[]? SlitherlinkDifficulties { get; init; }
+    internal string[]? NurikabeDifficulties { get; init; }
+    internal string[]? NurikabeSolvabilities { get; init; }
     internal string[]? Tilings { get; init; }
     internal string[]? Sources { get; init; }
+    internal bool SquareOnly { get; init; }
 
     public static bool TryParseGame(string? value, out PuzzleGame game)
     {
@@ -35,12 +39,13 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     public static PuzzleFilter? Parse(string? game, int? width, int? height, string? difficulty, string? solvability,
         string? widthFilter = null, string? heightFilter = null, string? difficultyFilter = null,
         string? solvabilityFilter = null, string? sizeFilter = null, string? tiling = null, string? tilingFilter = null,
-        string? source = null, string? sourceFilter = null)
+        string? source = null, string? sourceFilter = null, bool includeCollections = false)
     {
         if (!TryParseGame(game, out var kind))
             return null;
-        if (kind != PuzzleGame.Slitherlink && (tiling is not null || tilingFilter is not null ||
-            source is not null || sourceFilter is not null))
+        if (kind != PuzzleGame.Slitherlink && (tiling is not null || tilingFilter is not null) ||
+            kind == PuzzleGame.FillAPix && (source is not null || sourceFilter is not null) ||
+            !TryChoices(source, sourceFilter, value => ValidSource(kind, value), out var sources))
             return null;
         if (kind == PuzzleGame.FillAPix)
         {
@@ -50,14 +55,15 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
                 return null;
             return new PuzzleFilter(kind, null, null, null, null) { FillAPixWidths = widthRanges, FillAPixHeights = heightRanges };
         }
-        if (!TrySelect(width?.ToString(CultureInfo.InvariantCulture), widthFilter, Dimensions, Integer, true, out var widths) ||
-            !TrySelect(height?.ToString(CultureInfo.InvariantCulture), heightFilter, Dimensions, Integer, true, out var heights))
+        var dimensions = kind == PuzzleGame.Nurikabe ? Dimensions[..50] : Dimensions;
+        if (!TrySelect(width?.ToString(CultureInfo.InvariantCulture), widthFilter, dimensions, Integer, true, out var widths) ||
+            !TrySelect(height?.ToString(CultureInfo.InvariantCulture), heightFilter, dimensions, Integer, true, out var heights))
             return null;
 
         if (sizeFilter is not null)
         {
-            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink) || widths is not null || heights is not null ||
-                !TrySelect(null, sizeFilter, kind == PuzzleGame.Hashi ? HashiSizes : Dimensions, Integer, true, out widths))
+            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe) || widths is not null || heights is not null ||
+                !TrySelect(null, sizeFilter, kind == PuzzleGame.Hashi ? HashiSizes : dimensions, Integer, true, out widths))
                 return null;
             heights = widths;
         }
@@ -66,13 +72,23 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
         {
             if (solvability is not null || solvabilityFilter is not null ||
                 !TryChoices(difficulty, difficultyFilter, SlitherlinkOptions.Levels.Contains, out var levels) ||
-                !TryChoices(tiling, tilingFilter, SlitherlinkMetadata.ValidTiling, out var tilings) ||
-                !TryChoices(source, sourceFilter, SlitherlinkOptions.ValidSource, out var sources))
+                !TryChoices(tiling, tilingFilter, SlitherlinkMetadata.ValidTiling, out var tilings))
                 return null;
             return new PuzzleFilter(kind, widths, heights, null, null)
             { SlitherlinkDifficulties = levels, Tilings = tilings, Sources = sources };
         }
 
+        if (kind == PuzzleGame.Nurikabe)
+        {
+            if (!TryChoices(difficulty, difficultyFilter, NurikabeGenerator.Difficulties.Contains, out var levels) ||
+                !TryChoices(solvability, solvabilityFilter, NurikabeGenerator.Solvabilities.Contains, out var logic))
+                return null;
+            return new PuzzleFilter(kind, widths, heights, null, null)
+            { NurikabeDifficulties = levels, NurikabeSolvabilities = logic, Sources = sources };
+        }
+
+        if (sources is null && !includeCollections)
+            sources = kind == PuzzleGame.Hashi ? ["bridges"] : ["webpbn"];
         int[]? difficulties, solvabilities;
         if (kind == PuzzleGame.Nonogram)
         {
@@ -84,8 +100,15 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
                  !TrySelect(solvability, solvabilityFilter, HashiSolvabilities, Rating<HashiSolvability>, false, out solvabilities))
             return null;
 
-        return new PuzzleFilter(kind, widths, heights, difficulties, solvabilities);
+        return new PuzzleFilter(kind, widths, heights, difficulties, solvabilities) { Sources = sources, SquareOnly = sizeFilter is not null };
     }
+
+    private static bool ValidSource(PuzzleGame game, string value) => game switch
+    {
+        PuzzleGame.Nonogram => value is "webpbn" or "world-at-play" or "sen-ltd" or "janko",
+        PuzzleGame.Hashi => value is "bridges" or "sen-ltd" or "janko",
+        _ => SlitherlinkOptions.ValidSource(value),
+    };
 
     private static bool TryChoices(string? exact, string? expression, Func<string, bool> valid, out string[]? choices)
     {
@@ -198,21 +221,23 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     }
 
     private bool Matches(int width, int height, int? difficulty, int? solvability) =>
-        Includes(Widths, width) && Includes(Heights, height) && Includes(Difficulties, difficulty) && Includes(Solvabilities, solvability);
+        (!SquareOnly || width == height) && Includes(Widths, width) && Includes(Heights, height) && Includes(Difficulties, difficulty) && Includes(Solvabilities, solvability);
 
     private static bool Includes(int[]? values, int? value) => values is null || (value is { } known && values.Contains(known));
 
-    internal bool Matches(PuzzleDefinition puzzle) => Matches(puzzle.Width, puzzle.Height, StarUnits(puzzle.Metadata?.Difficulty),
+    internal bool IncludesSource(string source) => Sources is null || Sources.Contains(source);
+
+    internal bool Matches(PuzzleDefinition puzzle) => IncludesSource("webpbn") && Matches(puzzle.Width, puzzle.Height, StarUnits(puzzle.Metadata?.Difficulty),
         puzzle.Metadata?.Solvability);
 
-    internal bool Matches(StoredHashiPuzzle puzzle) => Matches(puzzle.Puzzle.Width, puzzle.Puzzle.Height,
+    internal bool Matches(StoredHashiPuzzle puzzle) => IncludesSource(puzzle.Metadata.Attribution?.Source ?? "bridges") && Matches(puzzle.Puzzle.Width, puzzle.Puzzle.Height,
         (int?)puzzle.Metadata.Rating.Difficulty, (int)puzzle.Metadata.Rating.Solvability);
 
     internal bool Matches(GamePuzzleDefinition puzzle) => puzzle switch
     {
-        NonogramPuzzleDefinition nonogram => Matches(nonogram.Width, nonogram.Height, StarUnits(nonogram.Metadata?.Difficulty),
+        NonogramPuzzleDefinition nonogram => IncludesSource(nonogram.Metadata?.Source ?? "webpbn") && Matches(nonogram.Width, nonogram.Height, StarUnits(nonogram.Metadata?.Difficulty),
             nonogram.Metadata?.Solvability),
-        HashiPuzzleDefinition hashi => Matches(hashi.Width, hashi.Height, Rating<HashiDifficulty>(hashi.Metadata.Difficulty),
+        HashiPuzzleDefinition hashi => IncludesSource(hashi.Metadata.Source) && Matches(hashi.Width, hashi.Height, Rating<HashiDifficulty>(hashi.Metadata.Difficulty),
             Rating<HashiSolvability>(hashi.Metadata.Solvability)),
         FillAPixPuzzleDefinition fillAPix => (FillAPixWidths is null || FillAPixWidths.Any(range => range.Contains(fillAPix.Width))) &&
             (FillAPixHeights is null || FillAPixHeights.Any(range => range.Contains(fillAPix.Height))),
@@ -220,6 +245,10 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             (SlitherlinkDifficulties is null || SlitherlinkDifficulties.Contains(slitherlink.Metadata.Difficulty)) &&
             (Tilings is null || Tilings.Contains(slitherlink.Metadata.Tiling)) &&
             (Sources is null || Sources.Contains(slitherlink.Metadata.Source)),
+        NurikabeDefinition nurikabe => Matches(nurikabe.Width, nurikabe.Height, null, null) &&
+            (NurikabeDifficulties is null || NurikabeDifficulties.Contains(nurikabe.Metadata.Difficulty)) &&
+            (NurikabeSolvabilities is null || NurikabeSolvabilities.Contains(nurikabe.Metadata.Solvability)) &&
+            (Sources is null || Sources.Contains(nurikabe.Metadata.Source)),
         _ => false,
     };
 }

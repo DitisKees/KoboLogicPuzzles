@@ -67,9 +67,11 @@ public sealed partial class PuzzleStore
             SELECT p.content_hash, p.width, p.height, p.metadata, s.completed
             FROM hashi_puzzles p LEFT JOIN hashi_progress s USING (content_hash)
             WHERE ($before IS NULL OR p.content_hash < $before)
+                AND ($square = 0 OR p.width = p.height)
                 AND ($width IS NULL OR p.width IN (SELECT value FROM json_each($width)))
                 AND ($height IS NULL OR p.height IN (SELECT value FROM json_each($height)))
                 AND ($unstarted = 0 OR s.content_hash IS NULL)
+                AND ($source IS NULL OR coalesce(json_extract(p.metadata, '$.attribution.source'), 'bridges') IN (SELECT value FROM json_each($source)))
                 AND ($difficulty IS NULL OR json_extract(p.metadata, '$.rating.difficulty') IN (SELECT value FROM json_each($difficulty)))
                 AND ($solvability IS NULL OR json_extract(p.metadata, '$.rating.solvability') IN (SELECT value FROM json_each($solvability)))
             ORDER BY p.content_hash DESC LIMIT $limit
@@ -78,6 +80,8 @@ public sealed partial class PuzzleStore
         command.Parameters.AddWithValue("$width", FilterValues(filter.Widths));
         command.Parameters.AddWithValue("$height", FilterValues(filter.Heights));
         command.Parameters.AddWithValue("$unstarted", unstartedOnly);
+        command.Parameters.AddWithValue("$square", filter.SquareOnly);
+        command.Parameters.AddWithValue("$source", FilterValues(filter.Sources));
         command.Parameters.AddWithValue("$difficulty", FilterValues(filter.Difficulties));
         command.Parameters.AddWithValue("$solvability", FilterValues(filter.Solvabilities));
         command.Parameters.AddWithValue("$limit", limit);
@@ -86,14 +90,15 @@ public sealed partial class PuzzleStore
         var summaries = new List<GamePuzzleSummary>();
         while (reader.Read())
         {
-            var metadata = LocalHashiPuzzleProvider.ToMetadata(ReadHashiMetadata(reader.GetString(3)));
+            var stored = ReadHashiMetadata(reader.GetString(3));
             summaries.Add(new GamePuzzleSummary(PuzzleId.FromHashi(reader.GetString(0)).Value, "hashi",
-                reader.GetInt32(1), reader.GetInt32(2), GamePuzzleSummary.PlayStatus(reader.IsDBNull(4) ? null : reader.GetBoolean(4)), metadata));
+                reader.GetInt32(1), reader.GetInt32(2), GamePuzzleSummary.PlayStatus(reader.IsDBNull(4) ? null : reader.GetBoolean(4)),
+                LocalHashiPuzzleProvider.ToMetadata(stored), stored.Attribution?.Title, stored.Attribution?.Author));
         }
         return summaries;
     }
 
-    private static object FilterValues(int[]? values) => values is null ? DBNull.Value : JsonSerializer.Serialize(values, Json);
+    private static object FilterValues<T>(T[]? values) => values is null ? DBNull.Value : JsonSerializer.Serialize(values, Json);
 
     internal IReadOnlyDictionary<string, object> ListHashiMetadata(string[] hashes)
     {

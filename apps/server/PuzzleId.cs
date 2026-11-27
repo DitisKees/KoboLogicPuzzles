@@ -3,13 +3,15 @@ using System.Globalization;
 
 namespace KoboLogicPuzzles.Server;
 
-public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink }
+public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe }
 
 public sealed record PuzzleId
 {
+    private const string NonogramCollectionPrefix = "nonogram-collection-";
     private const string WebPbnPrefix = "nonogram-webpbn-";
     private const string HashiPrefix = "hashi-local-";
     private const string FillAPixPrefix = "fill-a-pix-";
+    private const string NurikabePrefix = "nurikabe-";
     private const string SlitherlinkPrefix = "slitherlink-";
 
     private PuzzleId(PuzzleGame game, string value, int? webPbnId, string? contentHash,
@@ -36,6 +38,13 @@ public sealed record PuzzleId
         return new PuzzleId(PuzzleGame.Nonogram, WebPbnPrefix + id.ToString(CultureInfo.InvariantCulture), id, null);
     }
 
+    public static PuzzleId FromNonogramCollection(string contentHash)
+    {
+        if (!IsContentHash(contentHash))
+            throw new ArgumentException("A nonogram content hash must have 64 lowercase hexadecimal characters.", nameof(contentHash));
+        return new PuzzleId(PuzzleGame.Nonogram, NonogramCollectionPrefix + contentHash, null, contentHash);
+    }
+
     public static PuzzleId FromHashi(string contentHash)
     {
         if (!IsContentHash(contentHash))
@@ -48,6 +57,13 @@ public sealed record PuzzleId
         if (!IsContentHash(contentHash))
             throw new ArgumentException("A Slitherlink content hash must have 64 lowercase hexadecimal characters.", nameof(contentHash));
         return new PuzzleId(PuzzleGame.Slitherlink, SlitherlinkPrefix + contentHash, null, contentHash);
+    }
+
+    public static PuzzleId FromNurikabe(string contentHash)
+    {
+        if (!IsContentHash(contentHash))
+            throw new ArgumentException("A Nurikabe content hash must have 64 lowercase hexadecimal characters.", nameof(contentHash));
+        return new PuzzleId(PuzzleGame.Nurikabe, NurikabePrefix + contentHash, null, contentHash);
     }
 
     internal static PuzzleId FromFillAPix(FillAPixSource source, int number)
@@ -73,6 +89,12 @@ public sealed record PuzzleId
                 }
             }
         }
+        else if (value?.StartsWith(NonogramCollectionPrefix, StringComparison.Ordinal) is true &&
+                 IsContentHash(value[NonogramCollectionPrefix.Length..]))
+        {
+            id = FromNonogramCollection(value[NonogramCollectionPrefix.Length..]);
+            return true;
+        }
         else if (value?.Length == HashiPrefix.Length + 64 && value.StartsWith(HashiPrefix, StringComparison.Ordinal))
         {
             var suffix = value[HashiPrefix.Length..];
@@ -86,6 +108,12 @@ public sealed record PuzzleId
                  IsContentHash(value[SlitherlinkPrefix.Length..]))
         {
             id = FromSlitherlink(value[SlitherlinkPrefix.Length..]);
+            return true;
+        }
+        else if (value?.StartsWith(NurikabePrefix, StringComparison.Ordinal) is true &&
+                 IsContentHash(value[NurikabePrefix.Length..]))
+        {
+            id = FromNurikabe(value[NurikabePrefix.Length..]);
             return true;
         }
         else if (value?.StartsWith(FillAPixPrefix, StringComparison.Ordinal) is true)
