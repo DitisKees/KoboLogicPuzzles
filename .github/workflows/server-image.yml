@@ -73,12 +73,22 @@ jobs:
               dotnet KoboLogicPuzzles.Server.dll placement-generate --game battleships --size 30 --seed 2 --require-difficulty true
               dotnet KoboLogicPuzzles.Server.dll refresh-extra-collections --source world-at-play
               dotnet KoboLogicPuzzles.Server.dll refresh-extra-collections --source sen-ltd
+              cat << "PACK" > /tmp/link-a-pix-smoke.json
+          [{
+            "width": 3, "height": 2,
+            "clues": [{"cell":0,"length":4},{"cell":1,"length":4},{"cell":5,"length":1}],
+            "paths": [[0,3,4,1]], "picture": "##.###",
+            "attribution": {"source":"local","sourceId":"smoke","sourceUrl":"https://example.test/link-a-pix",
+              "author":"Fixture","title":"Fixture","license":"CC0"}
+          }]
+          PACK
+              dotnet KoboLogicPuzzles.Server.dll link-a-pix-import --file /tmp/link-a-pix-smoke.json
               exec dotnet KoboLogicPuzzles.Server.dll
             ')"
           trap 'status=$?; if ((status)); then docker logs "$container"; fi; docker rm -f "$container" >/dev/null' EXIT
           base="http://$(docker port "$container" 8080/tcp)"
           curl -fsS --retry 15 --retry-delay 1 --retry-all-errors --max-time 5 "$base/api/v2/capabilities" \
-            | jq -e '.apiVersion == 2 and (.games | index("hashi") != null and index("nurikabe") != null and index("tents") != null and index("battleships") != null)'
+            | jq -e '.apiVersion == 2 and (.games | index("hashi") != null and index("nurikabe") != null and index("tents") != null and index("battleships") != null and index("link-a-pix") != null)'
           id="$(curl -fsS "$base/api/v2/puzzles?game=hashi" | jq -er '.puzzles[] | select(.width == 20 and .height == 20) | .id')"
           jq -n --arg id "$id" '{schemaVersion:1,boards:[{puzzleId:$id,completed:false,marks:[{edge:0,count:1,noBridge:false}]}]}' \
             | curl -fsS -H 'Content-Type: application/json' --data-binary @- "$base/api/v2/progress" \
@@ -94,6 +104,8 @@ jobs:
               | jq -e --arg game "$game" --argjson area "$((size * size))" \
                   '.remaining == 0 and (.puzzles[0] | .game == $game and .metadata.unique and (.solution | length == $area))'
           done
+          curl -fsS -H 'Content-Type: application/json' --data '{"game":"link-a-pix","targetCount":1,"source":"local"}' "$base/api/v2/offline-queue" \
+            | jq -e '.remaining == 0 and (.puzzles[0] | .game == "link-a-pix" and .metadata.unique and (.clues | length == 3))'
           curl -fsS "$base/api/v2/puzzles?game=hashi&source=sen-ltd" \
             | jq -e '(.puzzles | length) == 6 and .puzzles[0].metadata.sourceKind == "generated"'
           curl -fsS "$base/api/v2/puzzles?game=nonogram&source=world-at-play" \

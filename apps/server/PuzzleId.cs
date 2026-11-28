@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.LinkAPix;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
@@ -5,11 +6,12 @@ using KoboLogicPuzzles.Server.Placement;
 
 namespace KoboLogicPuzzles.Server;
 
-public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe, Galaxies, Tents, Battleships }
+public enum PuzzleGame { Nonogram, Hashi, FillAPix, Slitherlink, Nurikabe, Galaxies, Tents, Battleships, LinkAPix }
 
 public sealed record PuzzleId
 {
     private const string NonogramCollectionPrefix = "nonogram-collection-";
+    private const string LinkPrefix = LinkSources.Game + "-";
     private const string WebPbnPrefix = "nonogram-webpbn-";
     private const string HashiPrefix = "hashi-local-";
     private const string FillAPixPrefix = "fill-a-pix-";
@@ -76,6 +78,13 @@ public sealed record PuzzleId
         return new PuzzleId(PuzzleGame.Galaxies, GalaxiesPrefix + contentHash, null, contentHash);
     }
 
+    internal static PuzzleId FromLinkAPix(string hash)
+    {
+        if (!IsContentHash(hash))
+            throw new ArgumentException("Invalid Link-a-Pix content hash.", nameof(hash));
+        return new(PuzzleGame.LinkAPix, LinkPrefix + hash, null, hash);
+    }
+
     internal static PuzzleId FromPlacement(PuzzleGame game, string contentHash)
     {
         if (!PlacementBoard.Games.Contains(game) || !IsContentHash(contentHash))
@@ -137,6 +146,12 @@ public sealed record PuzzleId
                  IsContentHash(value[GalaxiesPrefix.Length..]))
         {
             id = FromGalaxies(value[GalaxiesPrefix.Length..]);
+            return true;
+        }
+        else if (value?.Length == LinkPrefix.Length + 64 && value.StartsWith(LinkPrefix, StringComparison.Ordinal) &&
+            IsContentHash(value[LinkPrefix.Length..]))
+        {
+            id = FromLinkAPix(value[LinkPrefix.Length..]);
             return true;
         }
         else if (value is not null && TryParsePlacement(value, out id))

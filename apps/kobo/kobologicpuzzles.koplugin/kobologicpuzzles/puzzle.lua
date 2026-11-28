@@ -2,21 +2,22 @@ local Board = require("kobologicpuzzles/board")
 local FillAPix = require("kobologicpuzzles/fillapixboard")
 local Galaxies = require("kobologicpuzzles/galaxiesboard")
 local Hashi = require("kobologicpuzzles/hashiboard")
+local Link = require("kobologicpuzzles/linkapixboard")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
 local Placement = require("kobologicpuzzles/placementboard")
 local Slitherlink = require("kobologicpuzzles/slitherlinkboard")
 
 local Puzzle = {}
-Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink", "nurikabe", "galaxies", "tents", "battleships" }
-Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink", nurikabe = "Nurikabe", galaxies = "Galaxies", tents = "Tents and Trees", battleships = "Battleships" }
+Puzzle.games = { "nonogram", "hashi", "fill-a-pix", "slitherlink", "nurikabe", "galaxies", "tents", "battleships", "link-a-pix" }
+Puzzle.gameNames = { nonogram = "Nonogram", hashi = "Hashi", ["fill-a-pix"] = "Fill-a-Pix", slitherlink = "Slitherlink", nurikabe = "Nurikabe", galaxies = "Galaxies", tents = "Tents and Trees", battleships = "Battleships", ["link-a-pix"] = "Link-a-Pix" }
 Puzzle.families = {
     { title = "Cell shading", games = { "nonogram", "fill-a-pix", "nurikabe" } },
-    { title = "Line drawing", games = { "hashi", "slitherlink" } },
+    { title = "Line drawing", games = { "hashi", "slitherlink", "link-a-pix" } },
     { title = "Region partitioning", games = { "galaxies" } },
     { title = "Object placement", games = { "tents", "battleships" } },
 }
 Puzzle.fillAPixSources = { janko = "Janko", grandgames = "GrandGames", fillapixnet = "Fill-a-Pix.net" }
-local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink, nurikabe = Nurikabe, galaxies = Galaxies, tents = Placement, battleships = Placement }
+local rules = { nonogram = Board, hashi = Hashi, ["fill-a-pix"] = FillAPix, slitherlink = Slitherlink, nurikabe = Nurikabe, galaxies = Galaxies, tents = Placement, battleships = Placement, ["link-a-pix"] = Link }
 Puzzle.difficulties = { "easy", "medium", "hard", "expert" }
 Puzzle.difficultyNames = { easy = "Easy", medium = "Medium", hard = "Hard", expert = "Expert" }
 Puzzle.hashiSolvabilities = { "basic_logic", "advanced_logic", "bounded_lookahead", "requires_search", "unknown" }
@@ -38,6 +39,8 @@ function Puzzle.localId(value)
     hash = value:match("^nurikabe%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
     hash = value:match("^galaxies%-([0-9a-f]+)$")
+    if hash and #hash == 64 then return value end
+    hash = value:match("^link%-a%-pix%-([0-9a-f]+)$")
     if hash and #hash == 64 then return value end
     local placement, suffix = value:match("^([a-z]+)%-([0-9a-f]+)$")
     if Placement == rules[placement] and #suffix == 64 then return value end
@@ -69,6 +72,7 @@ function Puzzle.game(id)
     if type(id) == "string" and id:sub(1, 9) == "galaxies-" then return "galaxies" end
     if type(id) == "string" and id:sub(1, 6) == "tents-" then return "tents" end
     if type(id) == "string" and id:sub(1, 12) == "battleships-" then return "battleships" end
+    if type(id) == "string" and id:sub(1, 11) == "link-a-pix-" then return "link-a-pix" end
     return "hashi"
 end
 
@@ -140,7 +144,10 @@ Puzzle.nurikabeSolvabilities = { "basic_logic", "advanced_logic", "bounded_looka
 local placementFilters = { width = nurikabeDimension, height = nurikabeDimension,
     difficulty = Puzzle.difficultyNames, solvability = Puzzle.hashiSolvabilityNames,
     source = { valid = Slitherlink.validSource } }
+local linkDimension = { min = 1, max = 200, step = 1 }
 local filterDomains = {
+    ["link-a-pix"] = { width = linkDimension, height = linkDimension, difficulty = Puzzle.difficultyNames,
+        solvability = Puzzle.hashiSolvabilityNames, source = { valid = Slitherlink.validSource } },
     tents = placementFilters,
     battleships = placementFilters,
     nonogram = {
@@ -237,12 +244,18 @@ function Puzzle.filterMatcher(game, filters)
         local metadata = type(puzzle.metadata) == "table" and puzzle.metadata or {}
         local difficulty, solvability = metadata.difficulty, metadata.solvability
         if game == "nonogram" then difficulty, solvability = tonumber(difficulty), tonumber(solvability) end
+        local sourceMatches = matches("source", metadata.source or (game == "nonogram" and "webpbn" or game == "hashi" and "bridges"))
+        if not sourceMatches and game == "link-a-pix" then
+            for _, attribution in ipairs(metadata.attributions or {}) do
+                if matches("source", attribution.source) then sourceMatches = true break end
+            end
+        end
         return matches("width", puzzle.width) and matches("height", puzzle.height)
             and matches("size", puzzle.width) and matches("size", puzzle.height)
             and matches("difficulty", difficulty) and matches("solvability", solvability)
             and matches("tiling", metadata.tiling)
             and (game ~= "hashi" or not filters.size or puzzle.width == puzzle.height)
-            and matches("source", metadata.source or (game == "nonogram" and "webpbn" or game == "hashi" and "bridges"))
+            and sourceMatches
     end
 end
 

@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.LinkAPix;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using KoboLogicPuzzles.Server.Hashi;
@@ -36,6 +37,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
         var slitherlink = new List<CellProgressUpdate>();
         var nurikabe = new List<CellProgressUpdate>();
         var galaxies = new List<CellProgressUpdate>();
+        var links = new List<CellProgressUpdate>();
         var placements = new List<CellProgressUpdate>();
         var seen = new HashSet<PuzzleId>();
         foreach (var board in boards)
@@ -88,6 +90,15 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                     throw new ArgumentException($"Puzzle {id} has invalid edge marks or an invalid galaxy partition.");
                 galaxies.Add(new(id, marks, board.Completed));
             }
+            else if (id.Game == PuzzleGame.LinkAPix)
+            {
+                if (board.Marks.ValueKind != JsonValueKind.String || store.FindLinkAPix(id.Value) is not { } puzzle)
+                    throw new ArgumentException($"Puzzle {id} is unavailable or has invalid path marks.");
+                var marks = board.Marks.GetString()!;
+                if (!new LinkAPixBoard(puzzle.Width, puzzle.Height, puzzle.Clues).TryReadMarks(marks, board.Completed, out _))
+                    throw new ArgumentException($"Puzzle {id} has invalid or incomplete paths.");
+                links.Add(new(id, marks, board.Completed));
+            }
             else if (PlacementBoard.Games.Contains(id.Game))
             {
                 if (board.Marks.ValueKind != JsonValueKind.String ||
@@ -138,7 +149,7 @@ public sealed class GameProgressBackup(PuzzleStore store, PuzzleLibrary library,
                 throw new ArgumentException($"The filled cells for puzzle {board.Id} do not satisfy its clues.");
         }
         var backedUpAt = time.GetUtcNow();
-        store.SaveMixedProgress(nonograms, collectionNonograms, hashes, fillAPix, slitherlink, nurikabe, galaxies, placements, backedUpAt, cancellationToken);
+        store.SaveMixedProgress(nonograms, collectionNonograms, hashes, fillAPix, slitherlink, nurikabe, galaxies, placements, links, backedUpAt, cancellationToken);
         return new ProgressReceipt(boards.Length, backedUpAt);
     }
 }

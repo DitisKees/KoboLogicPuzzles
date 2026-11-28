@@ -37,7 +37,7 @@ end
 function PuzzleMenu.details(metadata, game, author)
     metadata = type(metadata) == "table" and metadata or {}
     local source = Puzzle.sourceLabel(game, metadata.source, metadata.sourceName, metadata.sourceKind)
-    if game == "hashi" or game == "nurikabe" or game == "galaxies" or Puzzle.isPlacement(game) then
+    if game == "hashi" or game == "nurikabe" or game == "galaxies" or game == "link-a-pix" or Puzzle.isPlacement(game) then
         local details = {}
         if source then details[#details + 1] = source end
         if type(author) == "string" and author ~= "" and author ~= metadata.sourceName then

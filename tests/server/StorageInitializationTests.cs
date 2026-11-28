@@ -13,7 +13,7 @@ public sealed class StorageInitializationTests
 
         await Task.WhenAll(Task.Run(database.Store.Initialize), Task.Run(new PuzzleStore(database.Path).Initialize));
 
-        Assert.Equal(8L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(9L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Empty(database.Store.RestoreProgress());
         Assert.Empty(database.Store.RestoreHashiProgress());
     }
@@ -40,7 +40,7 @@ public sealed class StorageInitializationTests
 
         database.Store.Initialize();
 
-        Assert.Equal(8L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(9L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(12, database.Store.FindPuzzle(12)!.Id);
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.FillAPix));
     }
@@ -63,7 +63,7 @@ public sealed class StorageInitializationTests
             """ + RemoveRecentSchemas + "PRAGMA user_version = 2;");
         database.Store.Initialize();
 
-        Assert.Equal(8L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(9L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(7L, Execute(database.Path, "SELECT revision FROM fill_a_pix_refresh WHERE source = 'grandgames'"));
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.Slitherlink));
     }
@@ -87,7 +87,7 @@ public sealed class StorageInitializationTests
 
         database.Store.Initialize();
 
-        Assert.Equal(8L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(9L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal("####", database.Store.FindSlitherlink(puzzle.Id)!.Solution);
         Assert.Null(database.Store.GetSlitherlinkCollectionRefreshState(SlitherlinkCollectionRefresh.PuzzleKit));
     }
@@ -102,7 +102,7 @@ public sealed class StorageInitializationTests
 
         database.Store.Initialize();
 
-        Assert.Equal(8L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(9L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal(17L, Execute(database.Path, "SELECT cursor FROM extra_collection_refresh WHERE resource = 'fixture'"));
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.Galaxies));
     }
@@ -121,12 +121,15 @@ public sealed class StorageInitializationTests
             DROP TABLE placement_progress;
             DROP TABLE placement_puzzles;
             DROP TABLE placement_collection_refresh;
+            DROP TABLE link_a_pix_progress;
+            DROP TABLE link_a_pix_puzzles;
+            DROP TABLE link_a_pix_refresh;
             PRAGMA user_version = 7;
             """);
 
         database.Store.Initialize();
 
-        Assert.Equal(8L, Execute(database.Path, "PRAGMA user_version"));
+        Assert.Equal(9L, Execute(database.Path, "PRAGMA user_version"));
         Assert.Equal("x", database.Store.FindGalaxies(id)!.Solution);
         Assert.Empty(database.Store.RestoreGameProgress(PuzzleGame.Tents));
     }
@@ -163,6 +166,9 @@ public sealed class StorageInitializationTests
         DROP TABLE placement_progress;
         DROP TABLE placement_puzzles;
         DROP TABLE placement_collection_refresh;
+        DROP TABLE link_a_pix_progress;
+        DROP TABLE link_a_pix_puzzles;
+        DROP TABLE link_a_pix_refresh;
         """;
 
     private static object? Execute(string path, string sql)

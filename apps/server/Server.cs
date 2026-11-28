@@ -1,5 +1,7 @@
+using KoboLogicPuzzles.Server.LinkAPix;
 using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Galaxies;
+using KoboLogicPuzzles.Server.GrandGames;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Nurikabe;
 using KoboLogicPuzzles.Server.Slitherlink;
@@ -68,13 +70,35 @@ public static class Server
             http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
             http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
         }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
-        services.AddHostedService<GalaxiesCollections>();
+        services.AddSingleton<GalaxiesCollections>();
+        services.AddHostedService(provider => provider.GetRequiredService<GalaxiesCollections>());
         services.AddHttpClient("galaxies", http =>
         {
             http.Timeout = TimeSpan.FromSeconds(20);
             http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
             http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
         }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
+        services.AddSingleton<IPuzzleProvider, LinkAPixPuzzleProvider>();
+        services.AddSingleton<LinkAPixCollections>();
+        services.AddHostedService<LinkAPixRefreshWorker>();
+        services.AddHttpClient("link-a-pix", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
+        services.AddSingleton<GrandGamesCollections>();
+        services.AddHostedService<GrandGamesWorker>();
+        services.AddHttpClient("grandgames", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(20);
+            http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            UseCookies = false,
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+        });
         services.AddSingleton<PuzzleProviders>();
         services.AddSingleton<GameCatalog>();
         services.AddSingleton<GameProgressBackup>();

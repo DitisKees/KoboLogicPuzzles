@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.LinkAPix;
 using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Nurikabe;
@@ -11,9 +12,10 @@ internal static class DashboardApi
     {
         app.MapGet("/dashboard", (HttpRequest request) => Results.Redirect($"{request.PathBase}/"));
         app.MapGet("/api/v2/dashboard", (HttpContext context, PuzzleStore store, HashiInventory hashi,
-            SlitherlinkInventory slitherlink, NurikabeInventory nurikabe, PlacementInventory placement, TimeProvider time) =>
+            SlitherlinkInventory slitherlink, NurikabeInventory nurikabe, PlacementInventory placement, LinkAPixCollections links, TimeProvider time) =>
         {
             context.Response.Headers.CacheControl = "no-store";
+            var linksCount = store.CountLinkAPix();
             return new
             {
                 Catalog = store.ReadDashboardCatalog(),
@@ -22,6 +24,7 @@ internal static class DashboardApi
                 Nurikabe = nurikabe.GetStatus(),
                 Tents = placement.GetStatus(PuzzleGame.Tents),
                 Battleships = placement.GetStatus(PuzzleGame.Battleships),
+                LinkAPix = new { linksCount.Total, linksCount.Unstarted, Sources = links.Status() },
                 SampledAt = time.GetUtcNow(),
             };
         });

@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.LinkAPix;
 using System.Globalization;
 using System.Text.Json;
 using KoboLogicPuzzles.Server.Hashi;
@@ -33,14 +34,21 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
     internal string[]? NurikabeSolvabilities { get; init; }
     internal string[]? PlacementDifficulties { get; init; }
     internal string[]? PlacementSolvabilities { get; init; }
+    internal string[]? LinkDifficulties { get; init; }
+    internal string[]? LinkSolvabilities { get; init; }
     internal string[]? Tilings { get; init; }
     internal string[]? Sources { get; init; }
     internal bool SquareOnly { get; init; }
 
     public static bool TryParseGame(string? value, out PuzzleGame game)
     {
+        if (value == LinkSources.Game)
+        {
+            game = PuzzleGame.LinkAPix;
+            return true;
+        }
         game = PuzzleGame.FillAPix;
-        return value == FillAPixSources.Game || TryParseName(value, out game) && game != PuzzleGame.FillAPix;
+        return value == FillAPixSources.Game || TryParseName(value, out game) && game is not (PuzzleGame.FillAPix or PuzzleGame.LinkAPix);
     }
 
     public static PuzzleFilter? Parse(string? game, int? width, int? height, string? difficulty, string? solvability,
@@ -66,6 +74,7 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
         {
             PuzzleGame.Nurikabe => Dimensions[..50],
             PuzzleGame.Tents or PuzzleGame.Battleships => Dimensions[..PlacementBoard.MaxDimension],
+            PuzzleGame.LinkAPix => Enumerable.Range(1, LinkAPixBoard.MaxDimension).ToArray(),
             PuzzleGame.Galaxies => GalaxiesDimensions,
             _ => Dimensions,
         };
@@ -75,7 +84,7 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
 
         if (sizeFilter is not null)
         {
-            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe or PuzzleGame.Galaxies or PuzzleGame.Tents or PuzzleGame.Battleships) || widths is not null || heights is not null ||
+            if (kind is not (PuzzleGame.Hashi or PuzzleGame.Slitherlink or PuzzleGame.Nurikabe or PuzzleGame.Galaxies or PuzzleGame.Tents or PuzzleGame.Battleships or PuzzleGame.LinkAPix) || widths is not null || heights is not null ||
                 !TrySelect(null, sizeFilter, kind == PuzzleGame.Hashi ? HashiSizes : dimensions, Integer, true, out widths))
                 return null;
             heights = widths;
@@ -110,6 +119,15 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             { GalaxiesDifficulties = levels, GalaxiesSolvabilities = logic, Sources = sources, SquareOnly = sizeFilter is not null };
         }
 
+        if (kind == PuzzleGame.LinkAPix)
+        {
+            if (!TryChoices(difficulty, difficultyFilter, PlacementBoard.Difficulties.Contains, out var levels) ||
+                !TryChoices(solvability, solvabilityFilter, PlacementBoard.Solvabilities.Contains, out var logic))
+                return null;
+            return new PuzzleFilter(kind, widths, heights, null, null)
+            { LinkDifficulties = levels, LinkSolvabilities = logic, Sources = sources, SquareOnly = sizeFilter is not null };
+        }
+
         if (PlacementBoard.Games.Contains(kind))
         {
             if (!TryChoices(difficulty, difficultyFilter, PlacementBoard.Difficulties.Contains, out var levels) ||
@@ -137,8 +155,9 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
 
     private static bool ValidSource(PuzzleGame game, string value) => game switch
     {
-        PuzzleGame.Nonogram => value is "webpbn" or "world-at-play" or "sen-ltd" or "janko",
-        PuzzleGame.Hashi => value is "bridges" or "sen-ltd" or "janko",
+        PuzzleGame.Nonogram => value is "webpbn" or "world-at-play" or "sen-ltd" or "janko" or "grandgames",
+        PuzzleGame.LinkAPix => LinkSources.Valid(value),
+        PuzzleGame.Hashi => value is "bridges" or "sen-ltd" or "janko" or "grandgames",
         _ => SlitherlinkOptions.ValidSource(value),
     };
 
@@ -285,6 +304,10 @@ public sealed record PuzzleFilter(PuzzleGame Game, int[]? Widths, int[]? Heights
             (NurikabeDifficulties is null || NurikabeDifficulties.Contains(nurikabe.Metadata.Difficulty)) &&
             (NurikabeSolvabilities is null || NurikabeSolvabilities.Contains(nurikabe.Metadata.Solvability)) &&
             (Sources is null || Sources.Contains(nurikabe.Metadata.Source)),
+        LinkAPixDefinition link => Matches(link.Width, link.Height, null, null) &&
+            (LinkDifficulties is null || LinkDifficulties.Contains(link.Metadata.Difficulty)) &&
+            (LinkSolvabilities is null || LinkSolvabilities.Contains(link.Metadata.Solvability)) &&
+            link.Metadata.Attributions.Any(attribution => IncludesSource(attribution.Source)),
         PlacementDefinition placement => Matches(placement.Width, placement.Height, null, null) &&
             (PlacementDifficulties is null || PlacementDifficulties.Contains(placement.Metadata.Difficulty)) &&
             (PlacementSolvabilities is null || PlacementSolvabilities.Contains(placement.Metadata.Solvability)) &&

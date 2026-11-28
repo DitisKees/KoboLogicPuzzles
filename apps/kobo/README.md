@@ -7,7 +7,7 @@
 3. Open **Tools → Kobo Logic Puzzles → Settings → Home server URL**. Enter the server’s HTTP address on your home network, for example `http://192.168.1.10:8080`.
 4. Choose **Sync now** on the home screen. On a fresh installation, the app restores any backed-up boards and then downloads puzzles. To download a specific puzzle, open its game and choose **Browse server catalog**.
 
-The home screen groups Nonogram, Fill-a-Pix, and Nurikabe under **Cell shading** and Hashi and Slitherlink under **Line drawing**. Galaxies is under **Region partitioning**. Tents and Trees and Battleships are under **Object placement**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
+The home screen groups Nonogram, Fill-a-Pix, and Nurikabe under **Cell shading** and Hashi, Slitherlink, and Link-a-Pix under **Line drawing**. Galaxies is under **Region partitioning**. Tents and Trees and Battleships are under **Object placement**. Tap a game to open its offline library. **Continue** opens an unfinished puzzle directly when one is available. Use the back arrow in the catalog to return to the game library, and the back arrow in the library to return home.
 
 Catalog browsing and sync require a home server with API v2. You can open any of the game libraries offline.
 
@@ -73,6 +73,12 @@ Open either game under **Object placement**. In **Cycle**, tap an editable cell 
 - In **Battleships**, place the indicated fleet as straight ships. Different ships cannot touch, including diagonally. The footer and **Fleet** show ships remaining. Mark water at both ends of a ship to count it before the puzzle is solved.
 
 Use **Pan**, zoom, or **Overview** to move across larger grids. **Check** reports rule conflicts offline. Both games save progress and view automatically and support undo, redo, checkpoints, restart, and server recovery.
+
+## Play Link-a-Pix
+
+Open **Line drawing → Link-a-Pix**. Start at a number in **Draw** mode and drag through cells to a matching number. Count both endpoints in the length. Tap a clue or open path end, then tap along a row or column to extend precisely. Turn or backtrack by moving through the preceding cells. You can start editing from either end of a completed path. Hold a path or use **Clear** to erase it. **White** marks an optional background cell.
+
+Completed paths fill in the picture. A **1** paints itself. Use **Overview** to jump around while playing and see the finished picture after completion. **Check** reports the current rule status offline. The plugin saves the grid and view, and supports whole-gesture undo and redo, checkpoints, restart, and server sync and restore.
 
 ## Picture Galaxies
 

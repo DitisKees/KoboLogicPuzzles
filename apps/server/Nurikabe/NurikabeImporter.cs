@@ -12,7 +12,7 @@ internal sealed record NurikabeImportResult(int Stored, int Duplicates, int Reje
 
 internal sealed class NurikabeImporter(PuzzleStore store, NurikabeOptions options, ILogger<NurikabeImporter> logger)
 {
-    internal bool Store(NurikabeImportEntry entry, CancellationToken token)
+    internal bool Store(NurikabeImportEntry entry, CancellationToken token, TimeSpan? proofBudget = null)
     {
         if (entry.Source is null || !SlitherlinkOptions.ValidSource(entry.Source) || entry.Source == NurikabeGenerator.Source ||
             string.IsNullOrWhiteSpace(entry.SourceName) || string.IsNullOrWhiteSpace(entry.SourceId) ||
@@ -30,7 +30,7 @@ internal sealed class NurikabeImporter(PuzzleStore store, NurikabeOptions option
 
         if (entry.Solution is { } supplied && !board.IsSolved(supplied))
             throw new InvalidDataException("Supplied solution violates the Nurikabe rules.");
-        var proof = new NurikabeSolver(board, TimeSpan.FromSeconds(options.ProofTimeoutSeconds), token).CountSolutions();
+        var proof = new NurikabeSolver(board, proofBudget ?? TimeSpan.FromSeconds(options.ProofTimeoutSeconds), token).CountSolutions();
         if (proof.Count != 1 || entry.Solution is { } solution && proof.Solution != solution)
             throw new InvalidDataException(proof.Count > 1 ? "Clues have multiple solutions." : "Clues have no verified solution.");
 

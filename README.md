@@ -1,6 +1,6 @@
 # Kobo Logic Puzzles
 
-Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, Slitherlink, Nurikabe, Picture Galaxies, Tents and Trees, and Battleships offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi, Slitherlink, Nurikabe, Tents and Trees, and Battleships boards locally, and imports playable collections.
+Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, Slitherlink, Nurikabe, Picture Galaxies, Tents and Trees, Battleships, and picture Link-a-Pix offline in KOReader on the Kobo Aura H2O (N250). The home server provides the WebPBN Nonogram catalog, generates Hashi, Slitherlink, Nurikabe, Tents and Trees, and Battleships boards locally, and imports playable collections.
 
 ## Repository layout
 
@@ -14,6 +14,7 @@ Kobo Logic Puzzles plays Nonogram, Hashi, Fill-a-Pix, Slitherlink, Nurikabe, Pic
 | [`apps/server/Nurikabe/`](apps/server/Nurikabe/README.md) | Nurikabe generation, uniqueness proof, collection imports, and benchmarks. |
 | [`apps/server/Galaxies/`](apps/server/Galaxies/README.md) | Galaxies picture collections, automatic imports, and verification. |
 | [`apps/server/Placement/`](apps/server/Placement/README.md) | Tents and Trees and Battleships generation, Janko collections, and benchmarks. |
+| [`apps/server/LinkAPix/`](apps/server/LinkAPix/README.md) | Picture Link-a-Pix collection imports and verification. |
 | [`contracts/`](contracts/) | Shared puzzle and progress formats for the server and its clients. |
 | [`KoboLogicPuzzles.slnx`](KoboLogicPuzzles.slnx) | Solution for the .NET projects. |
 | [`tests/server/`](tests/server/) | Server unit tests and HTTP integration tests. |
@@ -60,6 +61,12 @@ docker exec kobo-logic-puzzles dotnet KoboLogicPuzzles.Server.dll refresh
 The local equivalent is `dotnet run --project apps/server -- refresh`. Set `CatalogRefresh__Enabled=false` to run in manual-only mode.
 
 The API is intended for a trusted home LAN. See the [API and client sync formats](contracts/README.md).
+
+## GrandGames collections
+
+Set `GrandGamesCollections__Enabled: "true"` in the Compose service environment for personal noncommercial offline play. This enables the GrandGames catalogs for Nonogram, Hashi (Bridges), Nurikabe, classic Galaxies, Tents and Trees, Battleships, and Link-a-Pix. Fill-a-Pix (Mosaic) and Slitherlink (Wall of China) already include GrandGames through their catalog refreshes. Those refreshes are enabled by default and can be controlled with `FillAPix__RefreshEnabled` and `SlitherlinkCollections__RefreshEnabled`. [GrandGames catalog](https://en.grandgames.net/brainteasers) · [Compose settings](apps/server/compose.example.yaml)
+
+The seven added feeds verify and cache boards on the server in small batches. They keep their position across restarts and pause when GrandGames asks the server to slow down. For an immediate batch, run `dotnet run --project apps/server -- grandgames-refresh --game link-a-pix`. The same command works with `nonogram`, `hashi`, `nurikabe`, `galaxies`, `tents`, or `battleships`. Omit `--game` to run a batch for each of the seven.
 
 ## Server dashboard
 
@@ -143,4 +150,9 @@ The server bundles 36 distinct Nonograms from The World at Play and Sen Ltd, and
 
 ## Tents and Trees and Battleships
 
-Open **Object placement** in the Kobo plugin. Both games use row and column totals, with fixed trees or ship clues. The server can generate unique large boards in the background and import the authorized Janko collections on noncommercial deployments. [Sizes, settings, collections, and benchmarks](apps/server/Placement/README.md)
+Open **Object placement** in the Kobo plugin. Both games use row and column totals, with fixed trees or ship clues. The server can generate unique large boards in the background and import Janko and GrandGames collections for personal noncommercial use. [Sizes, settings, collections, and benchmarks](apps/server/Placement/README.md)
+
+
+## Picture Link-a-Pix
+
+Open **Line drawing → Link-a-Pix** to connect equal numbers and reveal a picture. A personal noncommercial server can opt in to GrandGames, PlaySudoku, GrayCell, and licensed Janko imports. Authorized packs can add other collections. [Source settings, formats, and verification](apps/server/LinkAPix/README.md)

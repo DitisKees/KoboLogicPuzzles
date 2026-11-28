@@ -6,7 +6,7 @@ namespace KoboLogicPuzzles.Server;
 
 public sealed partial class PuzzleStore(string databasePath)
 {
-    private const int SchemaVersion = 8;
+    private const int SchemaVersion = 9;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly string connectionString = new SqliteConnectionStringBuilder
     {
@@ -272,35 +272,69 @@ public sealed partial class PuzzleStore(string databasePath)
             command.ExecuteNonQuery();
         }
 
+        if (version < 8)
+        {
+            command.CommandText = """
+                CREATE TABLE placement_puzzles (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    game TEXT NOT NULL CHECK (game IN ('tents', 'battleships')),
+                    content_hash TEXT NOT NULL UNIQUE,
+                    width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 50),
+                    height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 50),
+                    source TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    difficulty TEXT NOT NULL,
+                    solvability TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    author TEXT,
+                    metadata TEXT NOT NULL,
+                    definition TEXT NOT NULL
+                );
+                CREATE INDEX placement_catalog ON placement_puzzles (game, id DESC);
+                CREATE INDEX placement_stock ON placement_puzzles (game, source, width, height, difficulty);
+                CREATE TABLE placement_progress (
+                    puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES placement_puzzles(id),
+                    marks TEXT NOT NULL,
+                    completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+                    backed_up_at TEXT NOT NULL
+                );
+                CREATE TABLE placement_collection_refresh (
+                    game TEXT NOT NULL PRIMARY KEY,
+                    cursor TEXT NOT NULL,
+                    checked_at INTEGER NOT NULL
+                );
+                """;
+            command.ExecuteNonQuery();
+        }
+
         command.CommandText = $"""
-            CREATE TABLE placement_puzzles (
+            CREATE TABLE link_a_pix_puzzles (
                 id TEXT NOT NULL PRIMARY KEY,
-                game TEXT NOT NULL CHECK (game IN ('tents', 'battleships')),
-                content_hash TEXT NOT NULL UNIQUE,
-                width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 50),
-                height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 50),
-                source TEXT NOT NULL,
-                source_name TEXT NOT NULL,
-                source_kind TEXT NOT NULL,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                catalog_rank INTEGER GENERATED ALWAYS AS (CASE
+                    WHEN width >= 40 AND height >= 40 THEN 2
+                    WHEN width >= 30 AND height >= 30 THEN 1
+                    ELSE 0 END) VIRTUAL,
                 difficulty TEXT NOT NULL,
                 solvability TEXT NOT NULL,
-                title TEXT NOT NULL,
-                author TEXT,
                 metadata TEXT NOT NULL,
                 definition TEXT NOT NULL
             );
-            CREATE INDEX placement_catalog ON placement_puzzles (game, id DESC);
-            CREATE INDEX placement_stock ON placement_puzzles (game, source, width, height, difficulty);
-            CREATE TABLE placement_progress (
-                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES placement_puzzles(id),
+            CREATE INDEX link_a_pix_catalog ON link_a_pix_puzzles (catalog_rank DESC, id DESC);
+            CREATE TABLE link_a_pix_progress (
+                puzzle_id TEXT NOT NULL PRIMARY KEY REFERENCES link_a_pix_puzzles(id),
                 marks TEXT NOT NULL,
                 completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
                 backed_up_at TEXT NOT NULL
             );
-            CREATE TABLE placement_collection_refresh (
-                game TEXT NOT NULL PRIMARY KEY,
+            CREATE TABLE link_a_pix_refresh (
+                source TEXT NOT NULL PRIMARY KEY,
                 cursor TEXT NOT NULL,
-                checked_at INTEGER NOT NULL
+                checked_at INTEGER NOT NULL,
+                rejected INTEGER NOT NULL,
+                inconclusive INTEGER NOT NULL
             );
             PRAGMA user_version = {SchemaVersion};
             """;

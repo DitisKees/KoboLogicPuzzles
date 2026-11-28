@@ -9,6 +9,7 @@ const games = [
     { id: "slitherlink", name: "Slitherlink", generator: "Loopy" },
     { id: "nurikabe", name: "Nurikabe", generator: "KoboLogicPuzzles" },
     { id: "galaxies", name: "Galaxies" },
+    { id: "link-a-pix", name: "Link-a-Pix" },
     { id: "tents", name: "Tents and Trees", generator: "Simon Tatham's Tents" },
     { id: "battleships", name: "Battleships", generator: "KoboLogicPuzzles" },
 ];
@@ -98,8 +99,11 @@ function fillCount(rows) {
 }
 
 function renderSummary(data) {
-    byId("catalog-total").textContent = number.format(sum(data.catalog, "total"));
-    byId("catalog-detail").textContent = `${number.format(sum(data.catalog, "unstarted"))} unstarted across all games`;
+    const otherGames = data.catalog.filter(row => row.game !== "link-a-pix");
+    const total = sum(otherGames, "total") + data.linkAPix.total;
+    const unstarted = sum(otherGames, "unstarted") + data.linkAPix.unstarted;
+    byId("catalog-total").textContent = number.format(total);
+    byId("catalog-detail").textContent = `${number.format(unstarted)} unstarted across all games`;
 
     const stock = generators.flatMap(game => stockEntries(game.id, data));
     const totalTarget = sum(stock, "target");
@@ -317,13 +321,15 @@ function updateElapsedTime() {
     }
 }
 
-function renderCatalog(catalog) {
+function renderCatalog(catalog, linkAPix) {
     const cards = games.map(({ id, name }) => {
         const sources = catalog.filter(row => row.game === id && row.total > 0);
         const card = element("article", "catalog-card");
+        const total = id === "link-a-pix" ? linkAPix.total : sum(sources, "total");
+        const unstarted = id === "link-a-pix" ? linkAPix.unstarted : sum(sources, "unstarted");
         card.append(element("h3", "", name),
-            element("p", "catalog-card-total", number.format(sum(sources, "total"))),
-            element("p", "catalog-card-detail", `${number.format(sum(sources, "unstarted"))} unstarted`));
+            element("p", "catalog-card-total", number.format(total)),
+            element("p", "catalog-card-detail", `${number.format(unstarted)} unstarted`));
         if (sources.length > 0) {
             const breakdown = element("dl", "sources");
             for (const source of sources) {
@@ -331,6 +337,16 @@ function renderCatalog(catalog) {
                 breakdown.append(element("dt", "", name), element("dd", "", number.format(source.total)));
             }
             card.append(breakdown);
+        }
+        if (id === "link-a-pix") {
+            const labels = { janko: "Janko", playsudoku: "PlaySudoku", graycell: "GrayCell", grandgames: "GrandGames" };
+            for (const [source, status] of Object.entries(linkAPix.sources)) {
+                if (!status.enabled && !status.checkedAt && !status.cursor) continue;
+                const activity = status.cursor ? "Scan in progress" : status.checkedAt
+                    ? `Checked ${new Date(status.checkedAt).toLocaleDateString()}` : "Refresh pending";
+                const unresolved = status.inconclusive > 0 ? ` · ${number.format(status.inconclusive)} inconclusive` : "";
+                card.append(element("p", "catalog-card-detail", `${labels[source]} · ${activity}${unresolved}`));
+            }
         }
         return card;
     });
@@ -360,7 +376,7 @@ async function refresh() {
         renderSummary(data);
         renderInventory();
         renderWorkers(data);
-        renderCatalog(data.catalog);
+        renderCatalog(data.catalog, data.linkAPix);
         connection.dataset.state = "online";
         byId("connection-label").textContent = "Server connected";
         byId("updated").textContent = `Updated ${clock.format(new Date(data.sampledAt))} · Refreshes every 30 seconds`;

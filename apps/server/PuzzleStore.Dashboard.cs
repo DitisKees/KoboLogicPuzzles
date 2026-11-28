@@ -50,6 +50,12 @@ public sealed partial class PuzzleStore
             SELECT p.game, p.source, min(p.source_name), count(*), count(*) - count(s.puzzle_id), p.source_kind
                 FROM placement_puzzles p LEFT JOIN placement_progress s ON s.puzzle_id = p.id
                 GROUP BY p.game, p.source, p.source_kind
+            UNION ALL
+            SELECT 'link-a-pix', json_extract(a.value, '$.source'), min(json_extract(a.value, '$.sourceName')),
+                count(DISTINCT p.id), count(DISTINCT CASE WHEN s.puzzle_id IS NULL THEN p.id END), 'collection'
+                FROM link_a_pix_puzzles p LEFT JOIN link_a_pix_progress s ON s.puzzle_id = p.id,
+                    json_each(p.metadata, '$.attributions') AS a
+                GROUP BY json_extract(a.value, '$.source')
             ORDER BY 1, 3
             """;
         command.Parameters.AddWithValue("$loopy", LoopyGenerator.Source);

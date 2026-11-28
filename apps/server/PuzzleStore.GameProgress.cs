@@ -11,7 +11,7 @@ public sealed partial class PuzzleStore
         IReadOnlyList<HashiProgressUpdate> hashi,
         IReadOnlyList<FillAPixProgressUpdate> fillAPix, IReadOnlyList<CellProgressUpdate> slitherlink,
         IReadOnlyList<CellProgressUpdate> nurikabe, IReadOnlyList<CellProgressUpdate> galaxies,
-        IReadOnlyList<CellProgressUpdate> placement, DateTimeOffset backedUpAt, CancellationToken cancellationToken)
+        IReadOnlyList<CellProgressUpdate> placement, IReadOnlyList<CellProgressUpdate> link, DateTimeOffset backedUpAt, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var connection = Open();
@@ -32,6 +32,8 @@ public sealed partial class PuzzleStore
             WriteCellProgress(connection, transaction, "galaxies_progress", galaxies, backedUpAt);
         if (placement.Count > 0)
             WriteCellProgress(connection, transaction, "placement_progress", placement, backedUpAt);
+        if (link.Count > 0)
+            WriteCellProgress(connection, transaction, "link_a_pix_progress", link, backedUpAt);
         cancellationToken.ThrowIfCancellationRequested();
         transaction.Commit();
     }
@@ -93,6 +95,8 @@ public sealed partial class PuzzleStore
             RestoreGalaxiesProgress(connection, transaction, boards);
         if (game is null or PuzzleGame.Tents or PuzzleGame.Battleships)
             RestorePlacementProgress(connection, transaction, game, boards);
+        if (game is null or PuzzleGame.LinkAPix)
+            RestoreLinkAPixProgress(connection, transaction, boards);
         transaction.Commit();
         return boards;
     }

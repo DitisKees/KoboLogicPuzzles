@@ -5,7 +5,8 @@ using AngleSharp.Html.Parser;
 namespace KoboLogicPuzzles.Server.Placement;
 
 internal sealed record PlacementImport(PlacementBoard Board, string Author, string? Title, string SourceId,
-    string SourceUrl, string? Rating, string? Solution);
+    string SourceUrl, string? Rating, string? Solution, string Source = "janko", string SourceName = "Janko",
+    string License = "CC BY-NC-SA 3.0", string? LicenseUrl = null);
 
 internal sealed partial class PlacementCollections(PuzzleStore store, IConfiguration config, IHttpClientFactory clients,
     TimeProvider time, ILogger<PlacementCollections> logger)
@@ -76,11 +77,11 @@ internal sealed partial class PlacementCollections(PuzzleStore store, IConfigura
 
         var proof = new PlacementSolver(board, TimeSpan.FromSeconds(8), token).CountSolutions();
         if (proof.Count != 1 || entry.Solution is not null && proof.Solution != entry.Solution)
-            throw new InvalidDataException($"Janko board failed the uniqueness proof ({proof.Count} solutions found).");
+            throw new InvalidDataException($"The board failed the uniqueness proof ({proof.Count} solutions found).");
 
         token.ThrowIfCancellationRequested();
-        var metadata = new PlacementMetadata("janko", "Janko", "collection", entry.SourceId, entry.SourceUrl,
-            "CC BY-NC-SA 3.0", null, null, proof.Difficulty!, proof.Solvability!, hash, entry.Rating, LicensePage.AbsoluteUri);
+        var metadata = new PlacementMetadata(entry.Source, entry.SourceName, "collection", entry.SourceId, entry.SourceUrl,
+            entry.License, null, null, proof.Difficulty!, proof.Solvability!, hash, entry.Rating, entry.LicenseUrl);
         return store.SavePlacement(board.ToDefinition(metadata, entry.Title, entry.Author, proof.Solution!));
     }
 
@@ -144,7 +145,7 @@ internal sealed partial class PlacementCollections(PuzzleStore store, IConfigura
 
         var id = Path.GetFileName(url.AbsolutePath).Split('.')[0];
         return new(board, author, document.QuerySelector("h1")?.TextContent.Trim(), id, url.AbsoluteUri,
-            Field("difficulty"), solution);
+            Field("difficulty"), solution, LicenseUrl: LicensePage.AbsoluteUri);
 
         string? Section(string name) => Array.IndexOf(sections, name) is >= 3 and var i && i + 1 < sections.Length ? sections[i + 1] : null;
         string? ReadGrid(string name)

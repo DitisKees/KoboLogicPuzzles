@@ -3,6 +3,7 @@ local Galaxies = require("kobologicpuzzles/galaxiesboard")
 local GalaxiesRender = require("kobologicpuzzles/galaxiesrender")
 local Hashi = require("kobologicpuzzles/hashiboard")
 local HashiRender = require("kobologicpuzzles/hashirender")
+local Link = require("kobologicpuzzles/linkapixboard")
 local Nurikabe = require("kobologicpuzzles/nurikabeboard")
 local Placement = require("kobologicpuzzles/placementboard")
 local RenderImage = require("ui/renderimage")
@@ -45,6 +46,15 @@ function Thumbnail:render()
                 math.max(1, math.floor(size * puzzle.height / longest)))
         end
         return
+    end
+    if puzzle.game == "link-a-pix" then
+        local board = Link:new(puzzle, marks)
+        local visible = {}
+        for i = 1, #board.cells do
+            local style = board.clueStates[i]
+            visible[i] = style == "ink" and "#" or (style == "path" or board.clues[i]) and "x" or "."
+        end
+        marks = table.concat(visible)
     end
     if puzzle.game == "nurikabe" and not marks then marks = Nurikabe.initialMarks(puzzle) end
     if puzzle.game == "tents" or puzzle.game == "battleships" then

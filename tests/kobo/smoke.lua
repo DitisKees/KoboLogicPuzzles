@@ -199,7 +199,7 @@ local function testHashiSync()
     store = assert(Store.open(store.root))
     assert(store.records[7].marks == "#x...." and store.records[localHashi.id].marks == "x...")
     assert(store.records[fillAPix.id].completed and store.records[fillAPix.id].marks == "#xx#x#")
-    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink,nurikabe,galaxies,tents,battleships")
+    assert(#store:list() == 3 and store.settings.restoredV2Games == "nonogram,hashi,fill-a-pix,slitherlink,nurikabe,galaxies,tents,battleships,link-a-pix")
 end
 
 local function testFillAPixRulesAndSync()
@@ -2193,6 +2193,167 @@ do
         return records
     end) == 2)
     for id, record in pairs(fresh.records) do assert(record.marks == store.records[id].marks) end
+end
+
+
+do
+    local BB = require("ffi/blitbuffer")
+    local Link = require("kobologicpuzzles/linkapixboard")
+    local slug = "link-a-pix"
+    local function id(digit) return slug .. "-" .. string.rep(digit, 64) end
+    local metadata = { source = "janko", sourceName = "Janko", difficulty = "hard", solvability = "unknown", unique = true,
+        attributions = { { source = "janko" }, { source = "graycell" } } }
+    local small = { id = id("1"), game = slug, schemaVersion = 1, title = "Link-a-Pix small", author = "Fixture",
+        width = 3, height = 2, clues = { { cell = 0, length = 4 }, { cell = 1, length = 4 }, { cell = 5, length = 1 } },
+        metadata = metadata }
+    local width, height = 120, 93
+    local startCell = 36 * width + 43
+    local large = { id = id("2"), game = slug, schemaVersion = 1, title = "Link-a-Pix Mega", author = "Fixture",
+        width = width, height = height, metadata = metadata, clues = {
+            { cell = startCell, length = 4 }, { cell = startCell + 1, length = 4 }, { cell = width * height - 1, length = 1 },
+        } }
+    assert(Puzzle.fromWire(small) and Puzzle.fromWire(large))
+    assert(Link.validSolution(small, { { 0, 3, 4, 1 } }))
+    assert(not Link.validSolution(small, { { 0, 4, 3, 1 } }))
+    assert(not Link.validMarks(small, "4..1..", true))
+    assert(Link.validMarks(small, "4..1..", false))
+    local board = Link:new(small)
+    board:beginStroke(1, 1)
+    board:extendStroke(1, 2)
+    assert(board.feedback:find("exactly", 1, true) and not board:finishStroke())
+    board:beginStroke(1, 1)
+    board:extendStroke(2, 2)
+    assert(board.feedback:find("row or column", 1, true) and not board:finishStroke())
+
+    local root = home .. "/link-a-pix-ui"
+    local store = assert(Store.open(root))
+    assert(store:updateSettings({ target = 0, linkAPixTarget = 2 }))
+    assert(store:setFilters(slug, { source = "graycell", width = "3-120" }))
+    local games = { [slug] = true, advancedFilters = true }
+    local result = Sync.run(store, function(method, path, payload)
+        if path == "/restore" then return {} end
+        assert(method == "POST" and path == "/offline-queue" and payload.game == slug)
+        assert(payload.widthFilter == "3-120" and payload.source == "graycell")
+        return { puzzles = { large, small }, remaining = 0 }
+    end, games)
+    assert(result.added == 2)
+    local plugin = dofile(pluginRoot .. "/main.lua"):new{
+        ui = { menu = { registerToMainMenu = function() end } }, store = store,
+    }
+    plugin.online = function() error("Link-a-Pix offline play attempted a network request") end
+    plugin:showHome()
+    tapWidget(plugin.home, homeButton(plugin, slug))
+    plugin:showGame(large.id)
+
+    local game = assert(plugin.game)
+    local function pos(row, col)
+        local l = game.layout
+        return Geom:new{ x = l.gridX + l.cell * (col - game.column + 0.5), y = l.gridY + l.cell * (row - game.row + 0.5) }
+    end
+    local function compare(action)
+        UI:forceRePaint()
+        local pixels = BB.tostring(device.screen.bb)
+        game.frame = nil
+        UI:setDirty(game, "ui")
+        UI:forceRePaint()
+        assert(pixels == BB.tostring(device.screen.bb), "Link-a-Pix " .. action .. " differs from a full repaint")
+    end
+    assert(game.layout.leftSlots == 0 and game.layout.topSlots == 0)
+    game:onButton("plus")
+    game:moveViewport(34, 41)
+    UI:forceRePaint()
+    local start, down, right, up = pos(37, 44), pos(38, 44), pos(38, 45), pos(37, 45)
+    game:onPan(nil, { start_pos = start, pos = down })
+    compare("first segment")
+    assert(game:statusText() == "2 of 4 cells")
+    game:onPan(nil, { start_pos = start, pos = right })
+    compare("corner")
+    game:onPan(nil, { start_pos = start, pos = down })
+    compare("backtrack")
+    game:onPan(nil, { start_pos = start, pos = right })
+    game:onPan(nil, { start_pos = start, pos = up })
+    compare("completed preview")
+    game:onPanRelease(nil, { pos = up })
+    compare("completed gesture")
+    assert(game.board:isComplete() and #game.board.undo == 1)
+    if UI:getTopmostVisibleWidget() ~= game then UI:close(UI:getTopmostVisibleWidget()) end
+    assert(store:saveCheckpoint(game.board))
+    local solved = game.board:marks()
+    game:onButton("undo")
+    compare("gesture undo")
+    assert(not game.board:isComplete())
+    game:onButton("redo")
+    if UI:getTopmostVisibleWidget() ~= game then UI:close(UI:getTopmostVisibleWidget()) end
+    compare("gesture redo")
+    assert(game.board:marks() == solved)
+
+    game:onButton("undo")
+    local edgeColumn = 45 - game.layout.columns
+    game:moveViewport(34, edgeColumn)
+    start, down = pos(37, 44), pos(38, 44)
+    game:onPan(nil, { start_pos = start, pos = down })
+    local edge = Geom:new{ x = game.layout.gridX + game.layout.columns * game.layout.cell - 1, y = down.y }
+    game:onPan(nil, { start_pos = start, pos = edge })
+    local advance = assert(game.edgePan)
+    UI:unschedule(advance)
+    advance()
+    assert(game.column == edgeColumn + 1)
+    compare("edge scroll around a corner")
+    up = pos(37, 45)
+    game:onPan(nil, { start_pos = start, pos = up })
+    game:onPanRelease(nil, { pos = up })
+    assert(game.board:marks() == solved)
+    if UI:getTopmostVisibleWidget() ~= game then UI:close(UI:getTopmostVisibleWidget()) end
+    game:moveViewport(34, 41)
+    start, down = pos(37, 44), pos(38, 44)
+
+    -- Start from the other endpoint and pull it back without losing the far end.
+    game:onPan(nil, { start_pos = start, pos = down })
+    game:onPanRelease(nil, { pos = down })
+    compare("editing from the opposite endpoint")
+    assert(not game.board:isComplete() and Link.validMarks(large, game.board:marks(), false))
+    game:changed(game.board:restoreCheckpoint(store.records[large.id].checkpoint), true)
+    if UI:getTopmostVisibleWidget() ~= game then UI:close(UI:getTopmostVisibleWidget()) end
+    game:onButton("overview")
+    UI:forceRePaint()
+    assert(game:statusText() == "Finished picture")
+    device.screen.bb:writePNG(home .. "/link-a-pix-picture.png")
+    game:onClose()
+    local saved = assert(Store.open(root)).records[large.id]
+    assert(saved.completed and saved.marks == solved and saved.row == 34 and saved.column == 41 and saved.zoom == 3)
+
+    plugin:showGame(small.id)
+    game = assert(plugin.game)
+    game:onTap(nil, { pos = pos(1, 1) })
+    game:onTap(nil, { pos = pos(2, 1) })
+    compare("tap-to-extend")
+    assert(game.board:marks() == "4..1..")
+    game:onButton("check")
+    assert(UI:getTopmostVisibleWidget().text:find("One pair", 1, true))
+    UI:close(UI:getTopmostVisibleWidget())
+    game:onClose()
+    plugin.library:onClose()
+    plugin.home:onClose()
+
+    assert(store:updateSettings({ linkAPixTarget = 0 }))
+    local backups
+    result = Sync.run(store, function(method, path, payload)
+        assert(method == "POST" and path == "/progress")
+        backups = payload.boards
+        return { savedCount = #backups, backedUpAt = "2026-11-27T00:00:00Z" }
+    end, games)
+    assert(result.backedUp == 2)
+    local fresh = assert(Store.open(home .. "/link-a-pix-restore"))
+    assert(Sync.restore(fresh, function()
+        local records = {}
+        for _, progress in ipairs(backups) do
+            progress.schemaVersion = 1
+            records[#records + 1] = { puzzle = progress.puzzleId == small.id and small or large, progress = progress }
+        end
+        return records
+    end) == 2)
+    assert(fresh.records[large.id].completed and fresh.records[large.id].marks == solved)
+    assert(fresh.records[small.id].marks == "4..1.." and not fresh.records[small.id].completed)
 end
 
 print("Kobo logic, sync recovery, and KOReader UI smoke checks passed. Screenshots in " .. home)

@@ -1,3 +1,4 @@
+using KoboLogicPuzzles.Server.LinkAPix;
 using KoboLogicPuzzles.Server.Placement;
 using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.Nurikabe;
@@ -18,11 +19,14 @@ internal static class GameApi
                 sources.TryAdd(LoopyGenerator.Source, LoopyGenerator.SourceName);
             var nurikabeSources = nurikabe.Sources();
             var catalog = store.ReadDashboardCatalog();
+            var linkSources = Sources(LinkSources.Game);
             var hashiSources = Sources("hashi");
             var galaxiesSources = Sources("galaxies");
             var tentsSources = placement.Sources(PuzzleGame.Tents, catalog);
             var battleshipsSources = placement.Sources(PuzzleGame.Battleships, catalog);
             var games = GetGames(options, store, sources.Count > 0, nurikabeSources.Count > 0, galaxiesSources.Count > 0);
+            if (linkSources.Count > 0)
+                games.Add(LinkSources.Game);
             if (tentsSources.Count > 0)
                 games.Add("tents");
             if (battleshipsSources.Count > 0)
@@ -37,22 +41,24 @@ internal static class GameApi
                 ExtraCollections = true,
                 Games = games,
                 SlitherlinkSources = sources,
-                PuzzleSources = new
+                PuzzleSources = new Dictionary<string, Dictionary<string, PuzzleSource>>
                 {
-                    Hashi = hashiSources,
-                    Nonogram = Sources("nonogram"),
-                    Slitherlink = sources.ToDictionary(pair => pair.Key,
+                    ["hashi"] = hashiSources,
+                    ["nonogram"] = Sources("nonogram"),
+                    ["slitherlink"] = sources.ToDictionary(pair => pair.Key,
                         pair => new PuzzleSource(pair.Value, pair.Key == LoopyGenerator.Source ? "generated" : "collection")),
-                    Nurikabe = nurikabeSources,
-                    Galaxies = galaxiesSources,
-                    Tents = tentsSources,
-                    Battleships = battleshipsSources,
+                    ["nurikabe"] = nurikabeSources,
+                    ["galaxies"] = galaxiesSources,
+                    ["tents"] = tentsSources,
+                    ["battleships"] = battleshipsSources,
+                    ["link-a-pix"] = linkSources,
                 },
             };
 
             Dictionary<string, PuzzleSource> Sources(string game) => catalog.Where(row => row.Game == game && (row.Total > 0 || row.Source == "webpbn"))
                 .ToDictionary(row => row.Source, row => new PuzzleSource(row.SourceName, row.SourceKind), StringComparer.Ordinal);
         });
+        api.MapGet("/link-a-pix/status", (LinkAPixCollections collections) => collections.Status());
         api.MapGet("/hashi/status", (HashiInventory inventory) => inventory.GetStatus());
         api.MapGet("/slitherlink/status", (SlitherlinkInventory inventory) => inventory.GetStatus());
         api.MapGet("/nurikabe/status", (NurikabeInventory inventory) => inventory.GetStatus());

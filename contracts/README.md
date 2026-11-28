@@ -17,6 +17,7 @@ Kobo Logic Puzzles uses `/api/v2`. Nonogram definitions and saves use their WebP
 | `GET /api/v2/slitherlink/status` | Show available sources, generation timeout, and unstarted counts and targets by size, tiling, and difficulty. |
 | `GET /api/v2/nurikabe/status` | Show available sources, stock by size and difficulty, proof and generation outcomes, and Janko refresh progress. |
 | `GET /api/v2/tents/status`, `GET /api/v2/battleships/status` | Show generator availability, targets and unstarted stock by size and difficulty, generation activity, and Janko refresh progress. |
+| `GET /api/v2/link-a-pix/status` | Show opt-in Link-a-Pix refresh state and proof outcomes for each web collection. |
 | `GET /api/v2/dashboard` | Read catalog totals and unstarted counts by source, source kinds, generation statuses, and the server's sampling time. The read-only web dashboard at `/` uses this endpoint. |
 
 Catalog order is descending WebPBN ID for Nonogram and descending content hash for Hashi. Summaries carry `id`, `game`, dimensions, available metadata, and a `status` of `unstarted`, `started`, or `solved`. Nonogram filters use difficulty on a 1–5 scale in quarter-star increments and numeric WebPBN solvability levels 1–6. Metadata may also include quality on the same star scale. Hashi filters use `easy`, `medium`, `hard`, or `expert` and `basic_logic`, `advanced_logic`, `bounded_lookahead`, `requires_search`, or `unknown`. Malformed filters and cursors from the other game return `400`.
@@ -37,9 +38,11 @@ Galaxies accepts dimensions from 1 to 250 and supports source, difficulty, and s
 
 Tents and Battleships accept dimensions from 1 to 50, including rectangular boards. They accept `sizeFilter` for square boards and filters for `source`, `difficulty`, and `solvability` with the Hashi choice names. Entries sort by descending namespaced ID. Offline queues without rating filters prefer large Hard and Expert boards with basic logic, advanced logic, or bounded lookahead proofs.
 
+Link-a-Pix accepts dimensions from 1 to 200 and supports source, difficulty, solvability, and square size filters. Its catalog orders boards with both dimensions at least 40 ahead of those measuring at least 30, then lists smaller boards. Entries within each group use descending namespaced IDs. Each attribution can match a source filter.
+
 With `extraCollections`, pass `includeCollections=true` to open the full Nonogram or Hashi catalog and restore additional saved boards. Send `includeCollections: true` in the offline-queue JSON for those games. An explicit `source` or `sourceFilter` also selects the requested collections for catalog and queue calls. Older clients get WebPBN and local Bridges boards on these endpoints by default. The Nonogram catalog orders additional boards by descending namespaced ID and then lists WebPBN boards by descending numeric ID.
 
-Known Nonogram source IDs are `webpbn`, `world-at-play`, `sen-ltd`, and `janko`. Known Hashi source IDs are `bridges`, `sen-ltd`, and `janko`. For additional Nonograms, `nonogram-collection-` is followed by a 64-character SHA-256 of the row and column clue layout. These definitions use the same marks and clue schema and add source, authorship and license metadata. Imported Hashi definitions use the existing content-based IDs and may have smaller or rectangular dimensions up to 50×50. Their added metadata identifies the original source, including whether the publisher generated the board.
+Known Nonogram source IDs are `webpbn`, `world-at-play`, `sen-ltd`, `janko`, and `grandgames`. Known Hashi source IDs are `bridges`, `sen-ltd`, `janko`, and `grandgames`. For additional Nonograms, `nonogram-collection-` is followed by a 64-character SHA-256 of the row and column clue layout. These definitions use the same marks and clue schema and add source, authorship and license metadata. Imported Hashi definitions use the existing content-based IDs and may have smaller or rectangular dimensions up to 50×50. Their added metadata identifies the original source, including whether the publisher generated the board.
 
 ### Definitions
 
@@ -55,6 +58,7 @@ Known Nonogram source IDs are `webpbn`, `world-at-play`, `sen-ltd`, and `janko`.
 | `galaxies` | `galaxies-` followed by the 64-character lowercase SHA-256 of the dimensions and colored centers | `title`, `author`, `centers`, and `metadata` with `picture`, source ID and URL, license and URL, source version, content hash, difficulty, and solvability. The requested `solution` uses one character per interior edge. |
 | `tents` | `tents-<64 lowercase hex digits>` | `title`, optional `author`, `rowClues`, `columnClues`, `givens`, `metadata`, optional `solution` |
 | `battleships` | `battleships-<64 lowercase hex digits>` | Same fields plus `fleet` |
+| `link-a-pix` | `link-a-pix-<64 lowercase hex digits>` | `title`, `author`, `clues`, `metadata`, and optional `solution` and `picture` |
 
 Hashi coordinates and array indices start at zero. Island indices follow `(x, y)` order and edges follow `(first, second)` order. An edge joins the nearest islands in one row or column. Hashi `metadata` carries `islandCount`, `actualDensity` as a percentage, `solvability`, and `difficulty` and `difficultyScore` when rated.
 
@@ -95,3 +99,12 @@ Nurikabe uses a row-major marks and solution string with `.` for undecided, `#` 
 Progress uses `.` for undecided, `x` for marked empty, and `#` for occupied. Trees always have progress mark `.`. Fixed empty cells require `x`, and fixed occupied cells or ship shapes require `#`. Completion accepts undecided empty cells after the occupied layout satisfies all rules. Solutions use `#` and `x` on playable cells and `.` on trees. Queue and restore include the verified solution. The offline **Check** uses the current marks and rules.
 
 Metadata includes the canonical `contentHash`, `unique: true`, `difficulty`, `solvability`, and source attribution with source ID, URL, and license where available. Generated boards also carry the seed and generator version. The hash includes the game, dimensions, given grid, totals, and fleet, with trailing zero fleet counts removed.
+
+
+### Link-a-Pix paths
+
+`clues` contains `{cell,length}` objects in row-major order. `cell` is zero based. `length` counts every cell of the path, including both endpoints. A clue of length one paints its own cell. The `metadata.attributions` array lists original source, source ID, URL, author, title, license and original rating if available. Canonical hashes cover dimensions, clue positions, lengths and color class equivalence.
+
+With `includeSolution=true`, `solution` contains zero-based ordered cell paths, oriented from the lower endpoint index to the higher. `picture` is the derived row-major black `#` and white `.` image. The offline queue and restore omit these answer fields. The client derives the evolving picture from the player's moves.
+
+Progress is a row-major string. `.` is undecided, `x` is optional marked white, and a lowercase hexadecimal digit encodes reciprocal path directions using north=1, east=2, south=4, west=8. A partial path starts at a clue and ends in an unnumbered cell, before reaching the full length. Completed paths end at a matching clue at the exact required length. Singleton clues have no encoded path. Completion requires every pair to be connected. Marking all the white cells is optional.

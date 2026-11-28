@@ -20,6 +20,13 @@ services:
       # PlacementCollections__AllowNonCommercial: "true"
       # TentsCollections__JankoEnabled: "true"
       # BattleshipsCollections__JankoEnabled: "true"
+      # Enable the Link-a-Pix collection refreshes on a personal noncommercial server.
+      # LinkAPixCollections__AllowNonCommercial: "true"
+      # LinkAPixCollections__JankoEnabled: "true"
+      # LinkAPixCollections__PlaySudokuEnabled: "true"
+      # LinkAPixCollections__GrayCellEnabled: "true"
+      # Enable GrandGames imports for personal noncommercial offline play.
+      # GrandGamesCollections__Enabled: "true"
       # Enables Artist's Block and Janko Galaxies imports for noncommercial use.
       # GalaxiesCollections__AllowNonCommercial: "true"
       # For noncommercial use, uncomment both lines to include Janko Nonogram and Hashi boards.
