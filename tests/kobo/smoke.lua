@@ -1854,6 +1854,12 @@ local function testGalaxies()
     assert(not Galaxies.validMarks(small, "x#x#x#x", true))
     assert(not Galaxies.validMarks(small, ".......", true))
     assert(Galaxies.validMarks(small, "...#.#.", true))
+    local whiteRegion = "#..#.#."
+    local closed, total = Galaxies.progress(small, whiteRegion)
+    assert(closed == 4 and total == 6)
+    assert(Galaxies.progress(small, ".#.#.#.") == 2)
+    assert(Galaxies.progress(small, "xxxxxxx") == 0)
+    assert(Galaxies.progress(small, "...#.#.") == 6)
 
     local file = assert(io.open((arg[0]:gsub("tests/kobo/smoke%.lua$", "apps/server/Galaxies/galaxies-pictures.json")), "rb"))
     local entries = require("json").decode(file:read("*all"))
@@ -1929,6 +1935,14 @@ local function testGalaxies()
     plugin:showGame(small.id)
     game = assert(plugin.game)
     UI:forceRePaint()
+    game:changed(game.board:restoreCheckpoint(whiteRegion), true)
+    assert(not game.board:isComplete())
+    local progressLabel
+    for _, item in ipairs(plugin:libraryItems("galaxies")) do
+        if item.text == small.title then progressLabel = item.mandatory end
+    end
+    assert(progressLabel == "3×2  66%", tostring(progressLabel))
+    game:onButton("undo")
     game:onButton("check")
     assert(UI:getTopmostVisibleWidget().text:find("No mistakes", 1, true))
     UI:close(UI:getTopmostVisibleWidget())

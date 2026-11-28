@@ -127,17 +127,17 @@ function Galaxies:regions()
             end
         end
     end
-    self.shade, self.completed = {}, true
+    local shade, closedCells = {}, 0
     for cell = 1, n do
         local group = cells[cell]
         local clue = self.puzzle.centers[center[group]]
-        if not clue or invalid[group] then
-            self.completed = false
-        elseif clue.black then
-            self.shade[cell] = true
+        if clue and not invalid[group] then
+            closedCells = closedCells + 1
+            if clue.black then shade[cell] = true end
         end
     end
-    return self.shade
+    self.shade, self.closedCells, self.completed = shade, closedCells, closedCells == n
+    return shade
 end
 
 function Galaxies:isComplete()
@@ -146,7 +146,7 @@ function Galaxies:isComplete()
 end
 
 function Galaxies:apply(changes, key)
-    self.shade = nil
+    self.shade, self.closedCells = nil, nil
     return EdgeHistory.apply(self, changes, key)
 end
 
@@ -160,8 +160,9 @@ function Galaxies.validSolution(puzzle, solution)
 end
 
 function Galaxies.progress(puzzle, marks)
-    local _, marked = (marks or ""):gsub("[#x]", "")
-    return marked, math.max(1, edgeCount(puzzle))
+    local board = Galaxies:new(puzzle, marks ~= "" and marks or nil)
+    board:regions()
+    return board.closedCells, puzzle.width * puzzle.height
 end
 
 return Galaxies

@@ -115,20 +115,26 @@ function LogicPuzzles:libraryItems(game)
     }
     for _, record in ipairs(self.store:list(game)) do
         local puzzle = record.puzzle
-        local marks = record.marks or ""
-        local placed, total
-        if game == "hashi" then
-            placed, total = Puzzle.rules(puzzle.id).bridgeTotals(puzzle, marks)
-        elseif game == "slitherlink" or game == "galaxies" or game == "link-a-pix" or Puzzle.isPlacement(game) then
-            placed, total = Puzzle.rules(puzzle.id).progress(puzzle, marks)
+        local progressLabel
+        if game ~= "nonogram" and not record.marks then
+            progressLabel = "Not started"
+        elseif game ~= "nonogram" and record.completed then
+            progressLabel = "Solved"
         else
-            local _, marked = marks:gsub("[#x]", "")
-            placed, total = marked, puzzle.width * puzzle.height
+            local marks = record.marks or ""
+            local placed, total
+            if game == "hashi" then
+                placed, total = Puzzle.rules(puzzle.id).bridgeTotals(puzzle, marks)
+            elseif game == "slitherlink" or game == "galaxies" or game == "link-a-pix" or Puzzle.isPlacement(game) then
+                placed, total = Puzzle.rules(puzzle.id).progress(puzzle, marks)
+            else
+                local _, marked = marks:gsub("[#x]", "")
+                placed, total = marked, puzzle.width * puzzle.height
+            end
+            local progress = math.min(100, math.floor(100 * placed / total))
+            progressLabel = placed > 0 and progress == 0 and "<1%" or progress .. "%"
+            if record.completed then progressLabel = progressLabel .. "  Solved" end
         end
-        local progress = math.min(100, math.floor(100 * placed / total))
-        local progressLabel = placed > 0 and progress == 0 and "<1%" or progress .. "%"
-        if record.completed then progressLabel = game == "nonogram" and progressLabel .. "  Solved" or "Solved" end
-        if game ~= "nonogram" and not record.marks then progressLabel = "Not started" end
         items[#items + 1] = {
             text = Puzzle.title(puzzle),
             details = PuzzleMenu.details(puzzle.metadata, game, puzzle.author),

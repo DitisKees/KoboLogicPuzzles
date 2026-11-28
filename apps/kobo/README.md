@@ -84,6 +84,8 @@ Completed paths fill in the picture. A **1** paints itself. Use **Overview** to 
 
 Open **Region partitioning → Galaxies**. Tap an internal edge or drag along grid lines in **Wall** mode to draw boundaries. **Open** marks an edge you intend to leave open. **Clear** erases edge marks. Each region must contain one whole center and match itself when turned 180°. Closed regions with solid centers shade in. Use **Pan** or two fingers to move, **−** and **+** to zoom, and **Overview** to jump across large boards. Once solved, Overview displays the finished picture. **Check** reports disagreements with the saved solution without revealing where they are.
 
+Library progress shows the percentage of cells in valid closed regions, including regions with either color of center.
+
 ## Backup and offline puzzles
 
 **Sync now** backs up changed boards and tops up each available game. Set each game's target under **Game settings → Offline queue size** in its library. **Catalog and queue filters** apply to browsing and downloads. Sync reports open queue slots when the server has fewer matching puzzles available. Downloaded boards remain playable offline. The home screen shows the last successful progress backup. Run a sync before a factory reset to back up recent edits.
