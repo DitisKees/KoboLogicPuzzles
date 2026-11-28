@@ -83,7 +83,10 @@ internal sealed partial class SlitherlinkCollectionRefresh
         while (true)
         {
             var url = new Uri(GrandGamesSite, $"chinawall?sort=id&status=all&page={page}");
-            var catalog = await ReadHtmlAsync(url, TimeSpan.FromSeconds(2.5), token);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await grandGamesRequests.SendAsync(http, request, token);
+            response.EnsureSuccessStatusCode();
+            var catalog = new HtmlParser().ParseDocument(await response.Content.ReadAsStringAsync(token));
             var siteVersion = catalog.Scripts.Select(script => GrandGamesVersion().Match(script.TextContent)).FirstOrDefault(match => match.Success);
             var entries = catalog.QuerySelectorAll(".ag-catalog article.gg-card .gg-card__title a")
                 .Select(link => (Link: link, Match: GrandGamesLink().Match(link.GetAttribute("href") ?? "")))
@@ -126,8 +129,7 @@ internal sealed partial class SlitherlinkCollectionRefresh
         request.Headers.Add("x-client", "web-php");
         request.Headers.Add("x-lang", "en");
         request.Headers.Add("x-version", version);
-        await Task.Delay(PuzzlePageDelay, time, token);
-        using var response = await http.SendAsync(request, token);
+        using var response = await grandGamesRequests.SendAsync(http, request, token);
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
             return;
         response.EnsureSuccessStatusCode();

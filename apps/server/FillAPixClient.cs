@@ -3,16 +3,17 @@ using System.Net;
 using System.Text.RegularExpressions;
 using AngleSharp.Html.Parser;
 using AngleSharp.Dom;
+using KoboLogicPuzzles.Server.GrandGames;
 
 namespace KoboLogicPuzzles.Server;
 
-internal sealed partial class FillAPixClient(HttpClient http) : IDisposable
+internal sealed partial class FillAPixClient(HttpClient http, GrandGamesRequests grandGamesRequests) : IDisposable
 {
     private static readonly Uri Janko = new("https://www.janko.at/Raetsel/Mosaik/");
     private static readonly Uri FillAPixNet = new("https://fill-a-pix.net/");
     private static readonly Uri GrandGames = new("https://en.grandgames.net/");
     private readonly Dictionary<FillAPixSource, SemaphoreSlim> gates = Enum.GetValues<FillAPixSource>()
-        .ToDictionary(source => source, _ => new SemaphoreSlim(1));
+        .Where(source => source != FillAPixSource.GrandGames).ToDictionary(source => source, _ => new SemaphoreSlim(1));
     private volatile string? grandGamesVersion;
 
     public async Task<IReadOnlyDictionary<int, string>> ReadIndexAsync(FillAPixSource source, CancellationToken token) =>
@@ -109,13 +110,14 @@ internal sealed partial class FillAPixClient(HttpClient http) : IDisposable
 
     private async Task<HttpResponseMessage> SendAsync(FillAPixSource source, HttpRequestMessage request, CancellationToken token)
     {
+        if (source == FillAPixSource.GrandGames)
+            return await grandGamesRequests.SendAsync(http, request, token);
+
         var gate = gates[source];
         await gate.WaitAsync(token);
         try
         {
-            var delay = source == FillAPixSource.GrandGames && request.Method == HttpMethod.Get
-                ? TimeSpan.FromSeconds(2.5) : TimeSpan.FromMilliseconds(250);
-            await Task.Delay(delay, token);
+            await Task.Delay(TimeSpan.FromMilliseconds(250), token);
             return await http.SendAsync(request, token);
         }
         finally

@@ -1,3 +1,5 @@
+using KoboLogicPuzzles.Server.GrandGames;
+
 namespace KoboLogicPuzzles.Server;
 
 internal sealed class FillAPixLibrary(PuzzleStore store, FillAPixClient client, TimeProvider time)
@@ -72,6 +74,11 @@ internal sealed class FillAPixRefreshWorker(PuzzleStore store, FillAPixLibrary l
                 var count = await library.RefreshAsync(source, previous, token);
                 if (count is not null)
                     logger.LogInformation("Fill-a-Pix refreshed {Source} with {PuzzleCount} puzzles.", source.Slug(), count);
+            }
+            catch (GrandGamesRateLimited exception) when (!token.IsCancellationRequested)
+            {
+                logger.LogInformation("GrandGames paused Fill-a-Pix requests for {Delay}.", exception.Delay);
+                await Task.Delay(exception.CheckAgainIn, time, token);
             }
             catch (Exception exception) when (!token.IsCancellationRequested)
             {

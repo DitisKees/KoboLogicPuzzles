@@ -259,6 +259,21 @@ local function testFillAPixRulesAndSync()
     store = assert(Store.open(root))
     assert(store.records[large.id].puzzle.clues[11800] == false and store.records[large.id].puzzle.metadata.complexity == 17)
     assert(not store.records[puzzle.id].dirty and store.records[puzzle.id].checkpoint == checkpoint)
+
+    assert(store:updateSettings({ fillAPixTarget = 12 }))
+    assert(store:setFilters("fill-a-pix", {}))
+    local targets = {}
+    result, err = Sync.run(store, function(_, path, payload)
+        if path == "/restore" then return {} end
+        assert(path == "/offline-queue" and payload.game == "fill-a-pix")
+        targets[#targets + 1] = payload.targetCount
+        local boards = {}
+        for i = #payload.cachedUnstartedPuzzleIds + 1, payload.targetCount do
+            boards[#boards + 1] = wireFillAPix(i + 10)
+        end
+        return { puzzles = boards, remaining = 0 }
+    end, games)
+    assert(not err and result.added == 11 and table.concat(targets, ",") == "6,11,12")
 end
 
 local function saveFilterInput(title, value)

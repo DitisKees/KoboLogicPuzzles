@@ -151,6 +151,11 @@ async Task<bool> RefreshFillAPixAsync(FillAPixSource source)
             : $"Fill-a-Pix refreshed {source.Slug()} with {count} puzzles.");
         return true;
     }
+    catch (GrandGamesRateLimited exception)
+    {
+        Console.Error.WriteLine($"GrandGames requests are paused for {exception.Delay}. The Fill-a-Pix catalog position was saved.");
+        return false;
+    }
     catch (Exception exception) when (!cancellation.IsCancellationRequested &&
         exception is (HttpRequestException or InvalidDataException or OperationCanceledException))
     {

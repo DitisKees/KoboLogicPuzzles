@@ -15,13 +15,8 @@ internal sealed record GrandGamesFeed(PuzzleGame Game, string Catalog, string Fi
 internal sealed record GrandGamesEntry(int Id, string Url, string Title, string Author, string? Rating);
 internal sealed record GrandGamesCatalog(string Version, GrandGamesEntry[] Entries, bool HasMore);
 internal sealed record GrandGamesResult(int Added, int Present, int Skipped, int Inconclusive, bool More);
-internal sealed class GrandGamesRateLimited(TimeSpan delay) : HttpRequestException("GrandGames asked the importer to slow down.")
-{
-    internal TimeSpan Delay { get; } = delay;
-}
-
 internal sealed partial class GrandGamesCollections(PuzzleStore store, IHttpClientFactory clients, TimeProvider time,
-    NurikabeImporter nurikabe, GalaxiesCollections galaxies, PlacementCollections placement, LinkAPixCollections linkAPix,
+    GrandGamesRequests requests, NurikabeImporter nurikabe, GalaxiesCollections galaxies, PlacementCollections placement, LinkAPixCollections linkAPix,
     ILogger<GrandGamesCollections> logger)
 {
     private static readonly Uri Site = new("https://en.grandgames.net/");
@@ -70,26 +65,26 @@ internal sealed partial class GrandGamesCollections(PuzzleStore store, IHttpClie
         var offset = cursor % PageStride;
         using var http = clients.CreateClient("grandgames");
         var url = new Uri(Site, FormattableString.Invariant($"{feed.Catalog}?status=all&page={page}{feed.Filter}"));
-        using var listing = await http.GetAsync(url, token);
-        CheckResponse(listing);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var listing = await requests.SendAsync(http, request, token);
+        listing.EnsureSuccessStatusCode();
         var catalog = ReadCatalog(await listing.Content.ReadAsStringAsync(token), feed);
         int added = 0, present = 0, skipped = 0, inconclusive = 0;
         foreach (var entry in catalog.Entries.Skip(offset).Take(BatchSize))
         {
-            await Task.Delay(TimeSpan.FromSeconds(1.5), time, token);
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.grandgames.net/agmove/start")
+                using var start = new HttpRequestMessage(HttpMethod.Post, "https://api.grandgames.net/agmove/start")
                 {
                     Content = JsonContent.Create(new { id = entry.Id }),
                 };
-                request.Headers.Add("Origin", Site.GetLeftPart(UriPartial.Authority));
-                request.Headers.Add("x-client", "web-php");
-                request.Headers.Add("x-lang", "en");
-                request.Headers.Add("x-version", catalog.Version);
+                start.Headers.Add("Origin", Site.GetLeftPart(UriPartial.Authority));
+                start.Headers.Add("x-client", "web-php");
+                start.Headers.Add("x-lang", "en");
+                start.Headers.Add("x-version", catalog.Version);
 
-                using var response = await http.SendAsync(request, token);
-                CheckResponse(response);
+                using var response = await requests.SendAsync(http, start, token);
+                response.EnsureSuccessStatusCode();
                 var data = JsonSerializer.Deserialize<StartResponse>(await response.Content.ReadAsStringAsync(token), Json);
                 if (data is not { Mode: "normal", Level: { } level } || level.Id != entry.Id || level.Game != feed.Catalog)
                     throw new InvalidDataException("Unexpected GrandGames guest puzzle response.");
@@ -129,17 +124,6 @@ internal sealed partial class GrandGamesCollections(PuzzleStore store, IHttpClie
             else
                 store.SaveExtraCollectionRefresh(resource, next, checkedAt);
         }
-    }
-
-    private void CheckResponse(HttpResponseMessage response)
-    {
-        if (response.StatusCode == HttpStatusCode.TooManyRequests)
-        {
-            var retryAfter = response.Headers.RetryAfter;
-            var delay = retryAfter?.Delta ?? (retryAfter?.Date - time.GetUtcNow()) ?? TimeSpan.FromMinutes(2);
-            throw new GrandGamesRateLimited(delay < TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : delay);
-        }
-        response.EnsureSuccessStatusCode();
     }
 
     internal static GrandGamesCatalog ReadCatalog(string html, GrandGamesFeed feed)
@@ -248,8 +232,8 @@ internal sealed class GrandGamesWorker(GrandGamesCollections collections, IConfi
                 }
                 catch (GrandGamesRateLimited exception)
                 {
-                    delay = exception.Delay;
-                    logger.LogInformation("GrandGames requested a pause of {Delay} before the next refresh.", delay);
+                    delay = exception.CheckAgainIn;
+                    logger.LogInformation("GrandGames paused requests for {Delay}.", exception.Delay);
                     break;
                 }
                 catch (Exception exception) when (!stoppingToken.IsCancellationRequested)

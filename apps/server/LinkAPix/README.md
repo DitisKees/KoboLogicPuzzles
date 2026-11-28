@@ -28,7 +28,7 @@ LinkAPixCollections__GrayCellEnabled: "true"
 GrandGamesCollections__Enabled: "true"
 ```
 
-Each enabled feed starts in the background and records its own cursor and completed check time. PlaySudoku checks up to 32 puzzle pages per pass. GrandGames checks up to eight boards per pass and pauses when the publisher returns a rate limit. Completed feeds are checked again after seven days. The dashboard and `GET /api/v2/link-a-pix/status` show the current feed state and inconclusive proofs.
+Each enabled feed starts in the background and records its own cursor and completed check time. PlaySudoku checks up to 32 puzzle pages per pass. GrandGames checks up to eight boards per pass and shares its five-second request schedule and rate-limit cooldown across all games. Completed feeds are checked again after seven days. The dashboard and `GET /api/v2/link-a-pix/status` show the current feed state and inconclusive proofs. [GrandGames request schedule](../../../README.md#grandgames-collections)
 
 ```sh
 dotnet run --project apps/server -- link-a-pix-refresh --source janko --allow-non-commercial true

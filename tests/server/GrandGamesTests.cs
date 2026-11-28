@@ -11,6 +11,7 @@ using KoboLogicPuzzles.Server.Hashi;
 using KoboLogicPuzzles.Server.LinkAPix;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 namespace KoboLogicPuzzles.Server.Tests;
 
@@ -120,8 +121,13 @@ public sealed class GrandGamesTests
         using var database = new TestDatabase();
         using var webPbn = TestData.Source(_ => throw new InvalidOperationException("Unexpected WebPBN request."));
         using var grandGames = new LinkFeed();
+        var clock = new FakeTimeProvider();
         await using var app = ApiTests.CreateApp(database, webPbn,
-            configureServices: services => services.AddHttpClient("grandgames").ConfigurePrimaryHttpMessageHandler(() => grandGames));
+            configureServices: services =>
+            {
+                services.AddHttpClient("grandgames").ConfigurePrimaryHttpMessageHandler(() => grandGames);
+                services.AddSingleton(provider => new GrandGamesRequests(provider.GetRequiredService<PuzzleStore>(), clock, TimeSpan.Zero));
+            });
         await app.StartAsync();
         var collections = app.Services.GetRequiredService<GrandGamesCollections>();
         var feed = GrandGamesCollections.Feeds.Single(feed => feed.Game == PuzzleGame.LinkAPix);
@@ -130,6 +136,9 @@ public sealed class GrandGamesTests
         Assert.Equal(TimeSpan.FromMinutes(3), error.Delay);
         Assert.Equal(1, database.Store.CountLinkAPix().Total);
         Assert.NotEmpty(database.Store.GetLinkRefresh("grandgames").Cursor);
+        await Assert.ThrowsAsync<GrandGamesRateLimited>(() => collections.Refresh(feed, true, default));
+        Assert.Equal(new[] { 11, 12 }, grandGames.Requests);
+        clock.Advance(error.Delay);
         Assert.Equal(new(1, 0, 0, 0, false), await collections.Refresh(feed, true, default));
         Assert.Equal(new[] { 11, 12, 12 }, grandGames.Requests);
         Assert.Empty(database.Store.GetLinkRefresh("grandgames").Cursor);
@@ -142,6 +151,54 @@ public sealed class GrandGamesTests
         var boards = (await queue.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!.Puzzles;
         Assert.Equal(2, boards.Count);
         Assert.All(boards, definition => Assert.Null(Assert.IsType<LinkAPixDefinition>(definition).Solution));
+    }
+
+    [Fact]
+    public async Task RequestSpacingAndRetryAfterApplyAcrossClientsAndStoreInstances()
+    {
+        using var database = new TestDatabase();
+        var clock = new FakeTimeProvider();
+        using var first = new GrandGamesRequests(database.Store, clock);
+        using var second = new GrandGamesRequests(new PuzzleStore(database.Path), clock);
+        using var handler = new SharedFeed(clock);
+        using var http = new HttpClient(handler);
+        using var listing = new HttpRequestMessage(HttpMethod.Get, "https://en.grandgames.net/mosaic");
+        using var start = new HttpRequestMessage(HttpMethod.Post, "https://api.grandgames.net/agmove/start");
+        using var nextListing = new HttpRequestMessage(HttpMethod.Get, "https://en.grandgames.net/chinawall");
+
+        using var result = await first.SendAsync(http, listing, default);
+        var attempt = second.SendAsync(http, start, default);
+        clock.Advance(TimeSpan.FromSeconds(4));
+        Assert.Single(handler.Requests);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var throttled = await Assert.ThrowsAsync<GrandGamesRateLimited>(() => attempt.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(TimeSpan.FromMinutes(4), throttled.Delay);
+
+        clock.Advance(TimeSpan.FromMinutes(3));
+        var waiting = await Assert.ThrowsAsync<GrandGamesRateLimited>(() => first.SendAsync(http, nextListing, default));
+        Assert.Equal(TimeSpan.FromMinutes(1), waiting.Delay);
+        Assert.Equal(2, handler.Requests.Count);
+        clock.Advance(waiting.Delay);
+        using var recovered = await first.SendAsync(http, nextListing, default);
+        Assert.True(recovered.IsSuccessStatusCode);
+        Assert.Equal(new[] { "en.grandgames.net", "api.grandgames.net", "en.grandgames.net" }, handler.Requests);
+    }
+
+    private sealed class SharedFeed(TimeProvider time) : HttpMessageHandler
+    {
+        internal List<string> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Requests.Add(request.RequestUri!.Host);
+            var response = Requests.Count == 2
+                ? new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+                {
+                    Headers = { RetryAfter = new RetryConditionHeaderValue(time.GetUtcNow().AddMinutes(4)) },
+                }
+                : new HttpResponseMessage(HttpStatusCode.OK);
+            return Task.FromResult(response);
+        }
     }
 
     private sealed class LinkFeed : HttpMessageHandler

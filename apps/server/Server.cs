@@ -87,6 +87,7 @@ public static class Server
             http.MaxResponseContentBufferSize = 2 * 1024 * 1024;
             http.DefaultRequestHeaders.UserAgent.ParseAdd("KoboLogicPuzzles/1.0");
         }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false });
+        services.AddSingleton<GrandGamesRequests>();
         services.AddSingleton<GrandGamesCollections>();
         services.AddHostedService<GrandGamesWorker>();
         services.AddHttpClient("grandgames", http =>
@@ -142,7 +143,8 @@ public static class Server
             UseCookies = false,
             AutomaticDecompression = System.Net.DecompressionMethods.All,
         });
-        services.AddSingleton(provider => new FillAPixClient(provider.GetRequiredService<IHttpClientFactory>().CreateClient("fill-a-pix")));
+        services.AddSingleton(provider => new FillAPixClient(provider.GetRequiredService<IHttpClientFactory>().CreateClient("fill-a-pix"),
+            provider.GetRequiredService<GrandGamesRequests>()));
         services.AddSingleton<FillAPixLibrary>();
         services.AddSingleton(provider => new WebPbnClient(new HttpClient(new SocketsHttpHandler
         {

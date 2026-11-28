@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using KoboLogicPuzzles.Server.GrandGames;
 using KoboLogicPuzzles.Server.Hashi;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 namespace KoboLogicPuzzles.Server.Tests;
 
@@ -92,7 +94,8 @@ public sealed class FillAPixTests
         using var webPbn = TestData.Source(_ => throw new InvalidOperationException("Unexpected WebPBN request."));
         const string path = "/api/v2/puzzles?game=fill-a-pix";
         var limited = new Sources(jankoUnavailable: true, rateLimitSecondPage: true);
-        await using (var app = CreateApp(database, webPbn, limited))
+        var clock = new FakeTimeProvider();
+        await using (var app = CreateApp(database, webPbn, limited, clock))
         {
             await app.StartAsync();
             using var client = app.GetTestClient();
@@ -103,8 +106,9 @@ public sealed class FillAPixTests
             await app.StopAsync();
         }
 
+        clock.Advance(GrandGamesRequests.MissingRetryAfter);
         var available = new Sources(jankoUnavailable: true);
-        await using var appAfterRestart = CreateApp(database, webPbn, available);
+        await using var appAfterRestart = CreateApp(database, webPbn, available, clock);
         await appAfterRestart.StartAsync();
         using var http = appAfterRestart.GetTestClient();
         var page = await WaitForCatalogAsync(http, path, 3);
@@ -114,9 +118,14 @@ public sealed class FillAPixTests
         Assert.DoesNotContain(page.Puzzles, puzzle => puzzle.Id == "fill-a-pix-janko-1");
     }
 
-    private static WebApplication CreateApp(TestDatabase database, WebPbnClient webPbn, Sources upstream) =>
+    private static WebApplication CreateApp(TestDatabase database, WebPbnClient webPbn, Sources upstream, TimeProvider? clock = null) =>
         ApiTests.CreateApp(database, webPbn, builder => builder.Configuration["FillAPix:RefreshEnabled"] = "true",
-            services => services.AddHttpClient("fill-a-pix").ConfigurePrimaryHttpMessageHandler(() => upstream));
+            services =>
+            {
+                services.AddHttpClient("fill-a-pix").ConfigurePrimaryHttpMessageHandler(() => upstream);
+                services.AddSingleton(provider => new GrandGamesRequests(provider.GetRequiredService<PuzzleStore>(),
+                    clock ?? TimeProvider.System, TimeSpan.Zero));
+            });
 
     private static async Task<GameCatalogPage> WaitForCatalogAsync(HttpClient http, string path, int expectedCount)
     {

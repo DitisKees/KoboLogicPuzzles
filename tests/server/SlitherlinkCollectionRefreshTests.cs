@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
+using KoboLogicPuzzles.Server.GrandGames;
 using KoboLogicPuzzles.Server.Slitherlink;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -169,7 +170,7 @@ public sealed class SlitherlinkCollectionRefreshTests
     {
         var options = new SlitherlinkOptions();
         var importer = new SlitherlinkImporter(store, new LoopyGenerator(options), options, NullLogger<SlitherlinkImporter>.Instance);
-        return new(store, importer, http, time, NullLogger<SlitherlinkCollectionRefresh>.Instance);
+        return new(store, importer, http, time, new GrandGamesRequests(store, time), NullLogger<SlitherlinkCollectionRefresh>.Instance);
     }
 
     private static HttpResponseMessage MindgamesArchive()

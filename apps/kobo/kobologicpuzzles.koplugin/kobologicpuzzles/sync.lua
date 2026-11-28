@@ -87,8 +87,10 @@ local function topUp(store, request, game, result, games)
         end
     end
 
+    -- Uncached GrandGames Fill-a-Pix boards are fetched serially by the server.
+    local batchSize = game == "fill-a-pix" and 5 or 15
     while matching < target do
-        local payload = { game = game, targetCount = math.min(target, matching + 15),
+        local payload = { game = game, targetCount = math.min(target, matching + batchSize),
             cachedUnstartedPuzzleIds = cached, excludedPuzzleIds = excluded }
         if games.extraCollections and (game == "nonogram" or game == "hashi") then payload.includeCollections = true end
         for key, value in pairs(parameters) do payload[key] = value end

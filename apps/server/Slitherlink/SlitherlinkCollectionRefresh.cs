@@ -1,10 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
+using KoboLogicPuzzles.Server.GrandGames;
 
 namespace KoboLogicPuzzles.Server.Slitherlink;
 
 internal sealed partial class SlitherlinkCollectionRefresh(PuzzleStore store, SlitherlinkImporter importer, HttpClient http,
-    TimeProvider time, ILogger<SlitherlinkCollectionRefresh> logger)
+    TimeProvider time, GrandGamesRequests grandGamesRequests, ILogger<SlitherlinkCollectionRefresh> logger)
 {
     internal const string PuzzleKit = "puzzlekit";
     internal const string Mindgames = "mindgames";
@@ -109,6 +110,11 @@ internal sealed class SlitherlinkCollectionRefreshWorker(PuzzleStore store, Slit
                     continue;
                 }
                 await refresh(token);
+            }
+            catch (GrandGamesRateLimited exception) when (!token.IsCancellationRequested)
+            {
+                logger.LogInformation("GrandGames paused Slitherlink requests for {Delay}.", exception.Delay);
+                await Task.Delay(exception.CheckAgainIn, time, token);
             }
             catch (Exception exception) when (!token.IsCancellationRequested)
             {

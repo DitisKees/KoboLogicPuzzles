@@ -66,7 +66,9 @@ The API is intended for a trusted home LAN. See the [API and client sync formats
 
 Set `GrandGamesCollections__Enabled: "true"` in the Compose service environment for personal noncommercial offline play. This enables the GrandGames catalogs for Nonogram, Hashi (Bridges), Nurikabe, classic Galaxies, Tents and Trees, Battleships, and Link-a-Pix. Fill-a-Pix (Mosaic) and Slitherlink (Wall of China) already include GrandGames through their catalog refreshes. Those refreshes are enabled by default and can be controlled with `FillAPix__RefreshEnabled` and `SlitherlinkCollections__RefreshEnabled`. [GrandGames catalog](https://en.grandgames.net/brainteasers) · [Compose settings](apps/server/compose.example.yaml)
 
-The seven added feeds verify and cache boards on the server in small batches. They keep their position across restarts and pause when GrandGames asks the server to slow down. For an immediate batch, run `dotnet run --project apps/server -- grandgames-refresh --game link-a-pix`. The same command works with `nonogram`, `hashi`, `nurikabe`, `galaxies`, `tents`, or `battleships`. Omit `--game` to run a batch for each of the seven.
+All nine feeds share one GrandGames request schedule. The server allows one request at a time, with at least five seconds between starts. Manual commands using the same database share that schedule. HTTP 429 pauses all GrandGames requests for the publisher's `Retry-After` window, with a one-minute minimum and a ten-minute fallback when the header is absent. The cooldown and refresh positions survive restarts.
+
+The seven added feeds verify and cache boards in small batches. To start a manual batch, run `dotnet run --project apps/server -- grandgames-refresh --game link-a-pix`. The same command works with `nonogram`, `hashi`, `nurikabe`, `galaxies`, `tents`, or `battleships`. Omit `--game` to run a batch for each of the seven.
 
 ## Server dashboard
 
