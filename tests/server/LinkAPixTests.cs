@@ -106,8 +106,11 @@ public sealed class LinkAPixTests
         using var queue = await http.PostAsJsonAsync("/api/v2/offline-queue", new { game = "link-a-pix", targetCount = 1, source = "playsudoku" });
         queue.EnsureSuccessStatusCode();
         var downloaded = Assert.IsType<LinkAPixDefinition>(Assert.Single((await queue.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!.Puzzles));
-        Assert.Null(downloaded.Solution);
+        Assert.Equal(new[] { 0, 3, 4, 1 }, Assert.Single(downloaded.Solution!));
         Assert.Null(downloaded.Picture);
+        var cluesOnly = await http.GetFromJsonAsync<JsonElement>($"/api/v2/puzzles/{summary.Id}");
+        Assert.False(cluesOnly.TryGetProperty("solution", out _));
+        Assert.False(cluesOnly.TryGetProperty("picture", out _));
         Assert.Equal("##.###", (await http.GetFromJsonAsync<JsonElement>($"/api/v2/puzzles/{summary.Id}?includeSolution=true")).GetProperty("picture").GetString());
         using var invalid = await Upload("4..1..", true);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
@@ -116,7 +119,9 @@ public sealed class LinkAPixTests
         var backups = await http.GetFromJsonAsync<JsonElement>("/api/v2/restore?game=link-a-pix");
         var backup = Assert.Single(backups.EnumerateArray());
         Assert.Equal("4..1..", backup.GetProperty("progress").GetProperty("marks").GetString());
-        Assert.False(backup.GetProperty("puzzle").TryGetProperty("solution", out _));
+        var restored = backup.GetProperty("puzzle");
+        Assert.Equal(new[] { 0, 3, 4, 1 }, Assert.Single(restored.GetProperty("solution").Deserialize<int[][]>()!));
+        Assert.False(restored.TryGetProperty("picture", out _));
         var dashboard = await http.GetFromJsonAsync<JsonElement>("/api/v2/dashboard");
         Assert.Equal(1, dashboard.GetProperty("linkAPix").GetProperty("total").GetInt32());
         Assert.Equal(0, dashboard.GetProperty("linkAPix").GetProperty("unstarted").GetInt32());

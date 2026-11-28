@@ -62,7 +62,7 @@ The updater verifies GitHub’s TLS certificate using the bundled Mozilla CA sto
 
 - Open **Nurikabe** under **Cell shading**. Tap or drag with **Fill** to mark the sea or **White** to mark island cells. Numbered cells stay white.
 - The sea must connect by sides and contain no black 2×2 block. Each white island must connect by sides and contain one clue equal to its area. A clue is struck through once the marked island matches its area. Outlined cells show conflicts.
-- Use **Check** for current rule conflicts and the remaining undecided count. **Rules** shows the rules offline. Use **Pan**, zoom, and **Overview** to move across large boards. **Restart** clears your marks and keeps the clues.
+- **Check** compares your sea and island marks with the verified solution. **Rules** shows the rules offline. Use **Pan**, zoom, and **Overview** to move across large boards. **Restart** clears your marks and keeps the clues.
 - The catalog and offline library display the collection or generator beside the difficulty and solvability ratings. Use **Game settings → Catalog and queue filters** to choose a source, dimensions, difficulty or solvability.
 
 ## Play Tents and Trees or Battleships
@@ -72,13 +72,13 @@ Open either game under **Object placement**. In **Cycle**, tap an editable cell 
 - In **Tents and Trees**, match every tree to its own tent through a shared side. Tents cannot touch, including diagonally.
 - In **Battleships**, place the indicated fleet as straight ships. Different ships cannot touch, including diagonally. The footer and **Fleet** show ships remaining. Mark water at both ends of a ship to count it before the puzzle is solved.
 
-Use **Pan**, zoom, or **Overview** to move across larger grids. **Check** reports rule conflicts offline. Both games save progress and view automatically and support undo, redo, checkpoints, restart, and server recovery.
+Use **Pan**, zoom, or **Overview** to move across larger grids. **Check** compares your marks with the verified solution. Both games save progress and view automatically and support undo, redo, checkpoints, restart, and server recovery.
 
 ## Play Link-a-Pix
 
 Open **Line drawing → Link-a-Pix**. Start at a number in **Draw** mode and drag through cells to a matching number. Count both endpoints in the length. Tap a clue or open path end, then tap along a row or column to extend precisely. Turn or backtrack by moving through the preceding cells. You can start editing from either end of a completed path. Hold a path or use **Clear** to erase it. **White** marks an optional background cell.
 
-Completed paths fill in the picture. A **1** paints itself. Use **Overview** to jump around while playing and see the finished picture after completion. **Check** reports the current rule status offline. The plugin saves the grid and view, and supports whole-gesture undo and redo, checkpoints, restart, and server sync and restore.
+Completed paths fill in the picture. A **1** paints itself. Use **Overview** to jump around while playing and see the finished picture after completion. **Check** compares drawn connections and white marks with the verified solution without revealing mistake locations. It works offline when the solution is saved. If a puzzle was downloaded without the solution, the first check requests and caches it from the home server. The plugin saves the grid and view, and supports whole-gesture undo and redo, checkpoints, restart, and server sync and restore.
 
 ## Picture Galaxies
 

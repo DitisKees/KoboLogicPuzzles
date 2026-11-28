@@ -7,6 +7,7 @@ local UIManager = require("ui/uimanager")
 
 local NurikabeGame = FillAPixGame:extend{
     buttonLabels = { clues = "Rules", cross = "White", restart = "Restart" },
+    checkSolution = Game.checkSolution,
 }
 
 function NurikabeGame:init()
@@ -56,14 +57,6 @@ function NurikabeGame:showClues()
     UIManager:show(InfoMessage:new{ text = "Shade one connected black sea with no 2×2 black blocks. "
         .. "Every white island must contain exactly one clue and have that many cells. "
         .. "Count connections by sides. Mark island cells with White." })
-end
-
-function NurikabeGame:checkSolution()
-    local board = self.board
-    local message = board:isComplete() and "The sea and all islands satisfy the rules."
-        or board.conflicts > 0 and string.format("Conflicts found: %d. Check outlined cells.", board.conflicts)
-        or string.format("No rule conflicts detected. Undecided cells: %d.", board.undecided)
-    UIManager:show(InfoMessage:new{ text = message })
 end
 
 return NurikabeGame

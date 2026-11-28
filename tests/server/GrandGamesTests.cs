@@ -150,7 +150,12 @@ public sealed class GrandGamesTests
         queue.EnsureSuccessStatusCode();
         var boards = (await queue.Content.ReadFromJsonAsync<GameOfflineQueueResponse>())!.Puzzles;
         Assert.Equal(2, boards.Count);
-        Assert.All(boards, definition => Assert.Null(Assert.IsType<LinkAPixDefinition>(definition).Solution));
+        Assert.All(boards, definition =>
+        {
+            var puzzle = Assert.IsType<LinkAPixDefinition>(definition);
+            Assert.Equal(new[] { 1, 2 }, Assert.Single(puzzle.Solution!));
+            Assert.Null(puzzle.Picture);
+        });
     }
 
     [Fact]

@@ -116,23 +116,27 @@ local function mark(path, offset, width, height)
     return masks:sub(mask + 1, mask + 1)
 end
 
-function Link.validSolution(puzzle, paths)
-    if type(paths) ~= "table" then return false end
+local function solutionCells(puzzle, paths)
+    if type(paths) ~= "table" then return end
     local w, h = puzzle.width, puzzle.height
     local cells, clues, used = {}, clueMap(puzzle), {}
     for i = 1, w * h do cells[i] = "." end
     for _, wirePath in ipairs(paths) do
-        if type(wirePath) ~= "table" or #wirePath < 2 or #wirePath > w * h then return false end
+        if type(wirePath) ~= "table" or #wirePath < 2 or #wirePath > w * h then return end
         local path = {}
         for offset, cell in ipairs(wirePath) do
             if not integer(cell, 0, w * h - 1) or used[cell]
-                or offset > 1 and not direction(path[offset - 1], cell + 1, w, h) then return false end
+                or offset > 1 and not direction(path[offset - 1], cell + 1, w, h) then return end
             used[cell], path[offset] = true, cell + 1
         end
         for offset, i in ipairs(path) do cells[i] = mark(path, offset, w, h) end
     end
     local valid, required, completed = readPaths(puzzle, cells, clues)
-    return valid ~= nil and required == completed
+    if valid and required == completed then return cells end
+end
+
+function Link.validSolution(puzzle, paths)
+    return solutionCells(puzzle, paths) ~= nil
 end
 
 function Link.validMarks(puzzle, marks, completed)
@@ -151,7 +155,7 @@ function Link:new(puzzle, marks)
     for i = 1, #marks do cells[i] = marks:sub(i, i) end
     local board = setmetatable({
         puzzle = puzzle, width = puzzle.width, height = puzzle.height, clues = clueMap(puzzle),
-        state = cells, cells = cells, undo = {}, redo = {}, rows = {}, columns = {},
+        solution = puzzle.solution, state = cells, cells = cells, undo = {}, redo = {}, rows = {}, columns = {},
     }, self)
     board:rebuild()
     return board
@@ -178,6 +182,24 @@ end
 function Link:index(row, col) return (row - 1) * self.width + col end
 function Link:get(row, col) return self.cells[self:index(row, col)] end
 function Link:isComplete() return self.required == self.confirmed end
+
+function Link:checkSolution()
+    local expected = solutionCells(self.puzzle, self.solution)
+    if not expected then return end
+    local errors, remaining = 0, 0
+    for i, mark in ipairs(self.cells) do
+        local drawn = tonumber(mark, 16) or 0
+        local answer = tonumber(expected[i], 16) or 0
+        -- A correct partial path can omit directions at its open end.
+        if bit.band(drawn, answer) ~= drawn or (mark == "x" and answer ~= 0) then
+            errors = errors + 1
+        elseif drawn ~= answer then
+            remaining = remaining + 1
+        end
+    end
+    return errors, remaining
+end
+
 function Link:getOverviewMark(row, col)
     local i = self:index(row, col)
     return self.clueStates[i] == "ink" and "#" or self.clueStates[i] == "path" and "x" or "."

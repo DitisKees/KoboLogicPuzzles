@@ -126,7 +126,7 @@ public sealed partial class PuzzleStore
             """;
         using var reader = command.ExecuteReader();
         while (reader.Read())
-            boards.Add(ToSavedBoard(ReadLinkAPix(reader.GetString(0)).WithoutAnswer(), reader.GetString(1), reader.GetBoolean(2),
+            boards.Add(ToSavedBoard(ReadLinkAPix(reader.GetString(0)) with { Picture = null }, reader.GetString(1), reader.GetBoolean(2),
                 DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture)));
     }
 
@@ -195,8 +195,12 @@ internal sealed class LinkAPixPuzzleProvider(PuzzleStore store) : IPuzzleProvide
         return ValueTask.FromResult<GamePuzzleDefinition?>(includeSolution ? puzzle : puzzle?.WithoutAnswer());
     }
 
-    public ValueTask<GamePuzzleDefinition?> GetOfflineDefinitionAsync(PuzzleId id, CancellationToken cancellationToken) =>
-        GetDefinitionAsync(id, false, cancellationToken);
+    public ValueTask<GamePuzzleDefinition?> GetOfflineDefinitionAsync(PuzzleId id, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var puzzle = store.FindLinkAPix(id.Value);
+        return ValueTask.FromResult<GamePuzzleDefinition?>(puzzle is null ? null : puzzle with { Picture = null });
+    }
 
     public IReadOnlyList<GamePuzzleSummary> ListCatalog(PuzzleFilter filter, PuzzleId? before, int limit, bool unstartedOnly) =>
         store.ListLinkAPixCatalog(filter, before, limit, unstartedOnly);

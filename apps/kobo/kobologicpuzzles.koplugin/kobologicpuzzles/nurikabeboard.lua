@@ -141,4 +141,9 @@ function Nurikabe:markCell(row, col, stroke)
     return Board.markCell(self, row, col, stroke)
 end
 
+function Nurikabe:checkSolution()
+    local errors = Board.checkSolution(self)
+    return errors, self.undecided
+end
+
 return Nurikabe

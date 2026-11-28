@@ -49,15 +49,12 @@ local function sides(i, width, height)
     return row > 0 and i - width, col + 1 < width and i + 1, row + 1 < height and i + width, col > 0 and i - 1
 end
 
-local function matching(puzzle, cells, allowUnknown)
+local function matching(puzzle, cells)
     local owners, seen = {}, {}
     local function match(tree, stamp)
         local n, e, s, w = sides(tree, puzzle.width, puzzle.height)
         local function claim(cell)
-            if not cell or seen[cell] == stamp
-                or not (cells[cell] == "#" or allowUnknown and cells[cell] == "." and puzzle.givens:sub(cell, cell) == ".") then
-                return false
-            end
+            if not cell or seen[cell] == stamp or cells[cell] ~= "#" then return false end
             seen[cell] = stamp
             if owners[cell] and not match(owners[cell], stamp) then return false end
             owners[cell] = tree
@@ -178,8 +175,6 @@ end
 
 function Placement:new(puzzle, marks)
     local board = self:newGrid(puzzle, marks or self.initialMarks(puzzle))
-    -- Offline Check uses only the rules and the current marks.
-    board.solution = nil
     if puzzle.game == "battleships" then board.clueStates = {} end
     for row = 1, board.height do board:checkRow(row) end
     for col = 1, board.width do board:checkColumn(col) end
@@ -204,7 +199,7 @@ function Placement:isComplete()
     self.complete = false
     if adjacency(puzzle, cells) > 0 then return false end
     if puzzle.game == "tents" then
-        self.complete = matching(puzzle, cells, false)
+        self.complete = matching(puzzle, cells)
     else
         local _, conflicts = fleetState(puzzle, cells, true)
         -- The fleet and the line totals count the same number of segments.
@@ -228,21 +223,6 @@ function Placement.validMarks(puzzle, marks, completed)
 end
 
 function Placement.validSolution(puzzle, answer) return Placement.validMarks(puzzle, answer, true) end
-
-function Placement:ruleConflicts()
-    if self:isComplete() then return 0 end
-    local conflicts = adjacency(self.puzzle, self.cells)
-    for _, lines in ipairs{ self.rows, self.columns } do
-        for _, status in ipairs(lines) do if status.impossible then conflicts = conflicts + 1 end end
-    end
-    if self.puzzle.game == "tents" then
-        if not matching(self.puzzle, self.cells, self.unfinished ~= 0) then conflicts = conflicts + 1 end
-    else
-        local _, fleetConflicts = fleetState(self.puzzle, self.cells, self.unfinished == 0)
-        conflicts = conflicts + fleetConflicts
-    end
-    return conflicts
-end
 
 function Placement:remainingFleet()
     if not self.fleetRemaining then

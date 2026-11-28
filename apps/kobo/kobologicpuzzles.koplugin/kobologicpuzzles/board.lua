@@ -184,7 +184,7 @@ function Board:checkSolution()
     local errors, remaining = 0, 0
     for index, mark in ipairs(self.cells) do
         local answer = self.solution:sub(index, index)
-        if (mark == "#" and answer == ".") or (mark == "x" and answer == "#") then
+        if (mark == "#" and answer ~= "#") or (mark == "x" and answer == "#") then
             errors = errors + 1
         elseif mark == "." and answer == "#" then
             remaining = remaining + 1

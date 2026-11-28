@@ -4,7 +4,11 @@ local Game = require("kobologicpuzzles/game")
 local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 
-local PlacementGame = FillAPixGame:extend{ defaultMode = "cycle", clueSample = "00" }
+local PlacementGame = FillAPixGame:extend{
+    defaultMode = "cycle",
+    clueSample = "00",
+    checkSolution = Game.checkSolution,
+}
 
 function PlacementGame:init()
     self.tents = self.board.puzzle.game == "tents"
@@ -114,15 +118,6 @@ function PlacementGame:showClues(row, col)
         lines[#lines + 1] = "Mark the ends of a ship with water to count it as placed. Ships are straight and cannot touch, even diagonally."
     end
     UIManager:show(InfoMessage:new{ text = table.concat(lines, "\n\n") })
-end
-
-function PlacementGame:checkSolution()
-    local board = self.board
-    local conflicts = board:ruleConflicts()
-    local message = board:isComplete() and "All placement rules are satisfied."
-        or conflicts > 0 and string.format("Rule conflicts found: %d.", conflicts)
-        or "No rule conflicts detected so far."
-    UIManager:show(InfoMessage:new{ text = message })
 end
 
 return PlacementGame

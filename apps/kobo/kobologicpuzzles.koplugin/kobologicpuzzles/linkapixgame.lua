@@ -187,11 +187,14 @@ function LinkGame:onHold(_, gesture)
 end
 
 function LinkGame:checkSolution()
-    local board = self.board
-    local remaining = board.required - board.confirmed
-    local text = board:isComplete() and "All pairs are connected. Open Overview to see the picture."
-        or remaining == 1 and "One pair still needs a path of the indicated length."
-        or string.format("%d pairs still need paths of the indicated length.", remaining)
+    local errors, remaining = self.board:checkSolution()
+    if not errors and self.fetchSolution then return self.fetchSolution(self) end
+    local text
+    if not errors then text = "No saved solution is available."
+    elseif errors == 1 then text = "1 marked cell disagrees with the solution."
+    elseif errors > 1 then text = string.format("%d marked cells disagree with the solution.", errors)
+    elseif remaining > 0 then text = "No mistakes so far."
+    else text = "Your paths match the solution." end
     UIManager:show(InfoMessage:new{ text = text })
 end
 

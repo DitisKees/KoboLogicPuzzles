@@ -1,5 +1,4 @@
 local API = require("kobologicpuzzles/api")
-local Board = require("kobologicpuzzles/board")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ConfirmBox = require("ui/widget/confirmbox")
 local DataStorage = require("datastorage")
@@ -182,11 +181,12 @@ function LogicPuzzles:showGame(id)
     if self.catalog then self.catalog:onClose() end
     local widget = gameWidgets[game]
     local rules = Puzzle.rules(id)
+    local fetchSolution = game == "nonogram" or game == "nurikabe" or game == "link-a-pix" or Puzzle.isPlacement(game)
     self.game = widget:new{
         board = rules:new(record.puzzle, record.marks),
         record = record,
         store = self.store,
-        fetchSolution = game == "nonogram" and function(active) self:fetchSolution(active) end or nil,
+        fetchSolution = fetchSolution and function(active) self:fetchSolution(active) end or nil,
         onExit = function()
             self.game = nil
             self:updateLibrary()
@@ -542,7 +542,7 @@ function LogicPuzzles:fetchSolution(game)
             nil, "Looking for the puzzle solution…")
         if not wire then return notice(err) end
         local puzzle = Puzzle.fromWire(wire)
-        if not puzzle or puzzle.id ~= id or not Board.validSolution(game.board.puzzle, puzzle.solution) then
+        if not puzzle or puzzle.id ~= id or not Puzzle.rules(id).validSolution(game.board.puzzle, puzzle.solution) then
             return notice("No known solution is available for this puzzle.")
         end
         local ok, saveError = self.store:saveSolution(id, puzzle.solution)
